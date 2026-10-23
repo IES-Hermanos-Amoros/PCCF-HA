@@ -8,6 +8,7 @@
 
 const mammoth = require('mammoth');
 const { parse } = require('node-html-parser');
+const { extraerCompartidos } = require('./compartidos');
 
 // ---------------------------------------------------------------- utilidades de texto
 const decode = (t) => String(t || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
@@ -316,7 +317,7 @@ async function importarDocx(input, opts = {}) {
     reasignarIds(can, can.id, repetId);
     const repet = { id: repetId, titulo: etiqueta, nivel: s.nivel, instancias: true, etiqueta_instancia: 'módulo', grupos: fam.grupos.map((g) => g.seccion.titulo), campos: [], hijos: can.hijos, presencia: instancias.length };
     secciones.push(repet);
-    for (const { sec, grupo } of instancias) instanciasOut.push({ titulo: sec.titulo, num: sec.num, grupo, valores: extraer({ ...can, id: repetId, campos: [] }, sec) });
+    for (const { sec, grupo } of instancias) instanciasOut.push({ titulo: sec.titulo, num: sec.num, grupo, docentes: [], valores: extraer({ ...can, id: repetId, campos: [] }, sec) });
     // secciones del grupo no instanciadas (hijos sin subsecciones) se avisan
     for (const g of fam.grupos) for (const h of g.seccion.hijos) if (!g.instancias.includes(h)) avisos.push(`"${h.titulo}" dentro de "${g.seccion.titulo}" no tiene la estructura de módulo y se ha ignorado.`);
   }
@@ -326,11 +327,15 @@ async function importarDocx(input, opts = {}) {
   const recorrer = (s) => { cuenta.secciones += 1; if (s.repetidor) cuenta.repetidores += 1; for (const c of s.campos) cuenta.campos[c.tipo] = (cuenta.campos[c.tipo] || 0) + 1; s.hijos.forEach(recorrer); };
   secciones.forEach(recorrer);
   const plantilla = { tipo: opts.tipo || 'programacion_didactica', origen: opts.origen || null, version: opts.version || null, generada: new Date().toISOString(), secciones: secciones.map(limpiarPlantilla) };
-  const datos = { documento, instancias: instanciasOut };
+  // permisos por defecto: lo común lo edita el jefe de departamento; cada módulo, sus docentes (ver lib/permisos.js)
+  for (const s of plantilla.secciones) s.edita = s.instancias ? 'docentes_del_modulo' : 'jefe_departamento';
+  const datos = { departamento: opts.departamento || null, documento, instancias: instanciasOut, asignaciones: {} };
+  // 2) textos repetidos en varios módulos o copiados de la parte común -> una sola vez, referenciados (ver lib/compartidos.js)
+  const compartidos = opts.compartidos === false ? [] : extraerCompartidos(datos, opts.compartidos || {});
   const informe = {
     nodos: nodos.length, titulos: nodos.filter((n) => n.type === 'h').length, tablas: nodos.filter((n) => n.type === 'table').length,
     secciones: cuenta.secciones, repetidores: cuenta.repetidores, camposPorTipo: cuenta.campos,
-    instancias: instanciasOut.map((i) => `${i.grupo} › ${i.titulo}`), avisos, mensajesMammoth: messages.length,
+    instancias: instanciasOut.map((i) => `${i.grupo} › ${i.titulo}`), compartidos, avisos, mensajesMammoth: messages.length,
   };
   return { plantilla, datos, informe };
 }

@@ -1,6 +1,7 @@
 // Generador genérico: pinta cualquier plantilla deducida por el importador con sus datos (pdfmake, sin navegador).
 // Los tipos de campo reconocidos (RA/CE, ponderaciones, fichas de situación de aprendizaje, ficha del módulo)
 // tienen un pintado propio con comprobaciones; el resto se pinta de forma genérica respetando celdas combinadas.
+const { resolverCompartidos } = require('./compartidos');
 
 const AZUL = '#1F3864', AZUL_CLARO = '#D9E2F3', GRIS = '#666666', GRIS_BORDE = '#BFBFBF', GRIS_FONDO = '#F2F2F2', ROJO = '#C00000', VERDE = '#2E7D32';
 const layout = {
@@ -166,7 +167,8 @@ function pintarSeccion(sec, valores, numero, ctx) {
   return out;
 }
 
-function buildDocDefinition({ plantilla, datos, instancias, titulo, subtitulo, estado = 'borrador' }) {
+function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo, subtitulo, estado = 'borrador' }) {
+  const datos = resolverCompartidos(datosConRefs);
   const borrador = estado !== 'aprobado';
   const seleccion = instancias === 'todas' ? datos.instancias : datos.instancias.filter((x, i) => (instancias || []).includes(i) || (instancias || []).includes(x.titulo));
   const ctx = { avisos: [] };

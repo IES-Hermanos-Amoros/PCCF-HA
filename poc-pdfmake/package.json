@@ -9,7 +9,8 @@
   "scripts": {
     "pdf": "node scripts/generate.js borrador",
     "pdf:aprobado": "node scripts/generate.js aprobado",
-    "serve": "node scripts/serve.js"
+    "serve": "node scripts/serve.js",
+    "test": "node scripts/test-compartidos.js && node scripts/test-permisos.js"
   },
   "keywords": [],
   "author": "",
