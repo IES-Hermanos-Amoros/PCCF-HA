@@ -1,0 +1,24 @@
+{
+  "name": "pccf-ha-poc-pdfmake",
+  "version": "0.1.0",
+  "description": "Prueba de concepto: PD en PDF con pdfmake, apta para Vercel serverless",
+  "main": "api/pd.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "pdf": "node scripts/generate.js borrador",
+    "pdf:aprobado": "node scripts/generate.js aprobado",
+    "serve": "node scripts/serve.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "GPL-3.0",
+  "type": "commonjs",
+  "dependencies": {
+    "mammoth": "^1.13.0",
+    "node-html-parser": "^9.0.5",
+    "pdfmake": "^0.2.23"
+  },
+  "private": true
+}
