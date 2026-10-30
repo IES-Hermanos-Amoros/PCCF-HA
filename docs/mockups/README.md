@@ -5,11 +5,13 @@ Prototipo visual (HTML + CSS + JS puro, **sin dependencias**) de la aplicación 
 
 ## Cómo abrirlo
 
-Doble clic en `index.html` (no necesita servidor ni `npm install`).
+Doble clic en `index.html` (la portada de departamentos) o en `dashboard.html` (el editor); no
+necesitan servidor ni `npm install`.
 
 ```
 mockups/
-  index.html    estructura de la pantalla: barra superior + sidebar + contenido
+  index.html    portada: una tarjeta por departamento (solo INFORMATICA enlaza al editor)
+  dashboard.html  estructura de la pantalla: barra superior + sidebar + contenido
   css/styles.css  diseño (tema claro y oscuro)
   js/data.js      árbol REAL de los documentos de ../entrada_ej/
   js/app.js       render del menú, permisos, vistas y contenido de muestra
@@ -46,7 +48,7 @@ mammoth y el importador de `poc-pdfmake/`), no de datos inventados.
 |---|---|
 | **Selector de curso** | 2025-26 / 2026-27: cambia los módulos y nombres reales de cada curso |
 | **Vistas** | *Navegación* (solo lectura) · *Edición* (toolbar + bloques editables + autoguardado simulado) · *Validaciones* (comprobaciones del documento). La vista *Edición* y el botón **Editar** de la cabecera solo se activan donde el rol puede editar; si no, el botón *Edición* queda **deshabilitado** y el botón *Editar* **oculto** |
-| **Rol** | Admin / Jefe de estudios / Jefe de departamento / **Docente (Ernesto Montero)**: recalcula los permisos al momento (candados en el árbol, botones ocultos/desactivados) — la lógica imita a `poc-pdfmake/lib/permisos.js`. Ernesto solo puede editar los módulos **Despliegue de aplicaciones web** (PD · DAW) y **Redes Locales** (PD · SMR); en todo lo demás no hay edición |
+| **Rol** | Admin / Jefe de estudios / Jefe de departamento / **Docente DAW y RL**: recalcula los permisos al momento (candados en el árbol, botones ocultos/desactivados) — la lógica imita a `poc-pdfmake/lib/permisos.js`. Docente DAW y RL solo puede editar los módulos **Despliegue de aplicaciones web** (PD · DAW) y **Redes Locales** (PD · SMR); en todo lo demás no hay edición |
 | **Árbol** | acordeón con transición, buscador que filtra y abre las ramas, punto de estado por nodo (relleno / avisos / vacío / solo lectura), badge `com.` en los textos compartidos |
 | **Contenido** | párrafos editables, tablas RA/CE, **ponderaciones con la suma en vivo** (verde al 100 %, rojo si no cuadra), fichas de situación de aprendizaje, badge de *texto compartido* con *Editar global* / *Desvincular* |
 | **Panel derecho** | comprobaciones del apartado o del documento + estado global (los mismos avisos que hoy pone el PDF en una cajita roja) |

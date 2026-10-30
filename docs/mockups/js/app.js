@@ -1,5 +1,5 @@
 /* Mockup interactivo: árbol de navegación + contenido de muestra + permisos simulados.
-   No depende de nada externo: se abre con doble clic en index.html. */
+   No depende de nada externo: se abre con doble clic en dashboard.html. */
 const D = window.DATOS;
 
 const E = {
@@ -251,12 +251,12 @@ function pintarCabecera() {
 
 const rolLabel = () => ({
   admin: 'Admin', jefe_estudios: 'Jefe de estudios', jefe_departamento: 'Jefe de departamento',
-  docente: 'Docente (Ernesto Montero)',
+  docente: 'Docente DAW y RL',
 }[E.rol]);
 
 function mensajeSinPermiso() {
   if (E.rol === 'docente') {
-    return 'Ernesto Montero solo puede editar "Despliegue de aplicaciones web" (DAW) y "Redes Locales" (SMR).';
+    return 'Docente DAW y RL solo puede editar "Despliegue de aplicaciones web" (DAW) y "Redes Locales" (SMR).';
   }
   if (E.rol === 'jefe_estudios') return 'El rol jefe de estudios solo visualiza los documentos.';
   return 'Este apartado no es editable con tu rol actual.';

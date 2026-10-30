@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es" data-tema="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCCF·HA — Mockup de la interfaz de edición</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="marca">
+    <svg viewBox="0 0 32 32" class="logo" aria-hidden="true">
+      <rect x="2" y="4" width="20" height="26" rx="3" fill="var(--azul)"/>
+      <path d="M8 11h8M8 16h8M8 21h5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      <path d="M18 2h9a3 3 0 0 1 3 3v18" fill="none" stroke="var(--acento)" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <div class="marca-texto">
+      <strong>PCCF·HA</strong>
+      <span>Departamento de Informática · IES H******s A****s</span>
+    </div>
+  </div>
+
+  <div class="segmentado" id="selector-curso" role="tablist" aria-label="Curso">
+    <button data-curso="2025-26">2025-26</button>
+    <button data-curso="2026-27" class="on">2026-27</button>
+  </div>
+
+  <div class="segmentado" id="selector-vista" role="tablist" aria-label="Vista">
+    <button data-vista="navegacion" class="on">Navegación</button>
+    <button data-vista="edicion">Edición</button>
+    <button data-vista="validaciones">Validaciones</button>
+  </div>
+
+  <div class="topbar-derecha">
+    <label class="rol" title="El rol decide qué apartados se pueden editar (lib/permisos.js)">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 9a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <select id="selector-rol">
+        <option value="admin">Admin</option>
+        <option value="jefe_estudios">Jefe de estudios</option>
+        <option value="jefe_departamento" selected>Jefe de departamento</option>
+        <option value="docente">Docente DAW y RL</option>
+      </select>
+    </label>
+
+    <button class="icono-btn" id="btn-tema" title="Modo oscuro" aria-label="Cambiar tema">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    </button>
+
+    <button class="btn-primario" id="btn-exportar">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Exportar PDF
+    </button>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <aside class="sidebar">
+    <div class="buscador">
+      <svg viewBox="0 0 24 24" class="ico"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <input type="search" id="buscar" placeholder="Buscar apartado, módulo…" autocomplete="off">
+      <button id="limpiar" class="limpiar" hidden aria-label="Limpiar">×</button>
+    </div>
+
+    <nav class="arbol-cont" id="arbol" aria-label="Estructura del documento"></nav>
+
+    <div class="sidebar-pie">
+      <div class="progreso">
+        <div class="progreso-texto"><span>Progreso del documento</span><strong id="pct-progreso">—</strong></div>
+        <div class="barra"><i id="barra-progreso"></i></div>
+      </div>
+      <ul class="leyenda">
+        <li><i class="punto ok"></i> relleno</li>
+        <li><i class="punto warn"></i> con avisos</li>
+        <li><i class="punto vacio"></i> vacío</li>
+        <li><i class="punto lock"></i> solo lectura</li>
+      </ul>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="migas" id="migas"></div>
+
+    <div class="cabecera">
+      <div>
+        <h1 id="titulo-seccion">—</h1>
+        <div class="chips" id="chips"></div>
+      </div>
+    <div class="cabecera-derecha">
+      <button class="btn-editar" id="btn-editar" hidden>Editar</button>
+      <div id="autoguardado" hidden>
+        <span class="chip chip-guardado">Guardado hace 2 s</span>
+      </div>
+    </div>
+    </div>
+
+    <div class="rejilla">
+      <section class="contenido" id="contenido"></section>
+      <aside class="avisos" id="avisos"></aside>
+    </div>
+
+    <footer class="pager">
+      <button id="btn-anterior">← Anterior</button>
+      <span id="pager-info"></span>
+      <button id="btn-siguiente">Siguiente →</button>
+    </footer>
+  </main>
+
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

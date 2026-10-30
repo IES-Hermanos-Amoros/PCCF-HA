@@ -49,7 +49,7 @@ const MODULOS = {
   },
 };
 
-// Módulos que el docente Ernesto Montero puede editar en el mockup
+// Módulos que el docente DAW y RL puede editar en el mockup
 const MODULOS_DEL_DOCENTE = ['Despliegue de aplicaciones web', 'Redes Locales'];
 
 const MEMORIA = [
