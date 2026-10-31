@@ -2,8 +2,13 @@
    No depende de nada externo: se abre con doble clic en dashboard.html. */
 const D = window.DATOS;
 
+// Permisos de edición por perfil: los valores por defecto vienen de data.js y
+// el admin puede cambiarlos desde el panel "Permisos" (persisten en localStorage).
+// Ojo: los dos archivos comparten ámbito global → se usa D.PERFILES (sin redeclarar).
+const PERFILES_DEFECTO = JSON.parse(JSON.stringify(D.PERFILES));
+
 const E = {
-  curso: '2026-27', doc: 'pd', ciclo: 'daw', rol: 'jefe_departamento',
+  curso: '2026-27', doc: 'pd', nivel: 'fp', ciclo: 'daw', rol: 'jefe_departamento',
   vista: 'navegacion', activo: null, q: '',
   abiertos: new Set(), indice: new Map(), lineal: [],
 };
@@ -79,7 +84,7 @@ const FICHAS = [
 /* ------------------------------------------------------------------ permisos y estado */
 function estadoDe(n) {
   if (!n) return 'vacio';
-  if (n.tipo === 'doc' || n.tipo === 'ciclo') return 'ok';
+  if (n.tipo === 'doc' || n.tipo === 'ciclo' || n.tipo === 'nivel') return 'ok';
   if (!n.hijos.length) {
     const h = hash(n.id + n.titulo) % 10;
     return h <= 5 ? 'ok' : h <= 8 ? 'warn' : 'vacio';
@@ -97,7 +102,7 @@ function puedeEditar(n) {
   if (E.rol === 'jefe_estudios') return false;
   if (n.edita === 'modulo') {
     if (E.rol === 'jefe_departamento') return true;
-    return D.MODULOS_DEL_DOCENTE.includes(n.moduloId);
+    return (D.PERFILES[E.rol] || []).includes(n.moduloId);
   }
   if (E.rol === 'jefe_departamento') return true;
   return ASIGNADOS_COMUNES.includes(n.id);
@@ -109,16 +114,31 @@ function prefijar(lista, p) {
 }
 
 /* ------------------------------------------------------------------ construcción del árbol */
+function encontrar(raiz, id) {
+  if (!raiz) return null;
+  if (raiz.id === id) return raiz;
+  for (const h of raiz.hijos) { const f = encontrar(h, id); if (f) return f; }
+  return null;
+}
+
+function hojaCiclo(docId, c) {
+  const r = D.arbolDocumento(docId, c.id, E.curso);
+  return { id: 'ciclo:' + docId + ':' + c.id, titulo: c.nombre, largo: c.largo, tipo: 'ciclo', edita: 'comun', hijos: prefijar(r.hijos, c.id + ':') };
+}
+
 function construir() {
   E.indice = new Map(); E.lineal = [];
   const docs = D.ORDEN_DOCS.map((id) => {
     const doc = D.DOCUMENTOS[id];
     const nd = { id: 'doc:' + id, titulo: doc.nombre, corto: doc.corto, tipo: 'doc', icono: doc.icono, edita: 'comun', hijos: [] };
-    if (doc.ciclo) {
-      nd.hijos = D.CICLOS.map((c) => {
-        const r = D.arbolDocumento(id, c.id, E.curso);
-        return { id: 'ciclo:' + id + ':' + c.id, titulo: c.nombre, largo: c.largo, tipo: 'ciclo', edita: 'comun', hijos: prefijar(r.hijos, c.id + ':') };
-      });
+    if (doc.ramas) {
+      // PD: nivel intermedio (FP / ESO-BACH) y después las hojas (SMR/DAW/ESO/Bachillerato)
+      nd.hijos = (D.RAMAS[id] || []).map((nv) => ({
+        id: 'nivel:' + id + ':' + nv.id, titulo: nv.nombre, tipo: 'nivel', edita: 'comun',
+        hijos: nv.hojas.map((c) => hojaCiclo(id, c)),
+      }));
+    } else if (doc.ciclo) {
+      nd.hijos = D.CICLOS.map((c) => hojaCiclo(id, c));
     } else {
       const r = D.arbolDocumento(id, null, E.curso);
       nd.hijos = r.hijos;
@@ -133,11 +153,11 @@ function construir() {
   };
   docs.forEach((d) => indexar(d, []));
 
-  // lista lineal (anterior/siguiente) dentro del documento y ciclo activos
+  // lista lineal (anterior/siguiente) dentro del documento y hoja activos
   const docActivo = E.indice.get('doc:' + E.doc);
   if (docActivo) {
     if (D.DOCUMENTOS[E.doc].ciclo) {
-      const rama = docActivo.nodo.hijos.find((c) => c.id === 'ciclo:' + E.doc + ':' + E.ciclo);
+      const rama = encontrar(docActivo.nodo, 'ciclo:' + E.doc + ':' + E.ciclo);
       if (rama) E.lineal = [docActivo, ...linealDe(rama)];
     } else {
       E.lineal = linealDe(docActivo.nodo);
@@ -165,7 +185,10 @@ function restaurarAbiertos() {
   const e = E.indice.get(E.activo);
   if (!e) return;
   E.abiertos.add('doc:' + E.doc);
-  if (D.DOCUMENTOS[E.doc].ciclo) E.abiertos.add('ciclo:' + E.doc + ':' + E.ciclo);
+  const nivN = e.camino.find((n) => n.tipo === 'nivel');
+  const cicN = e.camino.find((n) => n.tipo === 'ciclo');
+  if (nivN) { E.nivel = nivN.id.split(':')[2]; E.abiertos.add(nivN.id); }
+  if (cicN) E.abiertos.add(cicN.id);
   e.camino.forEach((n) => E.abiertos.add(n.id));
 }
 
@@ -187,6 +210,7 @@ function pintarArbol(docs) {
     const est = ed ? estadoDe(n) : 'lock';
     const conHijos = n.hijos.length > 0;
     const icono = n.tipo === 'doc' ? ICONOS[n.icono || 'libro']
+      : n.tipo === 'nivel' ? ICONOS.escudo
       : n.tipo === 'ciclo' ? ICONOS.ciclo
       : n.tipo === 'modulo' ? ICONOS.modulo
       : n.tipo === 'apartado' || n.tipo === 'modulos' ? ICONOS.hoja : ICONOS.hoja;
@@ -194,12 +218,12 @@ function pintarArbol(docs) {
     const hijos = conHijos
       ? `<div class="caja"><ul>${n.hijos.map((h) => nodoHtml(h, nivel + 1)).join('')}</ul></div>` : '';
     return `<li class="nodo ${abierto ? 'abierto' : ''}" data-id="${esc(n.id)}">
-      <button class="fila ${activa ? 'activa' : ''} ${n.tipo === 'doc' ? 'doc' : ''} ${n.tipo === 'modulo' ? 'modulo' : ''} ${conHijos ? '' : 'sin-hijos'}"
+      <button class="fila ${activa ? 'activa' : ''} ${n.tipo === 'doc' ? 'doc' : ''} ${n.tipo === 'nivel' ? 'nivel' : ''} ${n.tipo === 'modulo' ? 'modulo' : ''} ${conHijos ? '' : 'sin-hijos'}"
               style="--nivel:${nivel}" data-id="${esc(n.id)}" data-tipo="${n.tipo}">
         <span class="twisty" data-twisty>▶</span>
         ${icono}
         ${n.num ? `<span class="num">${esc(n.num)}.</span>` : ''}
-        <span class="etq" title="${esc(n.titulo)}">${esc(n.tipo === 'doc' ? n.corto : n.titulo)}</span>
+        <span class="etq" title="${esc(n.titulo)}">${esc(n.corto || n.titulo)}</span>
         ${badgeCom}
         <i class="punto ${est}"></i>
       </button>${hijos}</li>`;
@@ -213,7 +237,9 @@ function pintarCabecera() {
   if (!e) return;
   const { nodo: n, camino } = e;
   const doc = D.DOCUMENTOS[E.doc];
-  const ciclo = D.CICLOS.find((c) => c.id === E.ciclo);
+  const nivN = camino.find((x) => x.tipo === 'nivel');
+  const cicN = camino.find((x) => x.tipo === 'ciclo');
+  const esMateria = n.tipo === 'modulo' && (E.ciclo === 'eso' || E.ciclo === 'bach');
 
   $('#migas').innerHTML = camino.map((x, i) => {
     const ultimo = i === camino.length - 1;
@@ -229,9 +255,9 @@ function pintarCabecera() {
   const ed = puedeEditar(n);
   const est = estadoDe(n);
   const chips = [];
-  chips.push(`<span class="chip">${doc.corto}${doc.ciclo ? ' · ' + ciclo.nombre : ''}</span>`);
+  chips.push(`<span class="chip">${esc(doc.corto)}${nivN ? ' · ' + esc(nivN.titulo) : ''}${cicN ? ' · ' + esc(cicN.titulo) : ''}</span>`);
   chips.push(`<span class="chip">Curso ${E.curso}</span>`);
-  if (n.tipo === 'modulo') chips.push(`<span class="chip">Módulo</span>`);
+  if (n.tipo === 'modulo') chips.push(`<span class="chip">${esMateria ? 'Materia' : 'Módulo'}</span>`);
   chips.push(ed
     ? `<span class="chip ok"><i class="punto ok"></i>${est === 'ok' ? 'Relleno' : est === 'warn' ? 'Con avisos' : 'Vacío'}</span>`
     : `<span class="chip lock"><i class="punto lock"></i>Solo lectura</span>`);
@@ -249,14 +275,19 @@ function pintarCabecera() {
   btnEditar.title = ed ? (E.vista === 'edicion' ? 'Volver a la vista de lectura' : 'Editar este apartado') : mensajeSinPermiso();
 }
 
-const rolLabel = () => ({
+const ROLES = {
   admin: 'Admin', jefe_estudios: 'Jefe de estudios', jefe_departamento: 'Jefe de departamento',
-  docente: 'Docente DAW y RL',
-}[E.rol]);
+  docente: 'Docente DAW y RL', docente_mixto: 'Docente Mixto',
+};
+const rolLabel = () => ROLES[E.rol];
+const rolLabelDe = (rol) => ROLES[rol];
+
+const ROLES_DOCENTE = ['docente', 'docente_mixto'];
 
 function mensajeSinPermiso() {
-  if (E.rol === 'docente') {
-    return 'Docente DAW y RL solo puede editar "Despliegue de aplicaciones web" (DAW) y "Redes Locales" (SMR).';
+  if (ROLES_DOCENTE.includes(E.rol)) {
+    const u = D.PERFILES[E.rol] || [];
+    return `${rolLabel()} solo puede editar: ${u.length ? u.join(' · ') : 'ninguna unidad asignada'}.`;
   }
   if (E.rol === 'jefe_estudios') return 'El rol jefe de estudios solo visualiza los documentos.';
   return 'Este apartado no es editable con tu rol actual.';
@@ -333,12 +364,90 @@ function tablaResumenSA() {
   </table></div>`;
 }
 
+/* ---- SA reales (ESO y Bachillerato): clave = materia + bloque propio ---- */
+function saDe(n) {
+  if (!n || E.doc !== 'pd') return null;
+  const e = E.indice.get(n.id);
+  if (!e) return null;
+  const camino = e.camino || [];
+  let materia = null, bloque = null;
+  for (const x of camino) {
+    if (x.tipo === 'modulo') materia = x.titulo;
+    if (x.propio) bloque = x.titulo;
+  }
+  if (!materia) return null;
+  const clave = bloque ? materia + ' › ' + bloque : materia;
+  const sa = (D.SA || {})[clave];
+  return sa ? { clave, ...sa } : null;
+}
+
+const enEsoBach = () => E.doc === 'pd' && (E.nivel === 'eso' || E.nivel === 'bach');
+
+function tablaSAreal(sa) {
+  const filas = sa.filas.filter((f) => !f.total);
+  const tot = sa.filas.find((f) => f.total);
+  const hayPeso = filas.some((f) => f.peso || f.gp);
+  const haySem = filas.some((f) => f.sem);
+  const hayEv = filas.some((f) => f.ev);
+  const cab = ['Situaciones de aprendizaje definidas', 'Criterios de evaluación'];
+  if (hayPeso) cab.push('Peso en el curso');
+  if (haySem) cab.push('Temporalización');
+  if (hayEv) cab.push('Evaluación');
+  let grupoPrev = null;
+  const cuerpo = filas.map((f) => {
+    let celdaGrupo = '';
+    if (f.grupo && f.grupo !== grupoPrev) { grupoPrev = f.grupo; celdaGrupo = `<tr class="fila-grupo"><td colspan="${cab.length}">${esc(f.grupo)}</td></tr>`; }
+    const peso = [f.peso, f.gp && `(<strong>${esc(f.gp)}</strong> bloque)`].filter(Boolean).join(' ');
+    return celdaGrupo + `<tr>
+      <td>${f.n != null ? `<strong>${f.n}.</strong> ` : ''}${esc(f.titulo)}${f.desc ? `<br><span class="suave">${esc(f.desc)}</span>` : ''}</td>
+      <td>${esc(f.ce || '—')}</td>
+      ${hayPeso ? `<td class="centro">${peso || '—'}</td>` : ''}
+      ${haySem ? `<td class="centro">${esc(f.sem || '—')}</td>` : ''}
+      ${hayEv ? `<td class="centro">${esc(f.ev || '—')}</td>` : ''}
+    </tr>`;
+  }).join('');
+  const filaTotal = tot ? `<tr class="total"><td colspan="${cab.length}">Total · ${esc(tot.total)}</td></tr>` : '';
+  return `<div class="tabla-wrap"><table>
+    <tr>${cab.map((c) => `<th>${c}</th>`).join('')}</tr>${cuerpo}${filaTotal}
+  </table></div>`;
+}
+
+function tablaCaracteristicasSA() {
+  return `<div class="tabla-wrap"><table>
+    ${D.SA_CARACTERISTICAS.map(([k, v]) => `<tr><td class="etiqueta">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}
+  </table></div>`;
+}
+
+function fichaSAreal(f) {
+  const meta = [
+    f.grupo ? `<span>Bloque: ${esc(f.grupo)}</span>` : '',
+    f.ce ? `<span>Criterios: ${esc(f.ce)}</span>` : '',
+    f.peso ? `<span>Peso: ${esc(f.peso)}</span>` : '',
+    f.gp ? `<span>Peso del bloque: ${esc(f.gp)}</span>` : '',
+    f.sem ? `<span>${esc(f.sem)}</span>` : '',
+    f.ev ? `<span>Evaluación: ${esc(f.ev)}</span>` : '',
+  ].filter(Boolean).join('');
+  return `<div class="ficha">
+    <h4>${f.n != null ? `Situación de aprendizaje ${f.n}: ` : ''}${esc(f.titulo)}${f.desc ? ` <span class="suave">· ${esc(f.desc)}</span>` : ''}</h4>
+    ${meta ? `<div class="meta">${meta}</div>` : ''}
+  </div>`;
+}
+
 function fichasSA(n) {
   const ed = E.vista === 'edicion' && puedeEditar(n);
-  return FICHAS.map((f) => `<div class="ficha">
-    <h4>Situación de aprendizaje ${f.num}: ${esc(f.titulo)}</h4>
-    <div class="meta"><span>${f.ses} sesiones</span><span>Evaluación: ${f.ev}</span><span>RA: ${f.ra.join(', ')}</span></div>
-  </div>`).join('') + (ed ? '<button class="btn-ghost" data-acc="anadir">＋ Añadir situación de aprendizaje</button>' : '');
+  const sa = saDe(n);
+  let cuerpo;
+  if (sa) {
+    cuerpo = sa.filas.filter((f) => !f.total).map(fichaSAreal).join('');
+  } else if (enEsoBach()) {
+    cuerpo = tablaCaracteristicasSA() + '<p class="suave" style="margin:8px 0 0">Características de las SA definidas por el departamento para ESO y Bachillerato (no hay fichas desglosadas en este apartado del documento).</p>';
+  } else {
+    cuerpo = FICHAS.map((f) => `<div class="ficha">
+      <h4>Situación de aprendizaje ${f.num}: ${esc(f.titulo)}</h4>
+      <div class="meta"><span>${f.ses} sesiones</span><span>Evaluación: ${f.ev}</span><span>RA: ${f.ra.join(', ')}</span></div>
+    </div>`).join('');
+  }
+  return cuerpo + (ed ? '<button class="btn-ghost" data-acc="anadir">＋ Añadir situación de aprendizaje</button>' : '');
 }
 
 function tablaClaveValor(n) {
@@ -380,7 +489,10 @@ function contenidoSeccion(n) {
     return bloque.join('');
   }
   if (t.includes('Situaciones de aprendizaje')) {
-    bloque.push(tarjeta('Tabla resumen (calculada de las fichas)', tablaResumenSA()));
+    const sa = saDe(n);
+    if (sa) bloque.push(tarjeta('Tabla resumen (extraída del documento)', tablaSAreal(sa)));
+    else if (enEsoBach()) bloque.push(tarjeta('Características de las SA según el departamento', tablaCaracteristicasSA()));
+    else bloque.push(tarjeta('Tabla resumen (calculada de las fichas)', tablaResumenSA()));
     bloque.push(tarjeta('Fichas de situación de aprendizaje', fichasSA(n)));
     return bloque.join('');
   }
@@ -416,7 +528,7 @@ function contenidoSeccion(n) {
 function resumenDoc(n, camino) {
   let hijos = n.hijos;
   if (n.tipo === 'doc' && D.DOCUMENTOS[E.doc].ciclo) {
-    const rama = n.hijos.find((c) => c.id === 'ciclo:' + E.doc + ':' + E.ciclo) || n.hijos[0];
+    const rama = encontrar(n, 'ciclo:' + E.doc + ':' + E.ciclo) || n.hijos[0];
     hijos = rama ? rama.hijos : [];
   }
   const todos = (function deep(l) { return l.flatMap((x) => [x, ...deep(x.hijos)]); })(hijos);
@@ -436,9 +548,10 @@ function resumenDoc(n, camino) {
     </button>`;
   }).join('');
 
+  const etiquetaMod = E.ciclo === 'eso' || E.ciclo === 'bach' ? 'materias' : 'módulos';
   const stats = `<div class="resumen-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
     <div class="stat"><b>${hijos.length}</b><span>apartados principales</span></div>
-    <div class="stat"><b>${modulos}</b><span>módulos</span></div>
+    <div class="stat"><b>${modulos}</b><span>${etiquetaMod}</span></div>
     <div class="stat"><b>${hojas.length}</b><span>campos</span></div>
     <div class="stat"><b>${pct} %</b><span>relleno</span></div>
   </div>`;
@@ -447,7 +560,7 @@ function resumenDoc(n, camino) {
     + tarjeta('Apartados · pulsa para abrir', `<div class="resumen-grid">${tarjetas}</div>`)
     + tarjeta('Notas de la importación', `<ul>
         <li>Estructura deducida del Word sin IA: estilos de título, numeración y tablas.</li>
-        <li>${E.doc === 'pd' ? 'Bloque de módulos detectado con 11 instancias (1º y 2º curso fusionados).' : 'Sin desglose por módulos: el documento se edita por apartados.'}</li>
+        <li>${modulos ? `Bloque de módulos/materias detectado con ${modulos} instancias.` : 'Sin desglose por módulos: el documento se edita por apartados.'}</li>
         <li>Textos repetidos en 3 o más apartados guardados una sola vez como <strong>textos compartidos</strong>.</li>
       </ul>`);
 }
@@ -472,7 +585,7 @@ function avisosDe(n) {
     out.push({ s: 'warn', t: 'Texto compartido desactualizado', d: 'El original cambió (v3) y esta copia es v2. Desvincula o actualiza.' });
     out.push({ s: 'info', t: 'Editado por el jefe de departamento', d: 'Al cambiarlo se actualizan todos los módulos vinculados.' });
   }
-  if (n.tipo === 'modulo') out.push({ s: 'info', t: 'Módulo editable por: ' + (n.docentes || 'profesorado del módulo'), d: 'Permisos resueltos con lib/permisos.js.' });
+  if (n.tipo === 'modulo') out.push({ s: 'info', t: (E.ciclo === 'eso' || E.ciclo === 'bach' ? 'Materia editable por: ' : 'Módulo editable por: ') + (n.docentes || 'profesorado del módulo'), d: 'Permisos resueltos con lib/permisos.js.' });
   if (!out.some((x) => x.s === 'error' || x.s === 'warn')) out.push({ s: 'ok', t: 'Sin incidencias', d: 'Todo correcto en este apartado.' });
   return out;
 }
@@ -480,7 +593,8 @@ function avisosDe(n) {
 function pintarAvisos() {
   const e = E.indice.get(E.activo);
   if (!e) return;
-  const esResumen = e.nodo.tipo === 'doc' || e.nodo.tipo === 'ciclo';
+  const nModulos = E.lineal.filter((x) => x.nodo.tipo === 'modulo').length;
+  const esResumen = e.nodo.tipo === 'doc' || e.nodo.tipo === 'ciclo' || e.nodo.tipo === 'nivel';
   const lista = (E.vista === 'validaciones' || esResumen) ? avisosDocumento() : avisosDe(e.nodo);
   const cuenta = { error: 0, warn: 0, info: 0, ok: 0 };
   lista.forEach((a) => cuenta[a.s]++);
@@ -498,7 +612,7 @@ function pintarAvisos() {
         <div class="stat"><b>${cuenta.error}</b><span>errores</span></div>
         <div class="stat"><b>${cuenta.warn}</b><span>avisos</span></div>
         <div class="stat"><b>${cuenta.ok}</b><span>correctos</span></div>
-        <div class="stat"><b>${D.CICLOS.length && D.DOCUMENTOS[E.doc].ciclo ? 11 : '—'}</b><span>módulos</span></div>
+        <div class="stat"><b>${nModulos || '—'}</b><span>${E.ciclo === 'eso' || E.ciclo === 'bach' ? 'materias' : 'módulos'}</span></div>
       </div>
     </div>`;
 }
@@ -590,7 +704,7 @@ function pintarContenido() {
       Cambia el rol de arriba para ver cómo lo resuelve <code>lib/permisos.js</code>.</div></div>`;
   }
 
-  if (n.tipo === 'doc' || n.tipo === 'ciclo') html += resumenDoc(n, camino);
+  if (n.tipo === 'doc' || n.tipo === 'ciclo' || n.tipo === 'nivel') html += resumenDoc(n, camino);
   else html += contenidoSeccion(n);
 
   cont.innerHTML = html;
@@ -598,7 +712,7 @@ function pintarContenido() {
 }
 
 function pintarProgreso() {
-  const hojas = E.lineal.map((x) => x.nodo).filter((n) => !n.hijos.length && n.tipo !== 'doc' && n.tipo !== 'ciclo');
+  const hojas = E.lineal.map((x) => x.nodo).filter((n) => !n.hijos.length && n.tipo !== 'doc' && n.tipo !== 'ciclo' && n.tipo !== 'nivel');
   const ok = hojas.filter((n) => estadoDe(n) === 'ok').length;
   const pct = hojas.length ? Math.round((ok / hojas.length) * 100) : 0;
   $('#pct-progreso').textContent = pct + ' %';
@@ -621,6 +735,7 @@ function pintarTodo() {
   pintarAvisos();
   pintarProgreso();
   pintarPager();
+  $('#btn-permisos').hidden = E.rol !== 'admin';
 }
 
 /* La vista de edición solo es posible donde el rol puede editar:
@@ -648,8 +763,10 @@ function seleccionar(id) {
   const e = E.indice.get(id);
   e.camino.forEach((n) => E.abiertos.add(n.id));
   const docN = e.camino.find((n) => n.tipo === 'doc');
+  const nivN = e.camino.find((n) => n.tipo === 'nivel');
   const cicN = e.camino.find((n) => n.tipo === 'ciclo');
   if (docN) E.doc = docN.id.slice(4);
+  if (nivN) E.nivel = nivN.id.split(':')[2];
   if (cicN) E.ciclo = cicN.id.split(':')[2];
   pintarTodo();
 }
@@ -742,6 +859,134 @@ function marcarGuardado() {
   guardadoTimer = setTimeout(() => { el.innerHTML = '<span class="chip chip-guardado">Guardado ahora ✓</span>'; }, 900);
 }
 
+/* ------------------------------------------------------------------ panel de permisos (solo admin) */
+const CLAVE_PERFILES = 'pccf-ha-perfiles';
+let multiAbierto = null; // rol con el multiselector desplegado
+
+function cargarPerfiles() {
+  try {
+    const g = JSON.parse(localStorage.getItem(CLAVE_PERFILES) || 'null');
+    if (!g) return;
+    Object.keys(PERFILES_DEFECTO).forEach((k) => {
+      if (Array.isArray(g[k])) D.PERFILES[k] = g[k].filter((x) => typeof x === 'string');
+    });
+  } catch (e) {}
+}
+function guardarPerfiles() {
+  try { localStorage.setItem(CLAVE_PERFILES, JSON.stringify(D.PERFILES)); } catch (e) {}
+}
+function recorrerNodos(n, fn) { fn(n); n.hijos.forEach((h) => recorrerNodos(h, fn)); }
+
+// Catálogo de unidades editables (deduplicado por nombre, agrupado):
+// módulos de FP (ambos documentos y cursos) y materias/bloques de ESO y Bach.
+function catalogoUnidades() {
+  const grupos = []; const visto = new Set();
+  const meter = (grupo, nombre) => {
+    if (visto.has(nombre)) return;
+    visto.add(nombre);
+    let g = grupos.find((x) => x.grupo === grupo);
+    if (!g) { g = { grupo, unidades: [] }; grupos.push(g); }
+    g.unidades.push(nombre);
+  };
+  for (const curso of ['2025-26', '2026-27']) {
+    for (const c of D.CICLOS) {
+      for (const docId of ['pccf', 'pd']) {
+        recorrerNodos(D.arbolDocumento(docId, c.id, curso), (n) => {
+          if (n.edita === 'modulo' && (n.tipo === 'modulo' || n.propio)) meter('FP · ' + c.nombre, n.titulo);
+        });
+      }
+    }
+    const ram = D.RAMAS.pd.find((r) => r.id === 'eso-bach');
+    for (const h of ram.hojas) {
+      recorrerNodos(D.arbolDocumento('pd', h.id, curso), (n) => {
+        if (n.edita === 'modulo' && (n.tipo === 'modulo' || n.propio)) meter(h.nombre, n.titulo);
+      });
+    }
+  }
+  return grupos;
+}
+
+function chipsUnidades(rol) {
+  const u = D.PERFILES[rol] || [];
+  if (!u.length) return '<span class="suave">Ninguna unidad</span>';
+  return u.map((x) => `<span class="chip">${esc(x)}<button class="quitar" data-quitar="${esc(x)}" data-rol="${rol}" title="Quitar permiso">×</button></span>`).join('');
+}
+
+const FILAS_PERMISOS = () => ([
+  { rol: 'admin', etiqueta: 'Admin', fija: 'Todos los apartados, módulos y materias' },
+  { rol: 'jefe_estudios', etiqueta: 'Jefe de estudios', fija: 'Solo lectura' },
+  { rol: 'jefe_departamento', etiqueta: 'Jefe de departamento', fija: 'Todos los módulos y materias (apartados comunes incluidos)' },
+  ...ROLES_DOCENTE.map((r) => ({ rol: r, etiqueta: rolLabelDe(r) })),
+]);
+
+function pintarPermisos() {
+  const filas = FILAS_PERMISOS().map((f) => (f.fija
+    ? `<tr><td><strong>${esc(f.etiqueta)}</strong></td><td><span class="chip fija">${esc(f.fija)}</span></td><td class="centro suave">fijo</td></tr>`
+    : `<tr><td><strong>${esc(f.etiqueta)}</strong></td>
+       <td data-chips="${f.rol}">${chipsUnidades(f.rol)}</td>
+       <td class="centro"><button class="btn-ghost" data-sel="${f.rol}">Elegir unidades</button></td></tr>`)).join('');
+  $('#permisos-cuerpo').innerHTML = `<div class="tabla-wrap"><table class="tabla-permisos">
+    <tr><th>Perfil</th><th>Unidades con permiso de edición</th><th class="centro">Selector</th></tr>${filas}
+  </table></div>
+  <div class="multi" id="multi" hidden></div>`;
+  if (multiAbierto) pintarMulti(multiAbierto);
+}
+
+function pintarMulti(rol) {
+  const m = $('#multi');
+  if (!m) return;
+  const sel = new Set(D.PERFILES[rol] || []);
+  m.innerHTML = `<div class="multi-titulo">Unidades editables de <strong>${esc(rolLabelDe(rol) || rol)}</strong> · <span class="suave">${sel.size} seleccionadas</span></div>`
+    + catalogoUnidades().map((g) => `<fieldset class="multi-grupo"><legend>${esc(g.grupo)}</legend>
+        ${g.unidades.map((u) => `<label><input type="checkbox" data-u="${esc(u)}" ${sel.has(u) ? 'checked' : ''}><span>${esc(u)}</span></label>`).join('')}
+      </fieldset>`).join('');
+  m.hidden = false;
+  const ancla = $(`#permisos-cuerpo button[data-sel="${rol}"]`);
+  const cont = $('#permisos-cuerpo');
+  if (ancla && cont) {
+    const r = ancla.getBoundingClientRect(); const cr = cont.getBoundingClientRect();
+    m.style.top = Math.max(0, r.bottom - cr.top + 6) + 'px';
+    m.style.left = Math.max(0, Math.min(r.left - cr.left, cr.width - Math.min(m.offsetWidth, cr.width - 16) - 8)) + 'px';
+  }
+}
+
+function actualizarChips(rol) {
+  const celda = $(`#permisos-cuerpo [data-chips="${rol}"]`);
+  if (celda) celda.innerHTML = chipsUnidades(rol);
+}
+
+function aplicarUnidad(rol, unidad, concedida) {
+  const lista = D.PERFILES[rol] || (D.PERFILES[rol] = []);
+  const i = lista.indexOf(unidad);
+  if (concedida && i < 0) lista.push(unidad);
+  if (!concedida && i >= 0) lista.splice(i, 1);
+  guardarPerfiles();
+  actualizarChips(rol);
+  pintarTodo(); // el árbol refleja los candados al momento
+  toast(`${concedida ? 'Permiso concedido' : 'Permiso retirado'}: «${unidad}» → ${rolLabelDe(rol)}.`);
+}
+
+function abrirPermisos() {
+  if (E.rol !== 'admin') { toast(mensajeSinPermiso()); return; }
+  pintarPermisos();
+  $('#modal-permisos').hidden = false;
+}
+function cerrarPermisos() {
+  multiAbierto = null;
+  $('#modal-permisos').hidden = true;
+  pintarTodo();
+  toast('Permisos aplicados: el árbol muestra qué puede editar cada perfil.');
+}
+function restablecerPerfiles() {
+  Object.keys(D.PERFILES).forEach((k) => delete D.PERFILES[k]);
+  Object.assign(D.PERFILES, JSON.parse(JSON.stringify(PERFILES_DEFECTO)));
+  guardarPerfiles();
+  multiAbierto = null;
+  pintarPermisos();
+  pintarTodo();
+  toast('Permisos de los perfiles restablecidos a los valores por defecto.');
+}
+
 /* selectores de la barra superior */
 $('#selector-curso').addEventListener('click', (ev) => {
   const b = ev.target.closest('button[data-curso]');
@@ -768,6 +1013,7 @@ $('#btn-editar').addEventListener('click', () => {
 
 $('#selector-rol').addEventListener('change', (ev) => {
   E.rol = ev.target.value;
+  if (E.rol !== 'admin') { multiAbierto = null; $('#modal-permisos').hidden = true; }
   toast('Rol: ' + rolLabel() + ' — permisos recalculados.');
   pintarTodo();
 });
@@ -780,6 +1026,35 @@ $('#btn-tema').addEventListener('click', () => {
 
 $('#btn-exportar').addEventListener('click', () => {
   toast('Mockup: en la app real, GET /api/documentos/[id]/pdf genera este documento con lib/render-generico.js.');
+});
+
+/* panel de permisos */
+$('#btn-permisos').addEventListener('click', abrirPermisos);
+$('#cerrar-permisos').addEventListener('click', cerrarPermisos);
+$('#listo-permisos').addEventListener('click', cerrarPermisos);
+$('#restablecer-permisos').addEventListener('click', restablecerPerfiles);
+$('#modal-permisos').addEventListener('click', (ev) => { if (ev.target === ev.currentTarget) cerrarPermisos(); });
+$('#permisos-cuerpo').addEventListener('click', (ev) => {
+  const sel = ev.target.closest('button[data-sel]');
+  if (sel) {
+    const rol = sel.dataset.sel;
+    multiAbierto = multiAbierto === rol ? null : rol;
+    if (multiAbierto) pintarMulti(multiAbierto);
+    else { const m = $('#multi'); if (m) m.hidden = true; }
+    return;
+  }
+  const q = ev.target.closest('button[data-quitar]');
+  if (q) aplicarUnidad(q.dataset.rol, q.dataset.quitar, false);
+});
+$('#permisos-cuerpo').addEventListener('change', (ev) => {
+  const cb = ev.target.closest('#multi input[type="checkbox"]');
+  if (!cb || !multiAbierto) return;
+  aplicarUnidad(multiAbierto, cb.dataset.u, cb.checked);
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Escape') return;
+  if (!$('#multi')?.hidden) { multiAbierto = null; $('#multi').hidden = true; return; }
+  if (!$('#modal-permisos').hidden) cerrarPermisos();
 });
 
 $('#buscar').addEventListener('input', (ev) => {
@@ -805,4 +1080,5 @@ function mover(d) {
 
 /* arranque */
 try { const t = localStorage.getItem('tema'); if (t) document.documentElement.dataset.tema = t; } catch (e) {}
+cargarPerfiles();
 pintarTodo();

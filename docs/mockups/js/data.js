@@ -49,8 +49,17 @@ const MODULOS = {
   },
 };
 
-// Módulos que el docente DAW y RL puede editar en el mockup
-const MODULOS_DEL_DOCENTE = ['Despliegue de aplicaciones web', 'Redes Locales'];
+// Unidades (módulos FP, materias ESO/Bach y bloques propios) que cada perfil
+// de docente puede editar. El admin puede cambiar estas listas desde el
+// panel "Permisos" de la barra superior (se guardan en localStorage).
+const PERFILES = {
+  docente: ['Despliegue de aplicaciones web', 'Redes Locales'],
+  docente_mixto: [
+    'Lenguaje de Marcas y Sistemas de Gestión de Información', 'Seguridad informática',
+    'Primer curso – PIAR I', 'Segundo curso – PIAR II',
+    'Digitalización (4º ESO)', 'Segundo curso – PRSI II',
+  ],
+};
 
 const MEMORIA = [
   { t: 'Profesorado del departamento', h: [
@@ -170,14 +179,670 @@ const PD = [
   { t: 'Resultados de aprendizaje dualizables', n: '11' },
 ];
 
+// ------------------------------------------------------------------ ESO y Bachillerato (PP de ESO y Bachiller)
+// Estructura REAL de las propuestas pedagógicas de docs/entrada_ej/2026-27/
+// (títulos de apartados y materias; sin texto de cuerpo ni datos personales).
+// La "Concreción curricular de las materias" (abreviada CCM en el menú) hace
+// el mismo papel que los bloques de módulos de FP: su desglose son materias.
+
+const MATERIAS = {
+  eso: [
+    { t: 'Taller de Relaciones Digitales Saludables (1º ESO)', h: [
+      { t: 'Competencias específicas' },
+      { t: 'Criterios de evaluación' },
+      { t: 'Saberes básicos' },
+      { t: 'Situaciones de aprendizaje' },
+      { t: 'Evaluación del alumnado' },
+    ] },
+    { t: 'Programación, Inteligencia Artificial y Robótica (2º y 3º ESO)', h: [
+      { t: 'Competencias específicas' },
+      { t: 'Criterios de evaluación' },
+      { t: 'Saberes básicos' },
+      // `propio: true` → el bloque y su subárbol usan su propio título como
+      // clave de permiso (independiente de la materia que los contiene).
+      { t: 'Primer curso – PIAR I', propio: true, h: [
+        { t: 'Situaciones de aprendizaje' },
+        { t: 'Desarrollo de los criterios de evaluación' },
+      ] },
+      { t: 'Segundo curso – PIAR II', propio: true, h: [
+        { t: 'Situaciones de aprendizaje' },
+        { t: 'Desarrollo de los criterios de evaluación' },
+      ] },
+    ] },
+    { t: 'Digitalización (4º ESO)', h: [
+      { t: 'Competencias específicas' },
+      { t: 'Criterios de evaluación' },
+      { t: 'Saberes básicos' },
+      { t: 'Situaciones de aprendizaje' },
+      { t: 'Desarrollo de los criterios de evaluación' },
+    ] },
+    { t: 'Taller de Profundización en Desarrollo de Videojuegos (4º ESO)', h: [
+      { t: 'Competencias específicas' },
+      { t: 'Criterios de evaluación' },
+      { t: 'Saberes básicos' },
+      { t: 'Situaciones de aprendizaje' },
+      { t: 'Evaluación del alumnado' },
+    ] },
+  ],
+  bach: [
+    { t: 'Primer curso – Informática I', h: [
+      { t: 'Criterios de evaluación' },
+      { t: 'Saberes básicos' },
+      { t: 'Situaciones de aprendizaje' },
+      { t: 'Desarrollo de los criterios de evaluación' },
+    ] },
+    { t: 'Segundo curso – Informática II', h: [
+      { t: 'Competencias específicas' },
+      { t: 'Criterios de evaluación' },
+      { t: 'Saberes básicos' },
+    ] },
+    { t: 'Segundo curso – PRSI II', h: [
+      { t: 'Competencias específicas' },
+      { t: 'Criterios de evaluación' },
+      { t: 'Saberes básicos' },
+      { t: 'Situaciones de aprendizaje' },
+      { t: 'Desarrollo de los criterios de evaluación' },
+    ] },
+  ],
+};
+
+const ESO = [
+  { t: 'Contexto curricular de las materias', n: '1', h: [
+    { t: 'Elementos curriculares de la ESO', n: '1.1', h: [
+      { t: 'Objetivos Generales de la ESO', n: '1.1.1' },
+      { t: 'Perfil de salida de la ESO', n: '1.1.2' },
+      { t: 'Competencias clave y descriptores operativos de la ESO', n: '1.1.3' },
+      { t: 'Competencias específicas', n: '1.1.4' },
+      { t: 'Situaciones de aprendizaje', n: '1.1.5' },
+    ] },
+    { t: 'Metodología y orientaciones didácticas', n: '1.2', h: [
+      { t: 'Recursos didácticos y organizativos', n: '1.2.1' },
+      { t: 'Actividades complementarias y extraescolares', n: '1.2.2' },
+    ] },
+    { t: 'Evaluación del alumnado', n: '1.3', h: [
+      { t: 'Instrumentos de evaluación', n: '1.3.1' },
+      { t: 'Actividades evaluables', n: '1.3.2' },
+      { t: 'Criterios de calificación', n: '1.3.3' },
+      { t: 'Criterios de recuperación', n: '1.3.4' },
+      { t: 'Alumnado con materias pendientes', n: '1.3.5' },
+    ] },
+    { t: 'Elementos transversales', n: '1.4' },
+    { t: 'Medidas de respuesta para la inclusión del alumnado', n: '1.5', h: [
+      { t: 'Alumnado con necesidades específicas de apoyo educativo', n: '1.5.1' },
+      { t: 'Respuesta educativa en el aula', n: '1.5.2' },
+    ] },
+  ] },
+  { t: 'Concreción curricular de las materias', n: '2', corto: 'CCM', tipo: 'modulos', materias: 'eso' },
+];
+
+const BACH = [
+  { t: 'Elementos curriculares del Bachillerato', n: '1', h: [
+    { t: 'Objetivos Generales del Bachillerato', n: '1.1' },
+    { t: 'Competencias clave y descriptores operativos del Bachillerato', n: '1.2' },
+    { t: 'Competencias específicas', n: '1.3' },
+    { t: 'Situaciones de aprendizaje', n: '1.4' },
+  ] },
+  { t: 'Metodología y orientaciones didácticas', n: '2', h: [
+    { t: 'Recursos didácticos y organizativos', n: '2.1' },
+    { t: 'Actividades complementarias y extraescolares', n: '2.2' },
+  ] },
+  { t: 'Evaluación del alumnado', n: '3', h: [
+    { t: 'Criterios de calificación', n: '3.1' },
+    { t: 'Criterios de recuperación', n: '3.2' },
+    { t: 'Alumnado con materias pendientes', n: '3.3' },
+  ] },
+  { t: 'Elementos transversales', n: '4' },
+  { t: 'Medidas de respuesta para la inclusión del alumnado', n: '5', h: [
+    { t: 'Alumnado con necesidades específicas de apoyo educativo', n: '5.1' },
+    { t: 'Respuesta educativa en el aula', n: '5.2' },
+  ] },
+  // "Organización de los dos cursos" se queda dentro de CCM, como en el documento
+  { t: 'Concreción curricular de las materias', n: '6', corto: 'CCM', tipo: 'modulos',
+    h: [{ t: 'Organización de los dos cursos', n: '6.1' }], materias: 'bach' },
+  { t: 'Evaluación de la práctica docente', n: '7', h: [
+    { t: 'Instrumentos de recogida de datos', n: '7.1' },
+  ] },
+];
+
 const DOCUMENTOS = {
   memoria: { id: 'memoria', nombre: 'Memoria del Departamento', corto: 'Memoria', icono: 'libro', ciclo: false, apartados: MEMORIA, tipo: 'memoria' },
   pccf: { id: 'pccf', nombre: 'Proyecto Curricular del Ciclo Formativo', corto: 'PCCF', icono: 'escudo', ciclo: true, apartados: PCCF, tipo: 'pccf' },
-  pd: { id: 'pd', nombre: 'Programación Didáctica', corto: 'PD', icono: 'libro', ciclo: true, apartados: PD, tipo: 'pd' },
+  pd: { id: 'pd', nombre: 'Programación Didáctica', corto: 'PD', icono: 'libro', ciclo: true, ramas: true, apartados: PD, apartadosPor: { eso: ESO, bach: BACH }, tipo: 'pd' },
 };
 
 const ORDEN_DOCS = ['memoria', 'pccf', 'pd'];
 const CICLOS = [{ id: 'smr', nombre: 'SMR', largo: 'Sistemas Microinformáticos y Redes' }, { id: 'daw', nombre: 'DAW', largo: 'Desarrollo de Aplicaciones Web' }];
+// La PD tiene un nivel intermedio: FP (SMR/DAW) y ESO-BACH (ESO/Bachillerato).
+// El PCCF no: sigue yendo directo a SMR/DAW.
+const RAMAS = {
+  pd: [
+    { id: 'fp', nombre: 'FP', hojas: CICLOS },
+    { id: 'eso-bach', nombre: 'ESO-BACH', hojas: [
+      { id: 'eso', nombre: 'ESO', largo: 'Educación Secundaria Obligatoria' },
+      { id: 'bach', nombre: 'Bachillerato', largo: 'Bachillerato' },
+    ] },
+  ],
+};
+
+// ------------------------------------------------------------------ SA reales (ESO y Bachillerato)
+// Tablas de situaciones de aprendizaje extraídas de las propuestas pedagógicas
+// de docs/entrada_ej/2026-27/ (títulos, criterios, pesos y temporalización;
+// sin datos personales). FP conserva las fichas de muestra del mockup.
+// Clave: '<materia>' o '<materia> › <bloque propio>' (p. ej. PIAR I).
+
+const SA_CARACTERISTICAS = [
+  ['Características Fundamentales',
+    'Definir un contexto motivador para el alumnado. Estar relacionadas con la vida real del alumnado. Favorecer el aprendizaje individualizado y la autonomía del alumnado. Permitir la acción, la manipulación, la indagación, la conjetura y el reintento. Contener algún grado de creatividad.'],
+  ['Características Recomendadas',
+    'Generar algún tipo de producto final que se pueda explicar, presentar o difundir. Permitir diferentes tipos de agrupaciones y el trabajo cooperativo. Emplear herramientas TIC. Trabajar los ODS y los contenidos transversales.'],
+];
+
+const SA = {
+ "Taller de Relaciones Digitales Saludables (1º ESO)": {
+  "filas": [
+   {
+    "n": 1,
+    "titulo": "Crear de forma supervisada una guía que les permita poder comparar las características físicas y lógicas de varios ordenadores a la hora de tener que comprar uno nuevo",
+    "ce": "1.1 1.2 1.3 1.4 1.5 2.1 2.5 2.6 4.6",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 2,
+    "titulo": "Realizar un diagrama que represente la red informática que tienen en su casa",
+    "desc": "Identificando dispositivos conectados y elementos de interconexión, junto con sus características",
+    "ce": "1.1 1.2 1.3 1.4 1.5 2.1 2.5 2.6 4.6",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 3,
+    "titulo": "Elaborar una guía de evaluación que les permita cuantificar si hacen un uso seguro y saludable de Internet y los dispositivos digitales",
+    "ce": "2.1 2.2 2.3 2.4 2.5 2.6 3.1 3.2 3.3 4.1 4.2 4.3 4.4 4.4 4.5 4.6",
+    "ev": "Eva 3"
+   }
+  ]
+ },
+ "Programación, Inteligencia Artificial y Robótica (2º y 3º ESO) › Primer curso – PIAR I": {
+  "filas": [
+   {
+    "n": 1,
+    "titulo": "Anima tu nombre",
+    "desc": "Introducción a la programación",
+    "ce": "2.1, 2.2, 2.3, 2.4",
+    "grupo": "PROGRAMACIÓN",
+    "peso": "13 %",
+    "gp": "45 %",
+    "sem": "4 semanas",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 2,
+    "titulo": "Crea un asistente virtual",
+    "desc": "Programación básica",
+    "ce": "2.1, 2.2, 2.3, 2.4",
+    "peso": "14 %",
+    "sem": "4 semanas",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 3,
+    "titulo": "Programa un videojuego",
+    "desc": "Programación avanzada",
+    "ce": "2.1, 2.2, 2.3, 2.4 4.1, 4.4",
+    "peso": "18 %",
+    "sem": "3 semanas",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 4,
+    "titulo": "Diferencia un robot de un autómata",
+    "desc": "Introducción a la robótica",
+    "ce": "3.1",
+    "grupo": "ROBÓTICA",
+    "peso": "5 %",
+    "gp": "34 %",
+    "sem": "2 semanas",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 5,
+    "titulo": "Controla la controladora",
+    "desc": "Programación de tarjetas controladoras",
+    "ce": "3.2, 3.3, 3.4, 3.5",
+    "peso": "16 %",
+    "sem": "4 semanas",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 6,
+    "titulo": "Programa un robot sensible",
+    "desc": "Programación de un robot",
+    "ce": "3.3, 3.4, 3.5 4.1, 4.4",
+    "peso": "13 %",
+    "sem": "3 semanas",
+    "ev": "Eva 3"
+   },
+   {
+    "n": 7,
+    "titulo": "Usa bien la inteligencia artificial",
+    "desc": "Introducción a la inteligencia artificial",
+    "ce": "1.1, 1.2, 1.3, 1.4 4.4",
+    "grupo": "IA",
+    "peso": "15 %",
+    "gp": "15 %",
+    "sem": "4 semanas",
+    "ev": "Eva 3"
+   },
+   {
+    "n": 8,
+    "titulo": "La tecnología impacta",
+    "desc": "Impacto de la informática en la sociedad",
+    "ce": "2.5 4.2, 4.3",
+    "grupo": "TIC",
+    "peso": "6 %",
+    "gp": "6 %",
+    "sem": "3 semanas",
+    "ev": "Eva 3"
+   }
+  ]
+ },
+ "Programación, Inteligencia Artificial y Robótica (2º y 3º ESO) › Segundo curso – PIAR II": {
+  "filas": [
+   {
+    "n": 1,
+    "titulo": "Introducción a la robótica Repaso de teoría y programación de robots",
+    "ce": "3.1, 3.2, 3.3, 3.4, 3.5, 3.6",
+    "grupo": "ROBÓTICA",
+    "peso": "10%",
+    "gp": "25 %",
+    "sem": "4 sem",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 2,
+    "titulo": "Diseña un sistema robótico Diseño y construcción de sistemas robóticos",
+    "ce": "3.1, 3.2, 3.3, 3.4, 3.5, 3.6",
+    "peso": "15%",
+    "sem": "4 sem",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 3,
+    "titulo": "Mira el interior de la IA Programación de sistemas de IA",
+    "ce": "1.1, 1.2, 1.3, 1.4",
+    "grupo": "IA",
+    "peso": "15 %",
+    "gp": "15 %",
+    "sem": "3 sem",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 4,
+    "titulo": "Crea una aplicación para el móvil Programación de apps para dispositivos móviles",
+    "ce": "2.1, 2.2, 2.3, 2.4, 2.5",
+    "grupo": "PROGRAMACIÓN",
+    "peso": "20 %",
+    "gp": "35 %",
+    "sem": "6 sem",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 5,
+    "titulo": "Programa un videojuego Programación de entornos gráficos",
+    "ce": "2.1, 2.2, 2.3, 2.4, 2.5",
+    "peso": "15 %",
+    "sem": "5 sem",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 6,
+    "titulo": "Digitaliza y evoluciona la realidad Introducción a la realidad aumentada y virtual",
+    "ce": "1,5",
+    "grupo": "TIC",
+    "peso": "15 %",
+    "gp": "25 %",
+    "sem": "6 sem",
+    "ev": "Eva 3"
+   },
+   {
+    "n": 7,
+    "titulo": "La sociedad cambia con la tecnología Impacto de la tecnología en la sociedad",
+    "ce": "4.2, 4.3, 4.5",
+    "peso": "10 %",
+    "sem": "4 sem",
+    "ev": "Eva 3"
+   },
+   {
+    "total": "100 % · 32 semanas"
+   }
+  ]
+ },
+ "Digitalización (4º ESO)": {
+  "filas": [
+   {
+    "n": 1,
+    "titulo": "Diseña tu ordenador",
+    "desc": "Arquitectura del ordenador",
+    "ce": "1.1, 1.3, 2.1, 5.4",
+    "peso": "19 %",
+    "gp": "41 %",
+    "sem": "6 semanas",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 2,
+    "titulo": "Adminístrate bien",
+    "desc": "Sistemas operativos y máquinas virtuales",
+    "ce": "1.4, 1.5, 2.2",
+    "peso": "10 %",
+    "sem": "3 semanas",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 3,
+    "titulo": "Trabaja sin ratón",
+    "desc": "Línea de comandos de Linux",
+    "ce": "1.4, 2.2",
+    "peso": "12 %",
+    "sem": "4 semanas",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 4,
+    "titulo": "Enrédate en casa",
+    "desc": "Redes de ordenadores y domótica",
+    "ce": "1.2, 1.3, 1.5, 5.1, 5.2",
+    "peso": "19 %",
+    "gp": "31 %",
+    "sem": "6 semanas",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 5,
+    "titulo": "Crea un sitio web",
+    "desc": "Desarrollo web con HTML y CSS",
+    "ce": "2.3, 2.4, 2.5 5.1, 5.2",
+    "peso": "12 %",
+    "sem": "4 semanas",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 6,
+    "titulo": "Sé un buen ciudadano",
+    "desc": "Ciudadanía y seguridad digital",
+    "ce": "Trabajo en equipo: 1.6, 2.6, 3.6, 5.3 Creación contenidos digitales: 2.1, 2.3, 2.5, Seguridad y bienestar digital: 3.1, 3.2, 3.3, 3.4, 3.5, Ciudadanía digital: 4.1, 4.2, 4.3, 4.4, 4.5",
+    "peso": "6 % 6 % 8 % 8 %",
+    "gp": "28 %",
+    "sem": "8 semanas",
+    "ev": "Eva 3"
+   },
+   {
+    "total": "100 % · 31 semanas"
+   }
+  ]
+ },
+ "Taller de Profundización en Desarrollo de Videojuegos (4º ESO)": {
+  "filas": [
+   {
+    "n": 1,
+    "titulo": "Programación básica",
+    "ce": "Todos",
+    "ev": "Eva 1",
+    "sem": "3 sem"
+   },
+   {
+    "n": 2,
+    "titulo": "Entornos de desarrollo",
+    "ce": "Todos",
+    "ev": "Eva 1",
+    "sem": "9 sem"
+   },
+   {
+    "n": 3,
+    "titulo": "Introducción y definición de un juego",
+    "ce": "Todos",
+    "ev": "Eva 1 / Eva 2",
+    "sem": "2 sem + 6 sem"
+   },
+   {
+    "n": 4,
+    "titulo": "Diseño de personajes y escenarios",
+    "ce": "Todos",
+    "ev": "Eva 2",
+    "sem": "2 sem"
+   },
+   {
+    "n": 5,
+    "titulo": "Programación de la física y el movimiento",
+    "ce": "Todos",
+    "ev": "Eva 2",
+    "sem": "2 sem"
+   },
+   {
+    "n": 6,
+    "titulo": "Programación de la interfaz y el comportamiento",
+    "ce": "Todos",
+    "ev": "Eva 2 / Eva 3",
+    "sem": "4 sem + 4 sem"
+   },
+   {
+    "n": 7,
+    "titulo": "Animaciones en el juego",
+    "ce": "Todos",
+    "ev": "Eva 3",
+    "sem": "3 sem"
+   },
+   {
+    "n": 8,
+    "titulo": "Sonido, analíticas y publicación",
+    "ce": "Todos",
+    "ev": "Eva 3",
+    "sem": "3 sem"
+   }
+  ]
+ },
+ "Primer curso – Informática I": {
+  "filas": [
+   {
+    "n": 1,
+    "titulo": "Digitaliza tu organización Código binario y unidades de medida Diseño de imágenes vectoriales",
+    "ce": "1.1 2.1",
+    "grupo": "1",
+    "peso": "3 % 7 %",
+    "gp": "10 %",
+    "sem": "2 sem 3 sem",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 2,
+    "titulo": "Diseña el hardware de tu organización HW, ergonomía y seguridad Hoja de cálculo avanzada",
+    "ce": "1.1, 1.2, 4.1 2.1, 2.4, 3.3",
+    "grupo": "2",
+    "peso": "10 % 8 %",
+    "gp": "18 %",
+    "sem": "2 sem 4 sem",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 3,
+    "titulo": "Diseña el software de tu organización Sistemas operativos y virtualización Propiedad intelectual del software Inteligencia artificial",
+    "ce": "1.2 2.1, 2.2, 2.4, 4.2 2.1, 2.4, 4.2",
+    "grupo": "3",
+    "peso": "4 % 8 % 9 %",
+    "gp": "21 %",
+    "sem": "1 sem 2 sem 4 sem",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 4,
+    "titulo": "Diseña la red de tu organización Diseño de redes locales Particionamiento de redes locales",
+    "ce": "1.1, 1.2 1.2",
+    "grupo": "4",
+    "peso": "10 % 4 %",
+    "gp": "14 %",
+    "sem": "2 sem 2 sem",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 5,
+    "titulo": "Domotiza tu habitación Internet de las cosas",
+    "ce": "1.2",
+    "grupo": "5",
+    "peso": "5 %",
+    "gp": "5 %",
+    "sem": "2 sem",
+    "ev": "Eva 3"
+   },
+   {
+    "n": 6,
+    "titulo": "Pon los datos en su sitio Diseño de bases de datos",
+    "ce": "3.1, 3.2, 3.3",
+    "grupo": "6",
+    "peso": "13 %",
+    "gp": "13 %",
+    "sem": "5 sem",
+    "ev": "Eva 3"
+   },
+   {
+    "n": 7,
+    "titulo": "Más allá de la realidad RA y RV Fotogrametría",
+    "ce": "2.1 2.1",
+    "grupo": "7",
+    "peso": "2 % 4 %",
+    "gp": "6 %",
+    "sem": "1 sem 2 sem",
+    "ev": "Eva 3"
+   },
+   {
+    "n": null,
+    "titulo": "Proyecto transversal a las SA 1─4",
+    "ce": "1.3, 2.2, 2.3",
+    "peso": "7 %",
+    "gp": "7 %",
+    "sem": "- - -",
+    "ev": "Eva 3"
+   },
+   {
+    "n": null,
+    "titulo": "Todas las Situaciones de Aprendizaje",
+    "ce": "4.1, 4.2, 4.3",
+    "peso": "6 %",
+    "gp": "6 %",
+    "sem": "- - -",
+    "ev": "Eva 3"
+   },
+   {
+    "total": "100 % · 32 semanas"
+   }
+  ]
+ },
+ "Segundo curso – PRSI II": {
+  "filas": [
+   {
+    "n": 1,
+    "titulo": "Informática y sociedad Historia de la informática. Tecnologías emergentes. Informática y sostenibilidad",
+    "ce": "5.4 5.4, 5.2",
+    "grupo": "1",
+    "peso": "3 % 3 %",
+    "gp": "6 %",
+    "sem": "1 sem 1 sem",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 2,
+    "titulo": "Introducción a la programación Diseño de algoritmos Lenguajes de programación",
+    "ce": "1.1, 1.2 1.3",
+    "grupo": "2",
+    "peso": "4 % 2 %",
+    "gp": "6 %",
+    "sem": "1 sem 1 sem",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 3,
+    "titulo": "Primeros pasos en Python Gestión de datos Entrada y salida",
+    "ce": "1.3 1.3",
+    "grupo": "3",
+    "peso": "4 % 7 %",
+    "gp": "11 %",
+    "sem": "1 sem 1 sem",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 4,
+    "titulo": "Gestión de texto y funciones del sistema Gestión de cadenas de caracteres. Funciones integradas y externas",
+    "ce": "1.3 1.3",
+    "grupo": "4",
+    "peso": "8 % 4 %",
+    "gp": "12 %",
+    "sem": "2 sem 1 sem",
+    "ev": "Eva 1"
+   },
+   {
+    "n": 5,
+    "titulo": "Programación estructurada I – Control de flujo Condicionales y bucles",
+    "ce": "1.3",
+    "grupo": "5",
+    "peso": "12 %",
+    "gp": "12 %",
+    "sem": "3 sem",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 6,
+    "titulo": "Programación estructurada II – Modularización Funciones Resolución de problemas complejos",
+    "ce": "1.3 1.3",
+    "grupo": "6",
+    "peso": "8 % 7 %",
+    "gp": "15 %",
+    "sem": "2 sem 1 sem",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 7,
+    "titulo": "Programación estructurada III – Listas Vectores y listas Estructuras de datos",
+    "ce": "1.3 1.3",
+    "grupo": "7",
+    "peso": "10 % 2 %",
+    "gp": "12 %",
+    "sem": "2 sem 1 sem",
+    "ev": "Eva 2"
+   },
+   {
+    "n": 8,
+    "titulo": "Proyecto de programación Proyecto simple Proyecto complejo",
+    "ce": "1.1, 1.2 1.3, 5.2",
+    "grupo": "8",
+    "peso": "4 % 7 %",
+    "gp": "11 %",
+    "sem": "1 sem 2 sem",
+    "ev": "Eva 3"
+   },
+   {
+    "n": 9,
+    "titulo": "Administración electrónica Certificados electrónicos y firma digital",
+    "ce": "4.3",
+    "grupo": "9",
+    "peso": "4 %",
+    "gp": "4 %",
+    "sem": "1 sem",
+    "ev": "Eva 3"
+   },
+   {
+    "n": 10,
+    "titulo": "Creación de páginas web Gestores de contenidos",
+    "ce": "4.4",
+    "grupo": "10",
+    "peso": "11 %",
+    "gp": "11 %",
+    "sem": "3 sem",
+    "ev": "Eva 3"
+   },
+   {
+    "total": "100 % · 25 semanas"
+   }
+  ]
+ }
+};
 
 // ------------------------------------------------------------------ constructor del árbol
 function nodo(base) {
@@ -186,11 +851,15 @@ function nodo(base) {
 
 function montarHijos(lista, prefijo, edita, moduloId) {
   return (lista || []).map((x, i) => {
+    // Un hijo con `propio` (p. ej. los bloques PIAR I/II) se aparta de la clave
+    // de permiso del padre y usa la suya propia.
+    const clave = x.propio ? x.t : moduloId;
     const n = nodo({
       titulo: x.t, num: x.n || null, edita, tipo: 'apartado',
-      id: prefijo + '/' + i, moduloId: moduloId || null,
+      id: prefijo + '/' + i, moduloId: clave || null,
     });
-    n.hijos = montarHijos(x.h, n.id, edita, moduloId);
+    if (x.propio) n.propio = true;
+    n.hijos = montarHijos(x.h, n.id, edita, clave);
     return n;
   });
 }
@@ -208,14 +877,33 @@ function montarModulos(ciclo, curso, mitad, prefijo) {
 }
 
 // Árbol completo de un documento: { id, titulo, tipo, edita, hijos }
-function arbolDocumento(docId, ciclo, curso) {
+function arbolDocumento(docId, ramaId, curso) {
   const doc = DOCUMENTOS[docId];
+  const apartados = (doc.apartadosPor && doc.apartadosPor[ramaId]) || doc.apartados;
   const raiz = nodo({ titulo: doc.nombre, tipo: 'raiz', edita: 'comun', id: docId });
-  raiz.hijos = doc.apartados.map((a, i) => {
+  raiz.hijos = apartados.map((a, i) => {
     const n = nodo({ titulo: a.t, num: a.n || null, tipo: 'apartado', edita: 'comun', id: docId + '/' + i });
+    if (a.corto) n.corto = a.corto;
     if (a.tipo === 'modulos') {
       n.tipo = 'modulos';
-      n.hijos = montarModulos(ciclo || 'daw', curso, a.curso, n.id);
+      if (a.materias) {
+        // ESO/BACH: entradas de contexto (comun) + materias (tipo modulo)
+        const entradas = [...(a.h || []).map((x) => ({ x, mod: false })),
+          ...(MATERIAS[a.materias] || []).map((x) => ({ x, mod: true }))];
+        n.hijos = entradas.map((it, j) => {
+          const id = n.id + '/' + j;
+          if (it.mod) {
+            const m = nodo({ titulo: it.x.t, num: it.x.n || null, tipo: 'modulo', edita: 'modulo', id, moduloId: it.x.t });
+            m.hijos = montarHijos(it.x.h, id, 'modulo', it.x.t);
+            return m;
+          }
+          const c = nodo({ titulo: it.x.t, num: it.x.n || null, tipo: 'apartado', edita: 'comun', id });
+          c.hijos = montarHijos(it.x.h, id, 'comun', null);
+          return c;
+        });
+      } else {
+        n.hijos = montarModulos(ramaId || 'daw', curso, a.curso, n.id);
+      }
     } else {
       n.hijos = montarHijos(a.h, n.id, 'comun', null);
     }
@@ -235,4 +923,4 @@ function aplanar(raiz) {
   return out;
 }
 
-window.DATOS = { DOCUMENTOS, ORDEN_DOCS, CICLOS, MODULOS, MODULOS_DEL_DOCENTE, arbolDocumento, aplanar };
+window.DATOS = { DOCUMENTOS, ORDEN_DOCS, CICLOS, RAMAS, MODULOS, MATERIAS, PERFILES, SA, SA_CARACTERISTICAS, arbolDocumento, aplanar };

@@ -40,11 +40,17 @@
         <option value="jefe_estudios">Jefe de estudios</option>
         <option value="jefe_departamento" selected>Jefe de departamento</option>
         <option value="docente">Docente DAW y RL</option>
+        <option value="docente_mixto">Docente Mixto</option>
       </select>
     </label>
 
     <button class="icono-btn" id="btn-tema" title="Modo oscuro" aria-label="Cambiar tema">
       <svg viewBox="0 0 24 24" class="ico"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    </button>
+
+    <button class="btn-ghost" id="btn-permisos" hidden title="Gestionar qué unidades puede editar cada perfil (solo admin)">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 7h6M14 7h6M4 12h10M18 12h2M4 17h4M12 17h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+      Permisos
     </button>
 
     <button class="btn-primario" id="btn-exportar">
@@ -110,6 +116,23 @@
 </div>
 
 <div class="toast" id="toast" role="status"></div>
+
+<div class="modal-overlay" id="modal-permisos" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="permisos-titulo">
+    <div class="modal-cab">
+      <div>
+        <h2 id="permisos-titulo">Permisos de edición por perfil</h2>
+        <p class="suave">Unidades que cada perfil de docente puede editar: módulos de FP, materias de ESO/Bachillerato y bloques PIAR. Los cambios se guardan en este navegador y se reflejan en el árbol al momento.</p>
+      </div>
+      <button class="icono-btn" id="cerrar-permisos" aria-label="Cerrar">×</button>
+    </div>
+    <div class="modal-cuerpo" id="permisos-cuerpo"></div>
+    <div class="modal-pie">
+      <button class="btn-ghost" id="restablecer-permisos">Restablecer valores por defecto</button>
+      <button class="btn-primario" id="listo-permisos">Listo</button>
+    </div>
+  </div>
+</div>
 
 <script src="js/data.js"></script>
 <script src="js/app.js"></script>
