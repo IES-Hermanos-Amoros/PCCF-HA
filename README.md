@@ -17,6 +17,9 @@ Fase de pruebas de concepto.
 | Carpeta | Qué contiene |
 |---|---|
 | [`poc-pdfmake/`](poc-pdfmake/) | Importador de Word que deduce plantilla y datos, y generación de PD en PDF con pdfmake como función serverless |
+| [`docs/interfaz-web.md`](docs/interfaz-web.md) | Arquitectura de la aplicación: modelo de datos, API sobre el `lib/` que ya existe, editores por tipo de campo y roadmap |
+| [`docs/mockups/`](docs/mockups/) | Primer prototipo de la interfaz: fija la forma de la pantalla y el árbol real de los documentos |
+| [`docs/mockup-v2/`](docs/mockup-v2/) | Segunda versión del prototipo: unidades con id estable, estado en la URL, editor de bloques, arrastre entre cursos y panel de coordinación |
 
 ## Datos personales
 

@@ -7,3 +7,5 @@ node_modules/
 *.odt
 *.pdf
 .fetch-client
+.DS_Store
+Thumbs.db

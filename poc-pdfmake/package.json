@@ -10,7 +10,7 @@
     "pdf": "node scripts/generate.js borrador",
     "pdf:aprobado": "node scripts/generate.js aprobado",
     "serve": "node scripts/serve.js",
-    "test": "node scripts/test-compartidos.js && node scripts/test-permisos.js"
+    "test": "node scripts/test-compartidos.js && node scripts/test-permisos.js && node scripts/test-texto-rico.js"
   },
   "keywords": [],
   "author": "",

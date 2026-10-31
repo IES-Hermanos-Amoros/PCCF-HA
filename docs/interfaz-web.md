@@ -1,5 +1,3 @@
-opencode -s ses_e7885758fffeAbdRNm491Op0Iy
-
 # Interfaz web: edición de documentos importados
 
 Propuesta de interfaz como paso intermedio entre la **importación** de un `.docx` y la **exportación** a PDF:

@@ -80,7 +80,7 @@ Todavía no hay usuarios ni interfaz: las funciones `puedeVer`, `puedeEditar`, `
 ### Pruebas
 
 ```bash
-npm test                                              # textos compartidos y permisos, con datos inventados
+npm test                                              # textos compartidos, permisos y texto con formato, con datos inventados
 node scripts/test-compartidos.js entrada/PD_DAW.docx  # además, con un Word real: el contenido resuelto es idéntico al original
 ```
 

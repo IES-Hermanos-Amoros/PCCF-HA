@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="es" data-tema="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCCF·HA v2 — Editor de documentos</title>
+<link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button class="icono-btn" id="btn-cajon" aria-label="Mostrar la estructura del documento">
+    <svg viewBox="0 0 24 24" class="ico"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </button>
+
+  <div class="marca">
+    <svg viewBox="0 0 32 32" class="logo" aria-hidden="true">
+      <rect x="2" y="4" width="20" height="26" rx="3" fill="var(--azul)"/>
+      <path d="M8 11h8M8 16h8M8 21h5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      <path d="M18 2h9a3 3 0 0 1 3 3v18" fill="none" stroke="var(--acento)" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <div class="marca-texto">
+      <strong>PCCF·HA</strong>
+      <span>Departamento de Informática · mockup v2</span>
+    </div>
+  </div>
+
+  <label class="sr" for="selector-doc">Documento</label>
+  <select id="selector-doc" class="selector-doc" title="Documento: la app real lista la colección documentos filtrada por tipo y curso"></select>
+
+  <div class="segmentado" id="selector-curso" role="group" aria-label="Curso">
+    <button data-curso="2025-26" aria-pressed="false">2025-26</button>
+    <button data-curso="2026-27" aria-pressed="true" class="on">2026-27</button>
+  </div>
+
+  <div class="segmentado" id="selector-vista" role="group" aria-label="Vista">
+    <button data-vista="contenido" aria-pressed="true" class="on">Contenido</button>
+    <button data-vista="cambios" aria-pressed="false">Cambios</button>
+    <button data-vista="validaciones" aria-pressed="false">Validaciones</button>
+    <button data-vista="coordinacion" aria-pressed="false">Coordinación</button>
+  </div>
+
+  <div class="topbar-derecha">
+    <label class="persona" title="Quién eres: el rol y las unidades asignadas son dos cosas distintas">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 9a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="sr">Persona con la que se prueba la aplicación</span>
+      <select id="selector-persona"></select>
+      <span class="etiqueta-rol" id="rol-actual">—</span>
+    </label>
+
+    <button class="icono-btn" id="btn-tema" title="Cambiar entre tema claro y oscuro" aria-label="Cambiar tema">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    </button>
+
+    <button class="btn-ghost" id="btn-asignaciones" hidden title="Asignar unidades al profesorado. Quién puede hacerlo está sin decidir: de momento solo soporte">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 7h6M14 7h6M4 12h10M18 12h2M4 17h4M12 17h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+      Asignaciones
+    </button>
+
+    <button class="btn-ghost" id="btn-word">Word</button>
+    <button class="btn-primario" id="btn-pdf">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      PDF
+    </button>
+  </div>
+</header>
+
+<div class="workspace">
+  <div class="velo" id="velo"></div>
+
+  <aside class="sidebar">
+    <div class="buscador">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <label class="sr" for="buscar">Buscar apartado</label>
+      <input type="search" id="buscar" placeholder="Buscar apartado, módulo, materia…" autocomplete="off">
+      <button id="limpiar" class="limpiar" hidden aria-label="Limpiar la búsqueda">×</button>
+    </div>
+
+    <nav class="arbol-cont" id="arbol"></nav>
+
+    <div class="sidebar-pie">
+      <div class="progreso-texto"><span>Validado para el curso</span><strong id="pct-progreso">—</strong></div>
+      <div class="barra"><i id="barra-progreso"></i></div>
+      <span id="progreso-detalle"></span>
+      <ul class="leyenda">
+        <li><i class="glifo glifo-validado" aria-hidden="true">✓</i> validado</li>
+        <li><i class="glifo glifo-completo" aria-hidden="true"></i> completo</li>
+        <li><i class="glifo glifo-incompleto" aria-hidden="true"></i> incompleto</li>
+        <li><i class="glifo glifo-vacio" aria-hidden="true"></i> vacío</li>
+        <li><i class="glifo glifo-errores" aria-hidden="true">!</i> con errores</li>
+      </ul>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="migas" id="migas"></div>
+
+    <div class="cabecera">
+      <div>
+        <h1 id="titulo-seccion">—</h1>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="cabecera-derecha">
+        <button class="btn-ghost" id="btn-revisado" hidden>Validar este apartado</button>
+        <span class="chip chip-guardado" id="guardado" hidden></span>
+      </div>
+    </div>
+
+    <div class="rejilla">
+      <section class="contenido" id="contenido"></section>
+      <aside class="panel" id="panel" aria-label="Comprobaciones y comentarios"></aside>
+    </div>
+
+    <footer class="pie">
+      <button id="btn-anterior">← Anterior</button>
+      <span id="pie-info"></span>
+      <button id="btn-siguiente">Siguiente →</button>
+    </footer>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="modal-overlay" id="modal-asignaciones" hidden>
+  <div class="modal modal-ancho" role="dialog" aria-modal="true" aria-labelledby="titulo-asignaciones">
+    <div class="modal-cab">
+      <div>
+        <h2 id="titulo-asignaciones">Asignar unidades al profesorado</h2>
+        <p class="suave">Qué módulos de FP, materias de ESO y Bachillerato lleva cada persona. Se guarda por el id interno de la unidad, así que un cambio de nombre en la normativa no borra la asignación. <strong>Pendiente de decidir:</strong> si esta pantalla la maneja la jefatura de departamento o solo soporte.</p>
+      </div>
+      <button class="icono-btn" id="cerrar-asignaciones" aria-label="Cerrar">×</button>
+    </div>
+    <div class="modal-filtros">
+      <label>Filtrar <input type="search" id="filtro-asig" placeholder="módulo, materia o código" autocomplete="off"></label>
+      <label><input type="checkbox" id="solo-sin-asignar"> solo las que no tiene nadie</label>
+      <span class="suave" id="resumen-asig"></span>
+    </div>
+    <div class="modal-cuerpo" id="cuerpo-asignaciones"></div>
+    <div class="modal-pie">
+      <button class="btn-primario" id="listo-asignaciones">Listo</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/unidades.js"></script>
+<script src="js/plantilla.js"></script>
+<script src="js/estructura.js"></script>
+<script src="js/permisos.js"></script>
+<script src="js/contenido.js"></script>
+<script src="js/validaciones.js"></script>
+<script src="js/bloques.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

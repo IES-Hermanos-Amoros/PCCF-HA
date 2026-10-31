@@ -2,7 +2,7 @@
 // Roles:
 //   admin              coordinación técnica: ve y edita todo (soporte)
 //   jefe_estudios      ve los documentos de todos los departamentos, en cualquier estado; no edita
-//   jefe_departamento  su departamento: apartados comunes y textos compartidos; los módulos, solo si los tiene asignados
+//   jefe_departamento  su departamento: apartados comunes, textos compartidos y todos los módulos, los tenga asignados o no
 //   docente            ve los documentos de su departamento; edita los módulos que tiene asignados y los apartados comunes que se le asignen
 // La plantilla marca quién edita cada apartado (edita: 'jefe_departamento' | 'docentes_del_modulo'); los subapartados heredan
 // salvo que indiquen otro valor. En los datos, cada instancia lleva sus docentes y datos.asignaciones reparte apartados
@@ -41,6 +41,7 @@ function puedeEditar(usuario, plantilla, datos, { seccion, instancia } = {}) {
   if (usuario.rol === 'jefe_estudios') return false;
   const edita = quienEdita(plantilla, seccion);
   if (edita === 'docentes_del_modulo') {
+    if (usuario.rol === 'jefe_departamento') return true;
     const ins = instancia === undefined ? null : buscarInstancia(datos, instancia);
     return !!ins && (ins.docentes || []).includes(usuario.id);
   }
