@@ -6,7 +6,9 @@
 //
 // Todo JavaScript puro (mammoth + node-html-parser): apto para una función serverless.
 
+const fs = require('fs');
 const mammoth = require('mammoth');
+const JSZip = require('jszip');
 const { parse } = require('node-html-parser');
 const { extraerCompartidos } = require('./compartidos');
 const { fichaDeFilas } = require('./ficha-sa');
@@ -276,9 +278,54 @@ const limpiarPlantilla = (s) => ({
   campos: s.campos.map(({ origen, ...c }) => c), hijos: s.hijos.map(limpiarPlantilla),
 });
 
+// ------------------------------------------------- títulos por nivel de esquema
+// mammoth reconoce los títulos por el NOMBRE del estilo («heading 1»), y eso
+// depende del idioma y del editor con el que se escribió el documento: en un
+// Word en español se llaman «Título 1», y si viene de LibreOffice, «Título 1
+// (user)». Una de las memorias del departamento tiene sus 43 títulos con esos
+// estilos y entraba entera como UN SOLO apartado, mientras la del curso
+// siguiente, con los mismos apartados pero escrita en otro editor, daba 44.
+//
+// El dato bueno es el nivel de esquema (`w:outlineLvl` del estilo en
+// styles.xml): es lo que Word usa para construir el índice, y no depende del
+// nombre ni del idioma. De ahí se arma el mapa de estilos que mammoth necesita.
+// Si el documento no declara ninguno, se queda el comportamiento de siempre.
+async function mapaDeTitulos(input) {
+  let buffer = input && input.buffer;
+  if (!buffer && input && input.path) {
+    try { buffer = await fs.promises.readFile(input.path); } catch (e) { return []; }
+  }
+  if (!buffer) return [];
+  let styles;
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const parte = zip.file('word/styles.xml');
+    if (!parte) return [];
+    styles = await parte.async('string');
+  } catch (e) {
+    return [];
+  }
+  const reglas = [];
+  const vistos = new Set();
+  for (const m of String(styles).matchAll(/<w:style\b([^>]*)>([\s\S]*?)<\/w:style>/g)) {
+    if (!/w:type="paragraph"/.test(m[1])) continue;
+    const nombre = (m[2].match(/<w:name\s+w:val="([^"]+)"/) || [])[1];
+    const nivel = (m[2].match(/<w:outlineLvl\s+w:val="(\d+)"/) || [])[1];
+    if (!nombre || nivel === undefined) continue;
+    const h = Number(nivel) + 1;
+    // El nombre va entre comillas simples en el mapa de mammoth, así que uno que
+    // las lleve dentro no se puede expresar; y más de seis niveles no hay.
+    if (h < 1 || h > 6 || nombre.indexOf("'") >= 0 || vistos.has(nombre)) continue;
+    vistos.add(nombre);
+    reglas.push("p[style-name='" + nombre + "'] => h" + h + ":fresh");
+  }
+  return reglas;
+}
+
 // ---------------------------------------------------------------- importación completa
 async function importarDocx(input, opts = {}) {
-  const { value: html, messages } = await mammoth.convertToHtml(input);
+  const styleMap = await mapaDeTitulos(input);
+  const { value: html, messages } = await mammoth.convertToHtml(input, styleMap.length ? { styleMap } : undefined);
   const nodos = htmlANodos(html);
   const raiz = construirArbol(nodos);
   const avisos = [];

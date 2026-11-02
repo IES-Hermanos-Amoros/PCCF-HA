@@ -258,6 +258,62 @@ prueba('con `incluirInicial` no se pierde el contenido anterior al primer títul
     'la sección está pero sin el contenido que se iba a perder');
 });
 
+// Un .docx mínimo, armado a mano, cuyos títulos usan un estilo con el nombre que
+// le pone Word en español (o LibreOffice) en lugar de «heading N». No se puede
+// construir con el exportador, que escribe los suyos en inglés, y es justo el
+// caso que hacía entrar un documento entero como un solo apartado.
+const docxConEstiloPropio = async (nombreEstilo, conNivel) => {
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    + '<Default Extension="xml" ContentType="application/xml"/>'
+    + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+    + '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+    + '</Types>');
+  zip.file('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+    + '</Relationships>');
+  zip.file('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+    + '</Relationships>');
+  zip.file('word/styles.xml', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + '<w:style w:type="paragraph" w:styleId="MiTitulo"><w:name w:val="' + esc(nombreEstilo) + '"/>'
+    + (conNivel ? '<w:pPr><w:outlineLvl w:val="0"/></w:pPr>' : '')
+    + '</w:style></w:styles>');
+  const p = (estilo, texto) => '<w:p><w:pPr><w:pStyle w:val="' + estilo + '"/></w:pPr>'
+    + '<w:r><w:t>' + esc(texto) + '</w:t></w:r></w:p>';
+  zip.file('word/document.xml', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+    + p('MiTitulo', 'Primer apartado') + p('Normal', 'Texto del primero.')
+    + p('MiTitulo', 'Segundo apartado') + p('Normal', 'Texto del segundo.')
+    + '</w:body></w:document>');
+  return zip.generateAsync({ type: 'nodebuffer' });
+};
+
+prueba('los títulos se reconocen por el nivel de esquema, no por el nombre del estilo', async () => {
+  const buffer = await docxConEstiloPropio('Título 1 (user)', true);
+  const { plantilla } = await importarDocx({ buffer });
+  const titulos = plantilla.secciones.map((s) => s.titulo);
+  assert.deepEqual(titulos, ['Primer apartado', 'Segundo apartado'],
+    'con el nivel de esquema puesto, los dos títulos tienen que ser apartados: ' + JSON.stringify(titulos));
+});
+
+prueba('un estilo sin nivel de esquema no se toma por título', async () => {
+  // El otro lado de la moneda: hay documentos cuyos apartados son un estilo
+  // propio sin nivel de esquema, y ahí no hay estructura que leer. Mejor un
+  // apartado único que inventarse una jerarquía a partir de la negrita.
+  const buffer = await docxConEstiloPropio('Estilo de la casa', false);
+  const { plantilla } = await importarDocx({ buffer }, { incluirInicial: true });
+  const titulos = plantilla.secciones.map((s) => s.titulo);
+  assert.ok(titulos.indexOf('Primer apartado') < 0,
+    'sin nivel de esquema no debería haber apartados: ' + JSON.stringify(titulos));
+});
+
 prueba('el mismo contenido da los mismos bytes', async () => {
   // El documento de ejemplo está versionado, así que no basta con que el
   // contenido sea igual: si los bytes cambian, cada regeneración mete un binario

@@ -80,7 +80,7 @@ Todavía no hay usuarios ni interfaz: las funciones `puedeVer`, `puedeEditar`, `
 ### Pruebas
 
 ```bash
-npm test                                              # 93 pruebas: compartidos, permisos, texto con formato, fichas de SA, exportar a Word y saneado
+npm test                                              # 95 pruebas: compartidos, permisos, texto con formato, fichas de SA, exportar a Word y saneado
 node scripts/sanear-docx.js                           # sanea los documentos del departamento a out/saneado/ (si los tienes)
 pwsh scripts/abrir-con-word.ps1                       # y comprueba que Word los abre, que es lo que ninguna prueba puede garantizar
 node scripts/test-compartidos.js entrada/PD_DAW.docx  # además, con un Word real: el contenido resuelto es idéntico al original
