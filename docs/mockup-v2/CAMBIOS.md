@@ -14,7 +14,45 @@ El v1 **no se ha modificado**: sigue entero en [`../mockups/`](../mockups/) para
 Si alguien abre los dos mockups seguidos, esto es lo que ve distinto, por orden de lo que más
 cambia el trabajo del día a día:
 
-1. **Se puede cambiar la estructura del documento.** En cada apartado hay una tarjeta *Estructura*
+1. **El contenido es el de un documento del centro.** Los apartados no llevan texto de relleno:
+   llevan la programación didáctica de DAW con su estructura y su tamaño reales —34 apartados
+   comunes y los 11 módulos enteros, con sus resultados de aprendizaje, sus ponderaciones (siete u
+   ocho RA con todos sus criterios, no cuatro inventados) y sus **84 situaciones de aprendizaje**, de
+   cinco a once por módulo—. También se ven las tablas que el Word trae y el modelo de párrafos no sabe
+   representar: la ficha del módulo, la de RA y criterios, los contenidos básicos.
+
+   No es el documento real: es un **ejemplo saneado**. Sale de abrir el Word original, copiarlo
+   parte por parte y cambiar solo el texto que no puede publicarse, de modo que el documento
+   conserva su portada, su índice, sus estilos y sus 243 tablas: hace falta así porque estos
+   ejemplos existen para probar el importador contra documentos de verdad, y uno escrito por
+   nosotros desde una importación no prueba nada. Se conserva el texto normativo (resultados de
+   aprendizaje, criterios, competencias, objetivos), que sale del real decreto del título y no es de
+   nadie, y se inventa el material docente: las actividades y los materiales de las 84 fichas. Los
+   nombres, sustituidos; los metadatos de autoría, los comentarios y las revisiones, fuera. El
+   ejemplo **no se versiona**: se regenera en segundos en la máquina de quien tenga el original. El
+   porqué y el cómo están en [`docs/entrada_ej/README.md`](../entrada_ej/README.md).
+
+   Lo que no esté en el ejemplo sigue con el texto de muestra, así que el mockup se abre igual sin
+   nada importado. Los otros seis documentos (PCCF, memoria, ESO, Bachillerato) siguen enteros de
+   muestra: solo está pasada por el molino la PD de FP de DAW.
+2. **Las situaciones de aprendizaje se pueden ver, cambiar y crear.** Es donde está el trabajo de
+   verdad —en la PD de DAW hay 79 fichas— y en el v1 solo se veía la tabla del Word. Ahora, en el
+   apartado *Situaciones de aprendizaje* de cada módulo:
+   - la **tabla resumen SA × RA** sale calculada de las fichas, con las sesiones sumadas. En el Word
+     hay que repasarla a mano cada vez que se mueve una situación, y es la que se queda desfasada;
+   - la lista de situaciones dice de cada una sus RA, sus sesiones, su evaluación y cuántos
+     criterios tiene, y avisa en rojo de la que le falte algo;
+   - se abre una y sale **su ficha, con los apartados del documento** (criterios de evaluación,
+     competencias para la empleabilidad, objetivos, los seis tipos de actividad y los materiales);
+   - los **resultados de aprendizaje se eligen** de los del propio módulo, y sus criterios se marcan
+     de una lista, en vez de copiarlos a mano: así la ficha y la tabla de RA y CE del módulo no
+     pueden contradecirse;
+   - debajo del formulario está **la ficha como va a salir impresa**, que se actualiza al escribir;
+   - y se puede **crear una nueva, duplicar, mover y borrar**; las demás se renumeran solas.
+
+   Una SA creada en la aplicación no tiene tabla importada, así que el motor la monta a partir de
+   sus campos (`poc-pdfmake/lib/ficha-sa.js`): sale impresa igual que las que vienen del Word.
+3. **Se puede cambiar la estructura del documento.** En cada apartado hay una tarjeta *Estructura*
    (la ve la jefatura de departamento) para **renombrar** el título, **añadir** un subapartado,
    **moverlo** arriba o abajo y **retirarlo**. En el v1 no había forma: la estructura solo se podía
    cambiar reimportando un Word, así que el Word seguía siendo la fuente de verdad.
@@ -22,38 +60,38 @@ cambia el trabajo del día a día:
      documento.
    - En un apartado de módulo se está cambiando **la plantilla**, así que el cambio sale en los 11
      módulos a la vez. La tarjeta lo advierte.
-2. **Dos vistas nuevas en la barra de arriba.** Donde el v1 ponía *Navegación · Edición ·
+4. **Dos vistas nuevas en la barra de arriba.** Donde el v1 ponía *Navegación · Edición ·
    Validaciones*, el v2 pone *Contenido · Cambios · Validaciones · Coordinación*.
    - **Cambios** compara el apartado con el del curso pasado, en dos columnas, con lo que se quitó
      tachado en rojo y lo nuevo en verde. Y un botón: *Validar este apartado*.
    - **Coordinación** es una tabla de módulos (o materias) × bloques, con quién lleva cada uno y
      cómo va cada parte. Se hace clic en una celda y te lleva ahí.
-3. **Las validaciones salen agrupadas**, no en una lista plana. Un grupo por módulo o materia (más
+5. **Las validaciones salen agrupadas**, no en una lista plana. Un grupo por módulo o materia (más
    uno de apartados comunes), cada uno con cuántos errores y avisos tiene y **quién lo lleva**, y
    abierto por defecto si tiene errores. Dentro, cada aviso es un enlace al apartado que falla.
    Arriba dice si el documento *se puede aprobar*.
-4. **El árbol dice si el apartado está hecho y bien**, no de dónde viene: *vacío · incompleto ·
+6. **El árbol dice si el apartado está hecho y bien**, no de dónde viene: *vacío · incompleto ·
    completo · validado · con errores*. Manda el color, como en el v1, y la forma va solo de
    respaldo para quien no lo distinga (anillo punteado, medio relleno, relleno, ✓, !). La
    procedencia —que esto venga del curso pasado— se ha ido del árbol a la cabecera del apartado y
    a la vista *Cambios*, que es donde hace falta.
-5. **El progreso cuenta apartados validados**, no apartados con texto. Da un número más bajo que el
+7. **El progreso cuenta apartados validados**, no apartados con texto. Da un número más bajo que el
    del v1 y es el que dice cuánto trabajo queda de verdad: lo que viene del curso anterior sin que
    nadie lo haya mirado cuenta como pendiente.
-6. **Cada módulo lleva su código al lado** (`0614`, `0373`…), en el árbol y en la cabecera. Los que
+8. **Cada módulo lleva su código al lado** (`0614`, `0373`…), en el árbol y en la cabecera. Los que
    no tenemos confirmados dicen *«código pendiente»* en vez de un número inventado.
-7. **Se elige una persona, no un rol.** El desplegable dice «Lucía M. · Docente» y el rol va al
+9. **Se elige una persona, no un rol.** El desplegable dice «Lucía M. · Docente» y el rol va al
    lado. En el v1 el rol y los módulos asignados eran la misma cosa (*«Docente DAW y RL»*).
-8. **La dirección del navegador cambia al navegar.** Se puede copiar el enlace de un apartado y
-   mandárselo a alguien, usar la flecha de atrás y recargar sin perder el sitio.
-9. **En el móvil o la tablet la navegación existe.** Hay un botón ☰ que saca el árbol como un cajón;
-   en el v1, por debajo de 900 px, el árbol simplemente desaparecía.
-10. **El árbol se maneja con el teclado**: flechas para subir, bajar, abrir y cerrar, Inicio y Fin,
+10. **La dirección del navegador cambia al navegar.** Se puede copiar el enlace de un apartado y
+    mandárselo a alguien, usar la flecha de atrás y recargar sin perder el sitio.
+11. **En el móvil o la tablet la navegación existe.** Hay un botón ☰ que saca el árbol como un cajón;
+    en el v1, por debajo de 900 px, el árbol simplemente desaparecía.
+12. **El árbol se maneja con el teclado**: flechas para subir, bajar, abrir y cerrar, Inicio y Fin,
     Enter para entrar.
-11. **Panel derecho con comentarios.** Debajo de las comprobaciones hay un hilo por apartado para
+13. **Panel derecho con comentarios.** Debajo de las comprobaciones hay un hilo por apartado para
     dejar una nota a quien lleva el módulo.
-12. **Botón de Word** al lado del de PDF.
-13. **La barra de herramientas del v1, con los botones conectados.** En el v1 estaban **N**, *C* y
+14. **Botón de Word** al lado del de PDF.
+15. **La barra de herramientas del v1, con los botones conectados.** En el v1 estaban **N**, *C* y
     *Enlace* y no hacían nada, porque el generador solo guardaba texto plano. Ahora la barra está
     en el mismo sitio y los botones marcan: lo seleccionado, o la palabra donde esté el cursor si
     no hay nada seleccionado. Son un interruptor —se vuelve a pulsar y se quita la marca—, se
@@ -68,11 +106,11 @@ cambia el trabajo del día a día:
     La barra lo avisa, para no perder el rato probándolo.
 
     Enlaces siguen sin haber: el generador no los pinta.
-14. **Editar un texto se parece menos a Word y más a un formulario**: cada párrafo es una caja, con
+16. **Editar un texto se parece menos a Word y más a un formulario**: cada párrafo es una caja, con
     sus botones de *subir*, *bajar*, *convertir en lista* y *borrar*, y las listas tienen sangría.
     Abajo hay un desplegable, *«ver lo que se guardaría»*, que enseña el JSON que recibiría el
     generador de PDF.
-15. **Repartir los módulos es una tabla, no un muro de casillas.** El panel *Asignaciones* es una
+17. **Repartir los módulos es una tabla, no un muro de casillas.** El panel *Asignaciones* es una
     matriz de **unidades × personas**, agrupada por SMR, DAW, ESO y Bachillerato, con filtro por
     texto, casilla de *solo las que no tiene nadie*, cuántas unidades lleva cada persona y la fila
     marcada en rojo con un chip *nadie* cuando no hay nadie. Eso último es lo único que de verdad
@@ -90,10 +128,14 @@ apartado.
 
 ### Y una cosa que se nota a peor
 
-- **Varios apartados muestran menos contenido que en el v1.** Allí había tablas de RA y criterios,
-  fichas de situaciones de aprendizaje y las SA reales de ESO y Bachillerato; aquí, por ahora, solo
-  las ponderaciones tienen editor de verdad (con la suma en vivo) y el resto es texto. Es trabajo
-  pendiente, no una decisión.
+- **Las tablas del Word se ven pero no se editan.** La ficha del módulo, la de RA y criterios y la
+  de contenidos básicos salen tal como vienen, con un aviso de *todavía sin editor*. Con editor de
+  verdad están las ponderaciones (con la suma en vivo) y las situaciones de aprendizaje. Las demás
+  son trabajo pendiente, no una decisión.
+- **De ESO y Bachillerato sigue sin haber contenido real.** Las situaciones de aprendizaje de LOMLOE
+  no van por resultados de aprendizaje sino por competencias específicas, así que no es lo mismo y
+  no vale el mismo editor. Las reales están en el v1 (`SA` y `SA_CARACTERISTICAS` en
+  [`../mockups/js/data.js`](../mockups/js/data.js)).
 
 ### Sin decidir
 
@@ -140,7 +182,39 @@ Si preferís lo del v1, se vuelve atrás sin tocar nada más.
   clave y la longitud habría contado tramos en lugar de letras. Nueva función `plano()`.
 - `scripts/test-texto-rico.js` (nuevo, dentro de `npm test`): comprueba que la negrita y la cursiva
   sobreviven el camino completo —extraer compartidos, resolverlos y construir el documento de
-  pdfmake— y que el texto sin formato sigue funcionando igual. El motor pasa de 13 pruebas a 18.
+  pdfmake— y que el texto sin formato sigue funcionando igual.
+- `lib/ficha-sa.js` (nuevo): la ficha de una situación de aprendizaje en los dos sentidos.
+  `fichaDeFilas()` lee la tabla importada y saca los campos con nombre —criterios, competencias,
+  objetivos, los seis tipos de actividad, materiales—, y `filasDeFicha()` monta la tabla desde el
+  modelo. Lo primero es lo que permite editar una ficha; lo segundo, que una SA nueva se imprima
+  igual que una importada. El documento usa dos maquetaciones distintas para las actividades y las
+  dos se leen.
+- `lib/importar-docx.js`: la ficha de SA se importa entera, no solo su cabecera. Antes salían el
+  número, el título, las sesiones, la evaluación y los RA, y el resto quedaba como una tabla de
+  celdas sin nombre. Además los RA se reconocen escritos como «RA1 Reconoce…», sin punto, que es
+  como están en uno de los módulos: ocho fichas se quedaban sin RA y por tanto fuera de la tabla
+  resumen.
+- `lib/render-generico.js`: una ficha sin tabla importada —la que se acaba de crear en la
+  aplicación— se imprime montándola desde sus campos.
+- `scripts/test-ficha-sa.js` (nuevo, dentro de `npm test`): las dos maquetaciones, la ida y vuelta
+  modelo → tabla → modelo, una SA creada desde cero que llega al PDF y el resumen SA × RA
+  calculado.
+- `lib/exportar-docx.js` (nuevo): el inverso del importador. Escribe un `.docx` —el zip y su XML a
+  mano, con jszip, sin dependencias nuevas— con los títulos, las listas anidadas y las tablas con
+  celdas combinadas que el importador vuelve a leer. Es lo que permite generar el documento de
+  ejemplo en lugar de editar el original, y de paso es el primer paso del *exportar a Word* que
+  estaba pendiente. Su prueba de fondo reescribe el documento real entero y lo reimporta con las
+  mismas secciones, las mismas 11 instancias y el mismo número de tablas por módulo.
+- `lib/sanear.js` (nuevo): quita lo que identifica (personas, centro, localidad, correos, teléfonos,
+  CIF, empresas) e inventa el material docente con un generador determinista y vocabulario propio de
+  cada módulo. En las fichas limpia **por exclusión**: conserva lo que su etiqueta delata como
+  normativo y reescribe todo lo demás, porque una lista de campos conocidos deja pasar en silencio la
+  ficha de un módulo que use otras etiquetas, y lo que pasa en silencio se publica. Antes de devolver
+  nada repasa el resultado y, si encuentra algo, no devuelve datos.
+- `scripts/generar-ejemplo.js` (nuevo, `npm run ejemplo`): encadena importar, sanear y exportar, y
+  comprueba el resultado **sobre el `.docx` ya escrito y vuelto a importar**, no sobre los datos en
+  memoria. Si algo falla, borra el `.docx`.
+- El motor pasa de 13 pruebas a **72**, en seis guiones.
 
 ### En el mockup
 
@@ -204,16 +278,26 @@ Funcionalidad nueva:
     «qué unidad no tiene a nadie». El cambio de una casilla se calcula **sobre el modelo**, no
     sobre las casillas marcadas de la tabla, que con un filtro puesto borraría lo que el filtro
     esconde. Visible solo para soporte, mientras no se decida quién debe manejarla.
-19. **Comentarios por apartado.**
-20. **Exportar a Word** además de PDF (el botón explica qué falta por decidir).
-21. **40 pruebas** en `node docs/mockup-v2/test.js`, sin dependencias. Dos comparan el navegador con
+19. **Contenido real del documento** (`js/importado.js`, generado por
+    `herramientas/extraer-contenido.js`), anonimizado y recortado a una muestra. El extractor casa
+    las claves del importador con las del mockup, que se recortan a longitudes distintas: cinco de
+    las 51 claves de la PD de DAW no coincidían por unas letras, y el contenido se habría quedado
+    fuera en silencio. Hay una prueba que lo vigila.
+20. **Situaciones de aprendizaje** (`js/sa.js`): modelo editable de cada ficha, creación, duplicado,
+    reordenación y borrado, resumen SA × RA calculado y comprobaciones por ficha (sin RA es error;
+    sin sesiones o sin criterios, aviso). `filas()` es un puerto de `poc-pdfmake/lib/ficha-sa.js` y
+    test.js compara los dos **celda a celda en las 25 fichas importadas**, en los dos sentidos.
+21. **Comentarios por apartado.**
+22. **Exportar a Word** además de PDF (el botón explica qué falta por decidir).
+23. **50 pruebas** en `node docs/mockup-v2/test.js`, sin dependencias. Dos comparan el navegador con
     el servidor: una recorre el motor de permisos nodo a nodo y persona a persona en los siete
     documentos —con apartados añadidos a mano incluidos— para que no vuelvan a separarse, y la
     otra pulsa el botón **N** con un DOM de pega de veinte líneas y comprueba que el modelo se
     queda con el tramo en negrita. Esa segunda mira el cable entre el botón y el campo, que es por
     donde se rompe esto: la lógica de marcar puede estar perfecta y el botón no hacer nada. Con el
     mismo DOM de pega se comprueba que asignar una unidad con el filtro puesto no borra las que el
-    filtro esconde.
+    filtro esconde. Y otras dos comparan el navegador con el motor en las fichas de situación de
+    aprendizaje y vigilan que el contenido importado caiga en el apartado que le toca.
 
 ### En el repositorio
 
@@ -223,6 +307,19 @@ Funcionalidad nueva:
 - `docs/interfaz-web.md`: fuera la línea `opencode -s ses_…` pegada por error al principio.
 - `README.md` raíz: la tabla de estado ahora lista también `docs/interfaz-web.md`, `docs/mockups/` y
   `docs/mockup-v2/`.
+
+### Contenido del documento en el repositorio
+
+En el repositorio **no hay ningún Word**: ni los originales, ni los ejemplos saneados que salen de
+ellos, ni nada de lo que produce el importador (`.gitignore`: `*.docx`, `*.doc`, `*.odt`, `*.pdf`,
+`poc-pdfmake/out/`). Los ejemplos se regeneran con un comando en la máquina de quien tenga los
+originales, así que no hay motivo para meter cinco megas de binarios en el historial ni para
+publicar los documentos del departamento, aunque estén saneados.
+
+Lo único versionado es `docs/mockup-v2/js/importado.js` (algo más de 1 MB): el contenido del ejemplo en
+el formato que carga el mockup, que es lo que ve quien abre la página sin tener nada más. Para traer
+más o menos contenido se cambian las dos constantes del principio del extractor y se vuelve a
+ejecutar.
 
 ## Lo que no se cambió a propósito
 
@@ -238,4 +335,5 @@ El **aspecto**. Las pruebas cubren la lógica y un humo con un DOM de pega cubre
 (documento × curso × vista × persona, más el editor de estructura y el panel de asignaciones) sin
 que nada lance, pero la maquetación, los colores y el teclado del árbol no se han mirado en un
 navegador de verdad. Sin mirar en concreto: la barra de herramientas, la vista previa del párrafo
-formateado, la tarjeta de estructura, los grupos de avisos y la matriz de asignaciones.
+formateado, la tarjeta de estructura, los grupos de avisos, la matriz de asignaciones, las tablas
+del documento y el panel de situaciones de aprendizaje con su ficha.

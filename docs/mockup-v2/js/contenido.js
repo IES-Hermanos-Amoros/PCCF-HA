@@ -138,11 +138,57 @@
     try { global.localStorage.removeItem(CLAVE_GUARDADO); } catch (e) { /* nada */ }
   }
 
+  // ---------------------------------------------------------------- contenido real
+  // js/importado.js trae el contenido de verdad de la programación de DAW, sacado
+  // del documento del departamento con herramientas/extraer-contenido.js. Manda
+  // sobre el corpus de muestra: donde haya contenido real se enseña ese, y donde
+  // no, el inventado. El mockup funciona igual con el fichero y sin él, así que
+  // se puede abrir en una máquina que no tenga el documento.
+  //
+  // Dos excepciones a propósito:
+  //
+  //   - solo la PD de FP de DAW está importada; los otros seis documentos siguen
+  //     con la muestra;
+  //   - los seis apartados con texto compartido se quedan con el de muestra,
+  //     porque ahí lo que se enseña es el mecanismo de compartir. En la app real
+  //     el motor mira los 11 módulos y comparte los párrafos que coinciden
+  //     (lib/compartidos.js), en lugar de que los elija una lista a mano.
+  const I = global.Importado || null;
+  const DOC_IMPORTADO = 'pd-fp-daw';
+
+  function importado(docId, seccion, unidadId) {
+    if (!I || !I.UNIDADES || docId !== DOC_IMPORTADO || !seccion) return null;
+    if (SECCIONES_COMPARTIDAS.has(seccion)) return null;
+    if (!unidadId) return I.COMUNES[seccion] || null;
+    const u = I.UNIDADES[unidadId];
+    return u && u.secciones ? (u.secciones[seccion] || null) : null;
+  }
+
+  // Lo importado, como bloques que la interfaz sepa pintar. Las tablas van tal
+  // cual (celdas con colspan y rowspan, como las trae el Word) y la tabla de RA y
+  // CE va con su estructura, que es la que usa el editor de ponderaciones.
+  function bloquesImportados(v) {
+    const out = (v.bloques || []).slice();
+    if (v.pares) out.push({ type: 'pares', pares: v.pares });
+    if (v.raCe) out.push({ type: 'ra_ce', ra: v.raCe });
+    (v.tablas || []).forEach((filas) => out.push({ type: 'tabla', filas }));
+    return out;
+  }
+
   // ---------------------------------------------------------------- generación de muestra
   const claveDe = (docId, nodo) => docId + '|' + (nodo.seccion || '') + '|' + (nodo.unidadId || '');
 
   // Un apartado de muestra: bloques, versión del curso anterior y procedencia.
   function generar(clave) {
+    const partes = clave.split('|');
+    const imp = importado(partes[0], partes[1], partes[2]);
+    if (imp) {
+      const bloques = bloquesImportados(imp);
+      // Viene del documento del curso pasado y nadie lo ha mirado todavía: es
+      // justo lo que significa «heredado», así que no hay que inventar nada.
+      if (bloques.length) return { bloques, anterior: copia(bloques), origen: 'heredado', real: true };
+    }
+
     const h = hash(clave);
     const vacio = h % 17 === 0;                       // algún apartado sin rellenar
     const compartido = SECCIONES_COMPARTIDAS.get(clave.split('|')[1]) || null;
@@ -193,9 +239,38 @@
   const marcarRevisado = (docId, nodo) => escribir(docId, nodo, { origen: 'revisado' });
 
   // ---------------------------------------------------------------- ponderaciones de RA y CE
+  // Las importadas, pasadas al formato del editor ({ num, texto, peso, ce }).
+  // El documento real usa dos convenios para los criterios de un RA —reparten la
+  // ponderación del RA, o reparten 100 dentro del RA— y los dos se dejan tal
+  // cual: es `js/validaciones.js` quien decide si eso cuadra o no.
+  function ponderacionesImportadas(unidadId) {
+    const u = I && I.UNIDADES ? I.UNIDADES[unidadId] : null;
+    if (!u || !u.secciones) return null;
+    const sec = Object.keys(u.secciones).filter((k) => u.secciones[k].ponderaciones)[0];
+    if (!sec) return null;
+    const guardadas = guardado.ponderaciones && guardado.ponderaciones[unidadId];
+    if (guardadas) return copia(guardadas);
+    return u.secciones[sec].ponderaciones.map((ra) => ({
+      num: ra.ra,
+      texto: ra.texto || '',
+      peso: ra.ponderacion == null ? 0 : ra.ponderacion,
+      ce: (ra.ce || []).map((ce) => ({
+        letra: ce.letra,
+        texto: ce.texto || '',
+        peso: ce.ponderacion == null ? 0 : ce.ponderacion,
+        fundamental: !!ce.fundamental,
+      })),
+    }));
+  }
+
   // Datos de muestra, pero con el reparto descuadrado en algunas unidades a
   // propósito: son los avisos que hoy aparecen en la cajita roja del PDF.
   function ponderaciones(unidadId) {
+    // Las de verdad, si el módulo está importado: siete u ocho RA con sus
+    // criterios, no cuatro de muestra.
+    const reales = ponderacionesImportadas(unidadId);
+    if (reales) return reales;
+
     const h = hash('pond|' + unidadId);
     const cuadra = h % 3 !== 0;
     const base = [
@@ -222,6 +297,10 @@
 
   // Resultados de aprendizaje sin situación de aprendizaje asociada
   function raSinSituacion(unidadId) {
+    // Con fichas de situación de aprendizaje de verdad, la cuenta sale de ellas.
+    const SA = global.SA;
+    if (SA && SA.listar(unidadId).length) return SA.raSinSituacion(unidadId);
+
     const h = hash('sa|' + unidadId);
     return h % 4 === 0 ? [3] : [];
   }

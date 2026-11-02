@@ -2,6 +2,7 @@
 // Los tipos de campo reconocidos (RA/CE, ponderaciones, fichas de situación de aprendizaje, ficha del módulo)
 // tienen un pintado propio con comprobaciones; el resto se pinta de forma genérica respetando celdas combinadas.
 const { resolverCompartidos } = require('./compartidos');
+const { filasDeFicha, esSemantica } = require('./ficha-sa');
 
 const AZUL = '#1F3864', AZUL_CLARO = '#D9E2F3', GRIS = '#666666', GRIS_BORDE = '#BFBFBF', GRIS_FONDO = '#F2F2F2', ROJO = '#C00000', VERDE = '#2E7D32';
 const layout = {
@@ -134,7 +135,12 @@ function pintarCampo(campo, valor, ctx) {
     case 'ponderacion_ra_ce': return pintarPonderaciones(valor, ctx.avisos);
     case 'auto.ficha_modulo': case 'tabla_clave_valor': return [pintarClaveValor(valor)];
     case 'derivado.resumen_situaciones': return ctx.resumenCalculado ? [para('Tabla resumen calculada a partir de las fichas de situación de aprendizaje.', { italics: true, color: GRIS, fontSize: 8.5 }), ctx.resumenCalculado] : [tablaGenerica(valor.filas)];
-    case 'ficha_situacion_aprendizaje': return [tablaGenerica(valor.filas, { cabecera: false, fontSize: 8.5 })];
+    // Una SA creada o editada en la aplicación no tiene tabla importada: se
+    // monta a partir de sus campos, con la maquetación del documento.
+    case 'ficha_situacion_aprendizaje': return [tablaGenerica(
+      valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor) ? filasDeFicha(valor) : null),
+      { cabecera: false, fontSize: 8.5 },
+    )];
     default: return [tablaGenerica(valor.filas, { cabecera: campo.columnas ? true : undefined })];
   }
 }

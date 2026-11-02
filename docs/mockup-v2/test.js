@@ -16,6 +16,8 @@ require('./js/unidades.js');
 require('./js/plantilla.js');
 require('./js/estructura.js');
 require('./js/permisos.js');
+require('./js/importado.js');
+require('./js/sa.js');
 require('./js/contenido.js');
 require('./js/validaciones.js');
 require('./js/bloques.js');
@@ -26,6 +28,7 @@ const P = globalThis.Permisos;
 const C = globalThis.Contenido;
 const V = globalThis.Validaciones;
 const B = globalThis.Bloques;
+const S = globalThis.SA;
 
 const DEP = { departamento: 'informatica' };
 const CURSO = '2026-27';
@@ -479,6 +482,192 @@ prueba('lo que marca el botón es lo que el modelo guarda como tramos', () => {
   ]);
   // y los espacios de los bordes se quedan fuera de la marca
   assert.equal(B.marcar('uno dos tres', 3, 8, 'bold').valor, 'uno **dos** tres');
+});
+
+// ------------------------------------------------------------------ contenido real
+// js/importado.js trae el contenido del documento del departamento. Lo que se
+// comprueba aquí es que llega a donde la interfaz lo busca: si las claves de
+// sección del importador y las del mockup se separan, el contenido real no
+// aparece y nadie se enteraría, porque el corpus de muestra lo tapa.
+prueba('el contenido real llega a los apartados de la programación de DAW', () => {
+  const I = globalThis.Importado;
+  assert.ok(I && I.UNIDADES, 'no hay nada importado');
+
+  const raiz = Es.construirArbol('pd-fp-daw', CURSO);
+  const nodos = Es.aplanar(raiz).map((x) => x.nodo);
+  const comunes = nodos.filter((n) => n.seccion && !n.unidadId).map((n) => n.seccion);
+  const deUnidad = nodos.filter((n) => n.seccion && n.unidadId).map((n) => n.seccion);
+
+  Object.keys(I.COMUNES).forEach((k) => assert.ok(comunes.indexOf(k) >= 0, 'apartado común que nadie pinta: ' + k));
+  Object.keys(I.UNIDADES).forEach((id) => Object.keys(I.UNIDADES[id].secciones)
+    .forEach((k) => assert.ok(deUnidad.indexOf(k) >= 0, 'apartado de módulo que nadie pinta: ' + k)));
+
+  // y el texto real está en el apartado, no el de muestra
+  const intro = nodos.filter((n) => n.seccion === 'introduccion')[0];
+  const a = C.apartado('pd-fp-daw', intro);
+  assert.equal(a.origen, 'heredado', 'lo importado viene del curso pasado sin revisar');
+  assert.ok(B.plano(a.bloques[0].text).length > 200, 'el apartado no tiene el texto largo del documento');
+});
+
+prueba('las ponderaciones reales sustituyen a las de muestra', () => {
+  const reales = C.ponderaciones('daw-0484');
+  assert.equal(reales.length, 7, 'Base de datos tiene siete resultados de aprendizaje');
+  const total = Math.round(reales.reduce((x, r) => x + r.peso, 0) * 100) / 100;
+  assert.equal(total, 100);
+  assert.ok(reales[0].ce.length > 5, 'cada RA trae sus criterios');
+
+  // un módulo sin importar sigue con los cuatro RA de muestra
+  assert.equal(C.ponderaciones('smr-0221').length, 4);
+});
+
+prueba('los dos convenios de reparto de los criterios se aceptan', () => {
+  // El documento usa los dos: en Base de datos los criterios de un RA suman 100
+  // dentro del RA, y en Programación suman el peso del RA.
+  const raiz = Es.construirArbol('pd-fp-daw', CURSO);
+  const nodos = Es.aplanar(raiz).map((x) => x.nodo);
+  const pond = (unidadId) => nodos.filter((n) => n.unidadId === unidadId
+    && /^modulos\/ponderaciones/.test(n.seccion || ''))[0];
+
+  ['daw-0484', 'daw-0485'].forEach((id) => {
+    const nodo = pond(id);
+    assert.ok(nodo, 'no se encontró el apartado de ponderaciones de ' + id);
+    const errores = V.deApartado('pd-fp-daw', nodo, CURSO).filter((x) => x.severidad === 'error');
+    assert.deepEqual(errores.map((x) => x.titulo), [], id + ' da errores de ponderación con datos reales');
+  });
+});
+
+// ------------------------------------------------------------------ situaciones de aprendizaje
+prueba('las fichas importadas se leen con sus campos', () => {
+  S.reiniciar();
+  const lista = S.listar('daw-0484');
+  assert.equal(lista.length, 10, 'Base de datos tiene diez situaciones de aprendizaje');
+  const primera = lista[0];
+  assert.equal(primera.num, 1);
+  assert.equal(primera.titulo, 'El modelo relacional');
+  assert.equal(primera.sesiones, 17);
+  assert.deepEqual(primera.ra, [2]);
+  assert.ok(primera.ce.length >= 5, 'los criterios de evaluación de la ficha');
+  assert.ok(primera.recursos.length >= 1, 'los materiales y recursos de la ficha');
+  assert.equal(S.listar('smr-0221').length, 0, 'un módulo sin importar no tiene fichas');
+});
+
+prueba('la ficha del navegador y la del motor salen iguales, celda a celda', () => {
+  const motor = require(path.join(__dirname, '..', '..', 'poc-pdfmake', 'lib', 'ficha-sa.js'));
+  const Imp = globalThis.Importado;
+  let comparadas = 0;
+
+  Object.keys(Imp.UNIDADES).forEach((id) => S.listar(id).forEach((f) => {
+    comparadas += 1;
+    assert.deepEqual(S.filas(f), motor.filasDeFicha(f), 'la ficha ' + id + ' SA' + f.num + ' no coincide');
+    // y el motor puede volver a leer lo que el navegador pinta
+    const vuelta = motor.fichaDeFilas(S.filas(f));
+    motor.CAMPOS.forEach((campo) => assert.deepEqual(vuelta[campo.id], f[campo.id], campo.id));
+    assert.equal(vuelta.titulo, f.titulo);
+    assert.equal(vuelta.sesiones, f.sesiones);
+    assert.deepEqual(vuelta.ra, f.ra);
+  }));
+
+  assert.ok(comparadas >= 25, 'se esperaban las fichas de los tres módulos completos, hubo ' + comparadas);
+  assert.deepEqual(S.CAMPOS.map((c) => c.id), motor.CAMPOS.map((c) => c.id), 'los campos se han separado');
+  assert.deepEqual(S.CAMPOS.map((c) => c.etiqueta), motor.CAMPOS.map((c) => c.etiqueta), 'las etiquetas se han separado');
+});
+
+prueba('crear, duplicar, mover y borrar situaciones renumera sin perder nada', () => {
+  S.reiniciar();
+  const antes = S.listar('daw-0484').length;
+
+  const num = S.nueva('daw-0484');
+  assert.equal(num, antes + 1);
+  let lista = S.listar('daw-0484');
+  assert.equal(lista.length, antes + 1);
+  assert.deepEqual(lista.map((f) => f.num), lista.map((f, i) => i + 1), 'los números tienen que ir seguidos');
+
+  // editar una ficha
+  const f = S.ficha('daw-0484', num);
+  f.titulo = 'Consultas avanzadas';
+  f.sesiones = 8;
+  f.ra = [3];
+  f.ce = ['RA3.a. Se han identificado las herramientas.'];
+  S.guardar('daw-0484', f);
+  assert.equal(S.ficha('daw-0484', num).titulo, 'Consultas avanzadas');
+
+  S.mover('daw-0484', num, -1);
+  assert.equal(S.ficha('daw-0484', num - 1).titulo, 'Consultas avanzadas', 'al subir se queda en el número anterior');
+
+  const copiada = S.duplicar('daw-0484', num - 1);
+  assert.equal(S.ficha('daw-0484', copiada).titulo, 'Consultas avanzadas (copia)');
+
+  S.borrar('daw-0484', copiada);
+  S.borrar('daw-0484', num - 1);
+  lista = S.listar('daw-0484');
+  assert.equal(lista.length, antes);
+  assert.deepEqual(lista.map((f2) => f2.num), lista.map((f2, i) => i + 1));
+  S.reiniciar();
+});
+
+prueba('el resumen SA × RA se calcula desde las fichas', () => {
+  S.reiniciar();
+  const m = S.matriz('daw-0484');
+  assert.equal(m.filas.length, 10);
+  assert.deepEqual(m.ra, [1, 2, 3, 4, 5, 6, 7], 'las columnas son los RA del módulo');
+  assert.equal(m.sesiones, S.listar('daw-0484').reduce((x, f) => x + (f.sesiones || 0), 0));
+  assert.equal(m.filas[0].marca[1], true, 'la SA 1 trabaja el RA2');
+  assert.equal(m.filas[0].marca[0], false);
+
+  // al cambiarle los RA a una ficha, la tabla cambia sola
+  const f = S.ficha('daw-0484', 1);
+  f.ra = [1];
+  S.guardar('daw-0484', f);
+  const m2 = S.matriz('daw-0484');
+  assert.equal(m2.filas[0].marca[0], true);
+  assert.equal(m2.filas[0].marca[1], false);
+  S.reiniciar();
+});
+
+prueba('un RA sin ninguna situación de aprendizaje sale como aviso', () => {
+  S.reiniciar();
+  const sinSa = S.raSinSituacion('daw-0484');
+  const lista = S.listar('daw-0484');
+  const usados = new Set(lista.flatMap((f) => f.ra));
+  S.raDe('daw-0484').forEach((r) => {
+    assert.equal(sinSa.indexOf(r.num) >= 0, !usados.has(r.num), 'RA' + r.num);
+  });
+
+  // y el aviso llega a la vista de validaciones
+  const nodo = Es.aplanar(Es.construirArbol('pd-fp-daw', CURSO)).map((x) => x.nodo)
+    .filter((n) => n.unidadId === 'daw-0484' && n.seccion === S.SEC_SA)[0];
+  const avisos = V.deApartado('pd-fp-daw', nodo, CURSO);
+  sinSa.forEach((num) => assert.ok(avisos.some((a) => a.titulo.indexOf('RA' + num + ' no aparece') === 0),
+    'falta el aviso del RA' + num));
+  S.reiniciar();
+});
+
+prueba('una situación nueva avisa de lo que le falta', () => {
+  S.reiniciar();
+  // Se numera a continuación de las que vengan importadas, sean las que sean:
+  // antes esta prueba daba por hecho que este módulo no traía ninguna, y dejó de
+  // ser verdad en cuanto el extractor empezó a traer los once módulos enteros.
+  const antes = S.listar('daw-0615').length;
+  const num = S.nueva('daw-0615');
+  const nodo = Es.aplanar(Es.construirArbol('pd-fp-daw', CURSO)).map((x) => x.nodo)
+    .filter((n) => n.unidadId === 'daw-0615' && n.seccion === S.SEC_SA)[0];
+  const avisos = V.deApartado('pd-fp-daw', nodo, CURSO);
+  const titulos = avisos.map((a) => a.titulo).join(' | ');
+  assert.ok(/no dice qué resultados de aprendizaje/.test(titulos), 'falta el error de RA: ' + titulos);
+  assert.ok(/no tiene sesiones/.test(titulos), 'falta el aviso de sesiones');
+  assert.ok(/no tiene criterios/.test(titulos), 'falta el aviso de criterios');
+  assert.equal(avisos.filter((a) => a.severidad === 'error').length >= 1, true, 'sin RA es un error, no un aviso');
+  assert.equal(num, antes + 1, 'la situación nueva no se numera a continuación de las importadas');
+  S.reiniciar();
+});
+
+prueba('los criterios del módulo se marcan en la ficha con el formato del documento', () => {
+  const ra = S.raDe('daw-0484');
+  assert.ok(ra.length >= 7);
+  const linea = S.lineaCe(ra[1].num, ra[1].ce[0]);
+  assert.ok(/^RA2\.a\. /.test(linea), 'el formato de la línea no es el del documento: ' + linea);
+  // y así se vuelven a leer los RA de la ficha
+  assert.deepEqual(S.raDeTexto('RA2. Crea bases de datos.'), [2]);
 });
 
 // ------------------------------------------------------------------ cableado con el HTML

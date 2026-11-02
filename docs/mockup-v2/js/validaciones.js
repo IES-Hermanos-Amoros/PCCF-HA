@@ -26,6 +26,10 @@
 
   const destino = (docId, nodo) => ({ docId, seccion: nodo.seccion, unidadId: nodo.unidadId || null });
 
+  // Las ponderaciones del documento real llevan decimales (0,5 %), así que las
+  // sumas se comparan redondeadas a dos cifras y no con ===.
+  const redondea = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
   // Nombre de la unidad para el texto del aviso, o el documento si es común
   const dondeDice = (nodo, curso) =>
     nodo.unidadId ? U.tituloDe(nodo.unidadId, curso) : 'apartados comunes';
@@ -39,7 +43,7 @@
     // --- ponderaciones de RA y CE
     if (nodo.unidadId && nodo.seccion === SEC_PONDERACIONES) {
       const ra = C.ponderaciones(nodo.unidadId);
-      const total = ra.reduce((s, r) => s + r.peso, 0);
+      const total = redondea(ra.reduce((s, r) => s + r.peso, 0));
       if (total !== 100) {
         out.push({
           severidad: 'error',
@@ -48,23 +52,29 @@
           destino: destino(docId, nodo),
         });
       }
+      // El documento del departamento usa DOS convenios para los criterios de un
+      // RA, y los dos son correctos: o reparten la ponderación del RA (los
+      // criterios de un RA que pesa 9 suman 9), o reparten 100 dentro del RA
+      // (suman 100 y el peso real sale de multiplicar). Base de datos usa el
+      // segundo y los otros módulos el primero, así que aquí se aceptan ambos y
+      // solo se avisa de lo que no cuadra con ninguno.
       ra.forEach((r) => {
-        const suma = r.ce.reduce((s, c) => s + c.peso, 0);
-        if (suma !== r.peso) {
-          out.push({
-            severidad: 'error',
-            titulo: 'RA' + r.num + ': sus criterios suman ' + suma + ' % y el RA pesa ' + r.peso + ' %',
-            detalle: 'Los criterios de evaluación de un resultado de aprendizaje tienen que repartir exactamente su ponderación.',
-            destino: destino(docId, nodo),
-          });
-        }
+        const suma = redondea(r.ce.reduce((s, c) => s + c.peso, 0));
+        if (!r.ce.length || suma === redondea(r.peso) || suma === 100) return;
+        out.push({
+          severidad: 'error',
+          titulo: 'RA' + r.num + ': sus criterios suman ' + suma + ' %',
+          detalle: 'Los criterios de un resultado de aprendizaje tienen que sumar el peso de su RA ('
+            + redondea(r.peso) + ' %) o 100 % si se reparten dentro del RA. Ahora no cuadran con ninguno de los dos.',
+          destino: destino(docId, nodo),
+        });
       });
       if (!out.length) {
         out.push({ severidad: 'info', titulo: 'Ponderaciones cuadradas', detalle: 'Los RA suman 100 % y cada criterio reparte el peso de su RA.', destino: destino(docId, nodo) });
       }
     }
 
-    // --- RA sin situación de aprendizaje
+    // --- situaciones de aprendizaje
     if (nodo.unidadId && nodo.seccion === SEC_SITUACIONES) {
       C.raSinSituacion(nodo.unidadId).forEach((num) => {
         out.push({
@@ -73,6 +83,37 @@
           detalle: 'Todos los resultados de aprendizaje tienen que trabajarse en al menos una situación.',
           destino: destino(docId, nodo),
         });
+      });
+
+      // Cada ficha, por separado. Son comprobaciones que hoy no hace nadie: en el
+      // Word hay que repasar 79 fichas a ojo.
+      const SA = global.SA;
+      (SA ? SA.listar(nodo.unidadId) : []).forEach((f) => {
+        const quien = 'SA ' + f.num + (f.titulo ? ' («' + f.titulo + '»)' : '');
+        if (!f.ra.length) {
+          out.push({
+            severidad: 'error',
+            titulo: quien + ' no dice qué resultados de aprendizaje trabaja',
+            detalle: 'Sin resultados de aprendizaje la situación no cuenta en la tabla resumen ni en las ponderaciones.',
+            destino: destino(docId, nodo),
+          });
+        }
+        if (f.sesiones == null || Number(f.sesiones) <= 0) {
+          out.push({
+            severidad: 'aviso',
+            titulo: quien + ' no tiene sesiones',
+            detalle: 'Sin sesiones no se puede comprobar que la suma de la unidad cuadre con las horas del módulo.',
+            destino: destino(docId, nodo),
+          });
+        }
+        if (!f.ce.length) {
+          out.push({
+            severidad: 'aviso',
+            titulo: quien + ' no tiene criterios de evaluación',
+            detalle: 'Los criterios se pueden marcar desde los del módulo en la propia ficha.',
+            destino: destino(docId, nodo),
+          });
+        }
       });
     }
 

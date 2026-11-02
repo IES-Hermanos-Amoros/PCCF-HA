@@ -1,7 +1,7 @@
 # Mockup v2 de la interfaz
 
 Segunda versión del prototipo de la aplicación descrita en [`../interfaz-web.md`](../interfaz-web.md).
-Parte del [mockup de Miguel Ángel](../mockups/) —que es el que fija la forma de la interfaz: barra
+Parte del [primer mockup](../mockups/) —que es el que fija la forma de la interfaz: barra
 superior, árbol lateral, contenido y panel de comprobaciones— y le añade la funcionalidad que
 teníamos prevista y las correcciones de arquitectura que hacían falta para poder construir la app
 encima.
@@ -19,7 +19,7 @@ Las pruebas de la lógica sí se ejecutan con node:
 node docs/mockup-v2/test.js
 ```
 
-Son 40, y la que más vale es la última de permisos: compara el motor de permisos del navegador con
+Son 50, y la que más vale es la última de permisos: compara el motor de permisos del navegador con
 `poc-pdfmake/lib/permisos.js` **nodo a nodo y usuario a usuario** en los siete documentos, con
 apartados añadidos a mano incluidos. En el v1 las dos implementaciones se habían separado sin que
 nadie se enterara.
@@ -98,7 +98,8 @@ es precisamente el identificador frágil que veníamos a arreglar: si alguien re
 
 ## Qué es real y qué es de muestra
 
-**Real** (extraído de los `.docx` de `../entrada_ej/` por Miguel Ángel en el v1, y reutilizado aquí):
+**Real** (extraído en el v1 de los `.docx` del departamento, que no se versionan, y reutilizado
+aquí):
 la estructura de los siete documentos, los títulos de apartados, módulos y materias, y el reparto de
 qué edita quién.
 
@@ -121,8 +122,11 @@ la app real salen del importador; mientras tanto se quedan donde están.
 
 ## Lo que falta
 
-- Editores estructurados de la tabla RA ↔ CE y de las fichas de situaciones de aprendizaje: por ahora
-  solo las ponderaciones tienen editor de verdad, con la suma en vivo.
+- Editor de la tabla RA ↔ CE, de la ficha del módulo y de los contenidos básicos: se ven tal como
+  vienen del Word, con un aviso de *todavía sin editor*. Con editor están las ponderaciones y las
+  situaciones de aprendizaje.
+- Contenido real de ESO y Bachillerato. Sus situaciones de aprendizaje no van por resultados de
+  aprendizaje sino por competencias específicas, así que necesitan otra ficha.
 - **Enlaces** en el texto: harían falta en `render-generico.js` (pdfmake los soporta con `link`), en
   el editor y en el importador. Negrita y cursiva ya están.
 - El **importador aplana el formato**: un .docx con negritas se importa como texto plano, así que
@@ -150,13 +154,17 @@ mockup-v2/
   js/util.js          cuatro ayudas compartidas
   js/unidades.js      catálogo de unidades: id estable + código + títulos por curso
   js/plantilla.js     cambios de estructura: renombrar, añadir, reordenar, retirar
+  js/importado.js     GENERADO: contenido del documento de ejemplo saneado
+  js/sa.js            situaciones de aprendizaje: modelo, resumen SA x RA y ficha impresa
   js/estructura.js    árboles de los documentos, slugs y constructor del árbol
   js/permisos.js      puerto comprobado de poc-pdfmake/lib/permisos.js
   js/contenido.js     bloques, arrastre entre cursos, compartidos, personas, comentarios
   js/validaciones.js  comprobaciones con destino navegable (lo que pide §3.4)
   js/bloques.js       modelo de bloques y sus operaciones
   js/ui.js            árbol accesible, rutas, vistas y paneles
-  test.js             40 pruebas, sin dependencias
+  test.js             50 pruebas, sin dependencias
+
+  herramientas/extraer-contenido.js   genera js/importado.js desde poc-pdfmake/out/ejemplo/
 ```
 
 Solo `js/ui.js` toca el DOM. El resto se puede exigir desde node, que es lo que hace `test.js` y lo

@@ -166,6 +166,38 @@
     }).join('');
   }
 
+  // ---------------------------------------------------------------- tablas importadas
+  // El Word trae tablas que el modelo de párrafos y listas no sabe representar:
+  // la ficha del módulo, la de RA y CE, los contenidos básicos… Se pintan tal
+  // como vienen (celdas con colspan y rowspan) y de momento NO se editan aquí:
+  // cada una necesita su propio editor, como el de ponderaciones. Mientras no
+  // existan, al menos se ven, en lugar de desaparecer del apartado.
+  function pintarTabla(filas, etiqueta) {
+    if (!Array.isArray(filas) || !filas.length) return '';
+    const cuerpo = filas.map((fila) => '<tr>' + (fila || []).map((c) => {
+      const cs = (c && c.colspan) > 1 ? ' colspan="' + c.colspan + '"' : '';
+      const rs = (c && c.rowspan) > 1 ? ' rowspan="' + c.rowspan + '"' : '';
+      const t = esc(c && c.text == null ? '' : c.text).replace(/\n/g, '<br>');
+      return c && c.bold ? '<th' + cs + rs + '>' + t + '</th>' : '<td' + cs + rs + '>' + t + '</td>';
+    }).join('') + '</tr>').join('');
+    return '<div class="bloque bloque-tabla">'
+      + '<span class="tabla-etq">' + esc(etiqueta || 'tabla del documento') + ' · todavía sin editor</span>'
+      + '<div class="tabla-marco"><table class="tabla-doc">' + cuerpo + '</table></div></div>';
+  }
+
+  const pintarPares = (pares) => pintarTabla(
+    (pares || []).map((p) => [{ text: p.etiqueta, bold: true }, { text: p.valor }]),
+    'identificación del módulo',
+  );
+
+  // La tabla de RA y CE: cada resultado de aprendizaje con sus criterios debajo.
+  const pintarRaCe = (ra) => pintarTabla(
+    (ra || []).reduce((filas, r) => filas
+      .concat([[{ text: 'RA' + r.num, bold: true }, { text: r.texto, bold: true, colspan: 2 }]])
+      .concat((r.ce || []).map((ce) => [{ text: '' }, { text: ce.letra + ')', bold: true }, { text: ce.texto }])), []),
+    'resultados de aprendizaje y criterios de evaluación',
+  );
+
   // ---------------------------------------------------------------- pintado
   function pintarLista(b, indice, editable) {
     const items = b.items.map((it, j) => {
@@ -225,6 +257,9 @@
     }
     return bloques.map((b, i) => {
       if (b.ref) return pintarCompartido(b, i, permisos);
+      if (b.type === 'tabla') return pintarTabla(b.filas, b.etiqueta);
+      if (b.type === 'pares') return pintarPares(b.pares);
+      if (b.type === 'ra_ce') return pintarRaCe(b.ra);
       if (b.type === 'list') return pintarLista(b, i, editable);
       return pintarParrafo(b, i, editable);
     }).join('');
@@ -332,6 +367,20 @@
       if (b.type === 'list') {
         return Array.isArray(b.items)
           && b.items.every((it) => it && textoValido(it.text) && Number.isInteger(it.level || 0));
+      }
+      // Las tablas que llegan del Word: celdas de texto plano, nada de HTML.
+      if (b.type === 'tabla') {
+        return Array.isArray(b.filas) && b.filas.every((fila) => Array.isArray(fila)
+          && fila.every((c) => c && typeof c === 'object' && textoValido(c.text == null ? '' : String(c.text))));
+      }
+      if (b.type === 'pares') {
+        return Array.isArray(b.pares) && b.pares.every((x) => x && textoValido(String(x.etiqueta == null ? '' : x.etiqueta))
+          && textoValido(String(x.valor == null ? '' : x.valor)));
+      }
+      if (b.type === 'ra_ce') {
+        return Array.isArray(b.ra) && b.ra.every((r) => r && Number.isFinite(Number(r.num))
+          && textoValido(String(r.texto == null ? '' : r.texto))
+          && (r.ce || []).every((ce) => ce && textoValido(String(ce.texto == null ? '' : ce.texto))));
       }
       return false;
     });

@@ -9,3 +9,13 @@ node_modules/
 .fetch-client
 .DS_Store
 Thumbs.db
+
+# Los documentos del departamento NO se versionan: este repositorio es público y
+# llevan dentro nombres de profesorado, correos corporativos, datos de empresas de
+# prácticas y, en los metadatos del propio .docx, quién los editó.
+#
+# Tampoco se versionan los ejemplos saneados. Se pueden regenerar en un minuto y
+# medio con `node poc-pdfmake/scripts/sanear-docx.js` en una máquina que tenga los
+# originales, así que no hay motivo para meter cinco megas de binarios en el
+# historial ni para publicar los documentos del departamento, aunque estén
+# saneados. Cómo se hacen y qué se comprueba, en docs/entrada_ej/README.md.

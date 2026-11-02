@@ -9,6 +9,7 @@
 const mammoth = require('mammoth');
 const { parse } = require('node-html-parser');
 const { extraerCompartidos } = require('./compartidos');
+const { fichaDeFilas } = require('./ficha-sa');
 
 // ---------------------------------------------------------------- utilidades de texto
 const decode = (t) => String(t || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
@@ -165,15 +166,11 @@ function parsePonderacion(t) {
   }
   return out;
 }
+// La ficha se lee entera, no solo su cabecera: lo que sale de aquí es el modelo
+// con campos con nombre de lib/ficha-sa.js, que es lo que permite editar una SA
+// y crear otras nuevas en lugar de solo volver a imprimir la tabla importada.
 function parseFichaSA(t) {
-  const g = (i, j = 0) => (t.rows[i] && t.rows[i][j] ? t.rows[i][j].text : '');
-  const num = (g(0).match(/(\d+)/) || [])[1];
-  const celdaEtiqueta = (etq) => { for (const r of t.rows) for (let j = 0; j < r.length; j++) if (norm(r[j].text) === etq && r[j + 1]) return r[j + 1].text; return ''; };
-  const raTexto = (() => { for (const r of t.rows) if (norm(r[0].text).startsWith('resultado') && r[1]) return r[1].text; return ''; })();
-  return {
-    num: num ? Number(num) : null, titulo: g(0, 1), sesiones: numPct(celdaEtiqueta('sesiones')), evaluacion: celdaEtiqueta('evaluacion'),
-    ra: [...raTexto.matchAll(/(?:^|\n)\s*(?:RA\s*)?(\d+)\s*[.):-]/gi)].map((x) => Number(x[1])),
-  };
+  return fichaDeFilas(t.rows);
 }
 function parseClaveValor(t) {
   const pares = [];
@@ -285,7 +282,7 @@ async function importarDocx(input, opts = {}) {
   const nodos = htmlANodos(html);
   const raiz = construirArbol(nodos);
   const avisos = [];
-  if (raiz.bloques.length) avisos.push(`${raiz.bloques.length} bloques antes del primer título (portada o índice); se ignoran.`);
+  if (raiz.bloques.length && !opts.incluirInicial) avisos.push(`${raiz.bloques.length} bloques antes del primer título (portada o índice); se ignoran.`);
 
   // 1) grupos de instancias en el primer nivel (p. ej. "Módulos del primer curso" + "... segundo curso")
   const grupos = [];
@@ -298,6 +295,20 @@ async function importarDocx(input, opts = {}) {
   }
 
   const secciones = []; const documento = {}; const instanciasOut = [];
+  // Contenido anterior al primer título. En la PD es portada e índice y se
+  // ignora, pero hay documentos (los PCCF) en los que el cuerpo entero va antes
+  // del primer título porque los apartados están escritos como párrafos
+  // numerados, no con estilos de título. Con `incluirInicial` se conserva como
+  // una sección más en lugar de perderlo; sus tablas (empresas, competencias)
+  // pasan así por el saneador.
+  if (opts.incluirInicial && raiz.bloques.length) {
+    const inicial = { nivel: 1, titulo: 'Contenido inicial', num: null, bloques: raiz.bloques, hijos: [] };
+    const can = fusionar([inicial], '');
+    can.id = 'contenido-inicial';
+    can.titulo = 'Contenido inicial';
+    secciones.push(can);
+    Object.assign(documento, extraer(can, inicial));
+  }
   for (const s of raiz.hijos) {
     const fam = familias.find((f) => f.grupos.some((g) => g.seccion === s));
     if (!fam) {

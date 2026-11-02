@@ -30,6 +30,7 @@
   const V = global.Validaciones;
   const B = global.Bloques;
   const Pl = global.Plantilla;
+  const SA = global.SA;
 
   const DEPARTAMENTO = { departamento: 'informatica' };
   const CURSOS = ['2025-26', '2026-27'];
@@ -54,6 +55,7 @@
     { seccion: R('materias', 'Situaciones de aprendizaje'), corto: 'Situaciones' },
   ];
   const SEC_PONDERACIONES = COLUMNAS_MODULO[5].seccion;
+  const SEC_SITUACIONES = SA.SEC_SA;
 
   // ---------------------------------------------------------------- estado
   const E = {
@@ -71,6 +73,7 @@
     estados: new Map(),
     cajon: false,
     foco: null,          // campo donde está el cursor: a ese le pega la barra
+    sa: null,            // nº de la situación de aprendizaje abierta, si hay una
   };
 
   const usuario = () => C.usuario(E.usuarioId);
@@ -89,6 +92,7 @@
     if (E.vista !== 'contenido') q.push('v=' + E.vista);
     if (E.curso !== '2026-27') q.push('c=' + E.curso);
     if (E.usuarioId !== 'u-jefedpto') q.push('p=' + E.usuarioId);
+    if (E.sa) q.push('sa=' + E.sa);
     const hash = partes.join('/') + (q.length ? '?' + q.join('&') : '');
     if (global.location.hash === hash) return;
     if (reemplazar) global.history.replaceState(null, '', hash);
@@ -113,6 +117,8 @@
     if (CURSOS.includes(c)) E.curso = c;
     const p = q.get('p');
     if (p && C.usuario(p)) E.usuarioId = p;
+    const sa = Number(q.get('sa'));
+    E.sa = sa > 0 ? sa : null;
     return true;
   }
 
@@ -362,6 +368,7 @@
     }
     if (nodo.tipo === 'unidad') { cont.innerHTML = vistaUnidad(nodo) + listaHijos(nodo); return; }
     E.foco = null;
+    if (!(nodo.unidadId && nodo.seccion === SEC_SITUACIONES)) E.sa = null;
     cont.innerHTML = vistaApartado(nodo) + barraEstructura(nodo, e.camino);
     $$('#contenido textarea[data-bloque]').forEach(autoalto);
   }
@@ -387,6 +394,13 @@
 
     if (nodo.unidadId && nodo.seccion === SEC_PONDERACIONES) {
       html += tablaPonderaciones(nodo, editable);
+    }
+
+    // Las situaciones de aprendizaje no son un texto: son fichas con sus
+    // apartados. Con una abierta, el apartado es esa ficha y nada más.
+    if (nodo.unidadId && nodo.seccion === SEC_SITUACIONES) {
+      if (E.sa) return html + fichaSituacion(nodo, editable);
+      html += panelSituaciones(nodo, editable);
     }
 
     html += '<section class="tarjeta">'
@@ -512,6 +526,244 @@
       + '<th class="centro">Peso</th></tr></thead><tbody>' + filas + '</tbody></table>'
       + '<p class="suave">Los pesos de muestra se recalculan solos: la suma de los RA tiene que dar 100 % y los criterios de cada RA, el peso de su RA.</p>'
       + '</section>';
+  }
+
+  // ---------------------------------------------------------------- situaciones de aprendizaje
+  // Donde está el trabajo de verdad: en la PD de DAW hay 79 fichas. El v1 solo
+  // enseñaba la tabla del Word; aquí se ven, se cambian y se crean, y la ficha se
+  // pinta como va a salir impresa, con las mismas filas que manda al PDF
+  // (js/sa.js es un puerto de poc-pdfmake/lib/ficha-sa.js).
+
+  // La tabla resumen SA × RA, calculada. En el Word hay que repasarla a mano cada
+  // vez que se mueve una situación, y es la que se queda desfasada.
+  function matrizSituaciones(m) {
+    if (!m.filas.length) return '';
+    const cab = '<tr><th rowspan="2">Ev.</th><th rowspan="2">Situación de aprendizaje</th>'
+      + '<th rowspan="2" class="centro">Sesiones</th>'
+      + '<th class="centro" colspan="' + Math.max(m.ra.length, 1) + '">Resultados de aprendizaje</th></tr>'
+      + '<tr>' + m.ra.map((n) => '<th class="centro">' + n + '</th>').join('') + '</tr>';
+    const cuerpo = m.filas.map((f) => '<tr>'
+      + '<td class="centro">' + esc(f.evaluacion) + '</td>'
+      + '<td><a href="#" data-sa="ver" data-num="' + f.num + '">SA ' + f.num + ': ' + esc(f.titulo) + '</a></td>'
+      + '<td class="centro">' + (f.sesiones == null ? '' : f.sesiones) + '</td>'
+      + f.marca.map((x) => '<td class="centro">' + (x ? '<b>X</b>' : '') + '</td>').join('')
+      + '</tr>').join('');
+    const pie = '<tr class="fila-suma"><td colspan="2" class="derecha suave">total de sesiones</td>'
+      + '<td class="centro"><b>' + m.sesiones + '</b></td>'
+      + m.ra.map(() => '<td></td>').join('') + '</tr>';
+    return '<div class="tabla-marco"><table class="tabla tabla-matriz"><thead>' + cab + '</thead>'
+      + '<tbody>' + cuerpo + '</tbody><tfoot>' + pie + '</tfoot></table></div>'
+      + '<p class="suave">Esta tabla no se guarda: sale de las fichas. Si se mueve una situación o se le'
+      + ' cambian los resultados de aprendizaje, cambia sola.</p>';
+  }
+
+  function panelSituaciones(nodo, editable) {
+    const lista = SA.listar(nodo.unidadId);
+    const m = SA.matriz(nodo.unidadId);
+    const n = lista.length;
+
+    const fichas = lista.map((f, i) => '<li class="sa-item">'
+      + '<div class="sa-datos">'
+      + '<a class="sa-titulo" href="#" data-sa="ver" data-num="' + f.num + '">'
+      + '<b>SA ' + f.num + '</b> · ' + esc(f.titulo || '(sin título)') + '</a>'
+      + '<span class="suave">'
+      + (f.ra.length ? 'RA ' + f.ra.join(', ') : '<span class="mal">sin RA</span>')
+      + ' · ' + (f.sesiones == null ? '<span class="mal">sin sesiones</span>' : f.sesiones + ' sesiones')
+      + ' · ' + esc(f.evaluacion || '?') + ' evaluación'
+      + ' · ' + f.ce.length + ' criterios</span>'
+      + '</div>'
+      + '<div class="sa-acciones">'
+      + '<button class="mini" data-sa="ver" data-num="' + f.num + '">' + (editable ? 'Abrir' : 'Ver ficha') + '</button>'
+      + (editable ? '<button class="mini" data-sa="duplicar" data-num="' + f.num + '" title="Duplicar">⧉</button>'
+        + '<button class="mini" data-sa="subir" data-num="' + f.num + '" title="Subir"' + (i === 0 ? ' disabled' : '') + '>↑</button>'
+        + '<button class="mini" data-sa="bajar" data-num="' + f.num + '" title="Bajar"' + (i === n - 1 ? ' disabled' : '') + '>↓</button>'
+        + '<button class="mini" data-sa="borrar" data-num="' + f.num + '" title="Borrar">×</button>' : '')
+      + '</div></li>').join('');
+
+    return '<section class="tarjeta">'
+      + '<header class="tarjeta-cab"><h2>Situaciones de aprendizaje</h2>'
+      + '<span class="chip">' + n + (n === 1 ? ' situación' : ' situaciones') + '</span>'
+      + '<span class="chip">' + m.sesiones + ' sesiones</span>'
+      + (m.sinSituacion.length
+        ? '<span class="chip chip-error">RA sin situación: ' + m.sinSituacion.join(', ') + '</span>' : '')
+      + (SA.tocada(nodo.unidadId) ? '<span class="chip chip-completo">con cambios propios</span>' : '')
+      + (editable ? '<button class="mini mini-add" data-sa="nueva">+ nueva situación</button>' : '')
+      + '</header>'
+      + (n ? matrizSituaciones(m)
+        + '<ul class="lista-sa">' + fichas + '</ul>'
+        : '<p class="vacio-apartado">Este módulo no tiene ninguna situación de aprendizaje.'
+          + (editable ? ' Usa <em>+ nueva situación</em> para empezar.' : '') + '</p>')
+      + '</section>';
+  }
+
+  // --- una ficha: el formulario y, debajo, la ficha como va a salir impresa
+  function fichaSituacion(nodo, editable) {
+    const f = SA.ficha(nodo.unidadId, E.sa);
+    if (!f) { E.sa = null; return panelSituaciones(nodo, editable); }
+    const raModulo = SA.raDe(nodo.unidadId);
+
+    const cab = '<header class="tarjeta-cab">'
+      + '<button class="mini" data-sa="volver">← situaciones</button>'
+      + '<h2>SA ' + f.num + ' · ' + esc(f.titulo || '(sin título)') + '</h2>'
+      + '</header>';
+
+    if (!editable) {
+      return '<section class="tarjeta">' + cab
+        + B.pintar([{ type: 'tabla', filas: SA.filas(f), etiqueta: 'ficha de la situación de aprendizaje' }], false)
+        + '</section>';
+    }
+
+    const campoTexto = (c) => '<label class="sa-campo"><span>' + esc(c.etiqueta) + '</span>'
+      + (c.ayuda ? '<i class="suave">' + c.ayuda + '</i>' : '')
+      + '<textarea class="campo" rows="' + Math.max(2, Math.min(8, f[c.id].length + 1)) + '"'
+      + ' data-sa-campo="' + c.id + '">' + esc(SA.texto(f[c.id])) + '</textarea></label>';
+
+    // Los RA se eligen de los del propio módulo, no se escriben: así la ficha y
+    // la tabla de RA y CE del módulo no pueden contradecirse.
+    const elegirRa = raModulo.length
+      ? '<fieldset class="sa-ra"><legend>Resultados de aprendizaje que trabaja</legend>'
+        + raModulo.map((r) => '<label><input type="checkbox" data-sa-ra="' + r.num + '"'
+          + (f.ra.indexOf(r.num) >= 0 ? ' checked' : '') + '>'
+          + '<span><b>RA' + r.num + '</b> ' + esc(r.texto) + '</span></label>').join('')
+        + '</fieldset>'
+      : '<label class="sa-campo"><span>Resultado(s) de aprendizaje</span>'
+        + '<i class="suave">Este módulo no tiene importada su tabla de RA y CE, así que se escribe a mano.</i>'
+        + '<textarea class="campo" rows="2" data-sa-campo="raTexto">' + esc(f.raTexto) + '</textarea></label>';
+
+    // Los criterios del RA elegido, para marcarlos en lugar de copiarlos.
+    const elegidos = raModulo.filter((r) => f.ra.indexOf(r.num) >= 0);
+    const puestos = SA.lineas(f.ce);
+    const elegirCe = elegidos.length
+      ? '<details class="sa-ce"' + (puestos.length ? '' : ' open') + '>'
+        + '<summary>Criterios de evaluación del módulo (' + elegidos.reduce((n, r) => n + r.ce.length, 0) + ')</summary>'
+        + elegidos.map((r) => '<div class="sa-ce-grupo"><span class="asig-etq">RA' + r.num + '</span>'
+          + r.ce.map((ce) => {
+            const linea = SA.lineaCe(r.num, ce);
+            return '<label><input type="checkbox" data-sa-ce="' + r.num + '|' + ce.letra + '"'
+              + (puestos.indexOf(linea) >= 0 ? ' checked' : '') + '>'
+              + '<span><b>' + ce.letra + ')</b> ' + esc(ce.texto) + '</span></label>';
+          }).join('') + '</div>').join('')
+        + '</details>'
+      : '';
+
+    const actividades = SA.CAMPOS.filter((c) => c.grupo === 'actividades');
+    const sueltos = SA.CAMPOS.filter((c) => c.grupo !== 'actividades' && c.id !== 'ce');
+
+    return '<section class="tarjeta">' + cab
+      + '<div class="sa-cabecera">'
+      + '<label class="sa-campo"><span>Título</span>'
+      + '<input class="campo" type="text" data-sa-campo="titulo" value="' + esc(f.titulo) + '"></label>'
+      + '<label class="sa-campo sa-corto"><span>Sesiones</span>'
+      + '<input class="campo" type="number" min="0" step="1" data-sa-campo="sesiones" value="'
+      + (f.sesiones == null ? '' : f.sesiones) + '"></label>'
+      + '<label class="sa-campo sa-corto"><span>Evaluación</span>'
+      + '<select class="campo" data-sa-campo="evaluacion">'
+      + SA.EVALUACIONES.map((e) => '<option' + (e === f.evaluacion ? ' selected' : '') + '>' + e + '</option>').join('')
+      + '</select></label>'
+      + '</div>'
+      + elegirRa
+      + elegirCe
+      + campoTexto(SA.CAMPOS.filter((c) => c.id === 'ce')[0])
+      + sueltos.map(campoTexto).join('')
+      + '<fieldset class="sa-actividades"><legend>' + esc(SA.CABECERA_ACTIVIDADES) + '</legend>'
+      + actividades.map(campoTexto).join('')
+      + '</fieldset>'
+      + '</section>'
+      + '<details class="tarjeta" id="previa-sa" open><summary>La ficha como va a salir impresa</summary>'
+      + B.pintar([{ type: 'tabla', filas: SA.filas(f), etiqueta: 'ficha de la situación de aprendizaje' }], false)
+      + '</details>';
+  }
+
+  // Lo que hay escrito en el formulario, como modelo.
+  function leerFicha(nodo) {
+    const f = SA.ficha(nodo.unidadId, E.sa) || SA.vacia(E.sa);
+    const val = (id) => {
+      const el = $('#contenido [data-sa-campo="' + id + '"]');
+      return el ? el.value : null;
+    };
+    const titulo = val('titulo');
+    if (titulo !== null) f.titulo = titulo;
+    const ses = val('sesiones');
+    if (ses !== null) f.sesiones = ses === '' ? null : Number(ses);
+    const ev = val('evaluacion');
+    if (ev !== null) f.evaluacion = ev;
+
+    const cajas = $$('#contenido [data-sa-ra]');
+    if (cajas.length) {
+      const raModulo = SA.raDe(nodo.unidadId);
+      f.ra = cajas.filter((x) => x.checked).map((x) => Number(x.dataset.saRa));
+      f.raTexto = f.ra.map((n) => {
+        const r = raModulo.filter((x) => x.num === n)[0];
+        return 'RA' + n + '. ' + (r ? r.texto : '');
+      }).join('\n');
+    } else {
+      const t = val('raTexto');
+      if (t !== null) { f.raTexto = t; f.ra = SA.raDeTexto(t); }
+    }
+
+    SA.CAMPOS.forEach((c) => {
+      const v = val(c.id);
+      if (v !== null) f[c.id] = SA.lineas(v);
+    });
+    return f;
+  }
+
+  // Guardar y refrescar la vista previa sin repintar el formulario, que perdería
+  // el cursor. El resto (árbol, avisos) se aplaza como con el texto.
+  function guardarFicha(nodo) {
+    const f = leerFicha(nodo);
+    SA.guardar(nodo.unidadId, f);
+    const previa = $('#previa-sa');
+    if (previa) {
+      previa.innerHTML = '<summary>La ficha como va a salir impresa</summary>'
+        + B.pintar([{ type: 'tabla', filas: SA.filas(f), etiqueta: 'ficha de la situación de aprendizaje' }], false);
+    }
+    marcarGuardado();
+    return f;
+  }
+
+  // Marcar o desmarcar un criterio del módulo: añade o quita su línea.
+  function alternarCe(nodo, caja) {
+    const campo = $('#contenido [data-sa-campo="ce"]');
+    if (!campo) return;
+    const partes = String(caja.dataset.saCe).split('|');
+    const r = SA.raDe(nodo.unidadId).filter((x) => x.num === Number(partes[0]))[0];
+    const ce = r ? r.ce.filter((x) => x.letra === partes[1])[0] : null;
+    if (!ce) return;
+    const linea = SA.lineaCe(r.num, ce);
+    const lineas = SA.lineas(campo.value).filter((l) => l !== linea);
+    if (caja.checked) lineas.push(linea);
+    campo.value = lineas.join('\n');
+    autoalto(campo);
+    guardarFicha(nodo);
+  }
+
+  function accionSa(boton, nodo) {
+    const accion = boton.dataset.sa;
+    const num = Number(boton.dataset.num);
+
+    if (accion === 'volver') { E.sa = null; pintarTodo(); return; }
+    if (accion === 'ver') { E.sa = num; pintarTodo(); return; }
+    if (!P.puedeEditar(usuario(), nodo, DEPARTAMENTO)) return;
+
+    if (accion === 'nueva') {
+      E.sa = SA.nueva(nodo.unidadId);
+      toast('Situación de aprendizaje creada. Sale en el resumen y en el PDF en cuanto tenga RA y sesiones.');
+      pintarTodo();
+      return;
+    }
+    if (accion === 'duplicar') { E.sa = SA.duplicar(nodo.unidadId, num); pintarTodo(); return; }
+    if (accion === 'borrar') {
+      SA.borrar(nodo.unidadId, num);
+      E.sa = null;
+      toast('Situación borrada. Las demás se renumeran solas.');
+      pintarTodo(true);
+      return;
+    }
+    if (accion === 'subir' || accion === 'bajar') {
+      SA.mover(nodo.unidadId, num, accion === 'subir' ? -1 : 1);
+      pintarTodo(true);
+    }
   }
 
   // ---------------------------------------------------------------- estructura del documento
@@ -997,6 +1249,7 @@
 
   function arrancar() {
     C.cargar();
+    SA.cargar();
     Pl.cargar();
     pintarSelectorPersona();
     try {
@@ -1145,6 +1398,14 @@
         return;
       }
 
+      const situacion = ev.target.closest('[data-sa]');
+      if (situacion) {
+        ev.preventDefault();
+        const n = nodoActivo();
+        if (n) accionSa(situacion, n);
+        return;
+      }
+
       const estr = ev.target.closest('[data-estructura]');
       if (estr) { accionEstructura(estr); return; }
 
@@ -1193,7 +1454,29 @@
         refrescarTrasEscribir();
         return;
       }
-      if (ev.target.matches('.tabla-pond input')) recalcularPonderaciones();
+      if (ev.target.matches('.tabla-pond input')) { recalcularPonderaciones(); return; }
+      const sa = ev.target.closest('[data-sa-campo]');
+      if (sa) {
+        const n = nodoActivo();
+        if (n && P.puedeEditar(usuario(), n, DEPARTAMENTO)) {
+          if (sa.tagName === 'TEXTAREA') autoalto(sa);
+          guardarFicha(n);
+          refrescarTrasEscribir();
+        }
+      }
+    });
+
+    // los desplegables y las casillas de la ficha no lanzan `input` en todos los
+    // navegadores, así que se escucha también el cambio
+    $('#contenido').addEventListener('change', (ev) => {
+      const n = nodoActivo();
+      if (!n || !P.puedeEditar(usuario(), n, DEPARTAMENTO)) return;
+      const ce = ev.target.closest('[data-sa-ce]');
+      if (ce) { alternarCe(n, ce); refrescarTrasEscribir(); return; }
+      if (ev.target.closest('[data-sa-ra]') || ev.target.closest('[data-sa-campo]')) {
+        guardarFicha(n);
+        pintarArbol();
+      }
     });
 
     // ---- dónde está el cursor, para la barra de herramientas
