@@ -8,8 +8,16 @@
 
 const esTexto = (b) => b && typeof b === 'object' && (b.type === 'p' || b.type === 'list');
 const esRef = (b) => b && typeof b === 'object' && typeof b.ref === 'string';
-const clave = (b) => (b.type === 'p' ? 'p|' + b.text : 'l|' + JSON.stringify(b.items));
-const largo = (b) => (b.type === 'p' ? b.text.length : b.items.reduce((s, it) => s + it.text.length, 0));
+// `text` puede ser una cadena o, si lleva formato, una lista de tramos
+// ({ text, bold, italics }), que es lo que pdfmake acepta en cualquier nodo de
+// texto. `plano` saca solo las letras, para medir; la clave va sobre el valor
+// entero, porque dos párrafos con las mismas palabras y distinto formato no son
+// el mismo texto compartido.
+const plano = (t) => (Array.isArray(t)
+  ? t.map((r) => (r && typeof r === 'object' ? (r.text || '') : r)).join('')
+  : String(t == null ? '' : t));
+const clave = (b) => (b.type === 'p' ? 'p|' + JSON.stringify(b.text) : 'l|' + JSON.stringify(b.items));
+const largo = (b) => (b.type === 'p' ? plano(b.text).length : b.items.reduce((s, it) => s + plano(it.text).length, 0));
 const copiar = (b) => JSON.parse(JSON.stringify(b));
 
 // Recorre las listas de bloques de texto (campos texto_largo, también dentro de ítems repetidos) de unos valores
@@ -54,7 +62,7 @@ function extraerCompartidos(datos, { umbral = 3, minimo = 80 } = {}) {
 
   return elegidos.map((o) => ({
     id: idPorClave.get(clave(o.bloque)), modulos: o.modulos.size, comun: o.comun, seccion: o.seccion,
-    inicio: (o.bloque.type === 'p' ? o.bloque.text : o.bloque.items.map((it) => it.text).join(' · ')).replace(/\s+/g, ' ').slice(0, 90),
+    inicio: (o.bloque.type === 'p' ? plano(o.bloque.text) : o.bloque.items.map((it) => plano(it.text)).join(' · ')).replace(/\s+/g, ' ').slice(0, 90),
   }));
 }
 
@@ -101,4 +109,4 @@ function avisosDesvinculados(datos) {
   return avisos;
 }
 
-module.exports = { extraerCompartidos, resolverCompartidos, editarCompartido, desvincular, avisosDesvinculados, listasDeTexto };
+module.exports = { extraerCompartidos, resolverCompartidos, editarCompartido, desvincular, avisosDesvinculados, listasDeTexto, plano };

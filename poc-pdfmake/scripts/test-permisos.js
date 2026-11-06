@@ -46,10 +46,11 @@ prueba('otro departamento no ve ni edita', () => {
   assert.equal(puedeEditar(u.otro, plantilla, datos, comun), false);
 });
 
-prueba('el jefe de departamento edita lo común y los compartidos; los módulos, solo si los tiene asignados', () => {
+prueba('el jefe de departamento edita lo común, los compartidos y todos los módulos', () => {
   assert.equal(puedeEditar(u.jefe, plantilla, datos, comun), true);
-  assert.equal(puedeEditar(u.jefe, plantilla, datos, prog), false);
+  assert.equal(puedeEditar(u.jefe, plantilla, datos, prog), true, 'módulo que no tiene asignado');
   assert.equal(puedeEditar(u.jefe, plantilla, datos, bd), true);
+  assert.equal(puedeEditar(u.jefe, plantilla, datos, { seccion: 'modulos/recuperacion' }), true, 'sin indicar módulo');
   assert.equal(puedeEditarCompartido(u.jefe, plantilla, datos, 'c001'), true);
 });
 

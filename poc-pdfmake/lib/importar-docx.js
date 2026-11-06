@@ -6,9 +6,12 @@
 //
 // Todo JavaScript puro (mammoth + node-html-parser): apto para una función serverless.
 
+const fs = require('fs');
 const mammoth = require('mammoth');
+const JSZip = require('jszip');
 const { parse } = require('node-html-parser');
 const { extraerCompartidos } = require('./compartidos');
+const { fichaDeFilas } = require('./ficha-sa');
 
 // ---------------------------------------------------------------- utilidades de texto
 const decode = (t) => String(t || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
@@ -165,15 +168,11 @@ function parsePonderacion(t) {
   }
   return out;
 }
+// La ficha se lee entera, no solo su cabecera: lo que sale de aquí es el modelo
+// con campos con nombre de lib/ficha-sa.js, que es lo que permite editar una SA
+// y crear otras nuevas en lugar de solo volver a imprimir la tabla importada.
 function parseFichaSA(t) {
-  const g = (i, j = 0) => (t.rows[i] && t.rows[i][j] ? t.rows[i][j].text : '');
-  const num = (g(0).match(/(\d+)/) || [])[1];
-  const celdaEtiqueta = (etq) => { for (const r of t.rows) for (let j = 0; j < r.length; j++) if (norm(r[j].text) === etq && r[j + 1]) return r[j + 1].text; return ''; };
-  const raTexto = (() => { for (const r of t.rows) if (norm(r[0].text).startsWith('resultado') && r[1]) return r[1].text; return ''; })();
-  return {
-    num: num ? Number(num) : null, titulo: g(0, 1), sesiones: numPct(celdaEtiqueta('sesiones')), evaluacion: celdaEtiqueta('evaluacion'),
-    ra: [...raTexto.matchAll(/(?:^|\n)\s*(?:RA\s*)?(\d+)\s*[.):-]/gi)].map((x) => Number(x[1])),
-  };
+  return fichaDeFilas(t.rows);
 }
 function parseClaveValor(t) {
   const pares = [];
@@ -279,13 +278,58 @@ const limpiarPlantilla = (s) => ({
   campos: s.campos.map(({ origen, ...c }) => c), hijos: s.hijos.map(limpiarPlantilla),
 });
 
+// ------------------------------------------------- títulos por nivel de esquema
+// mammoth reconoce los títulos por el NOMBRE del estilo («heading 1»), y eso
+// depende del idioma y del editor con el que se escribió el documento: en un
+// Word en español se llaman «Título 1», y si viene de LibreOffice, «Título 1
+// (user)». Una de las memorias del departamento tiene sus 43 títulos con esos
+// estilos y entraba entera como UN SOLO apartado, mientras la del curso
+// siguiente, con los mismos apartados pero escrita en otro editor, daba 44.
+//
+// El dato bueno es el nivel de esquema (`w:outlineLvl` del estilo en
+// styles.xml): es lo que Word usa para construir el índice, y no depende del
+// nombre ni del idioma. De ahí se arma el mapa de estilos que mammoth necesita.
+// Si el documento no declara ninguno, se queda el comportamiento de siempre.
+async function mapaDeTitulos(input) {
+  let buffer = input && input.buffer;
+  if (!buffer && input && input.path) {
+    try { buffer = await fs.promises.readFile(input.path); } catch (e) { return []; }
+  }
+  if (!buffer) return [];
+  let styles;
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const parte = zip.file('word/styles.xml');
+    if (!parte) return [];
+    styles = await parte.async('string');
+  } catch (e) {
+    return [];
+  }
+  const reglas = [];
+  const vistos = new Set();
+  for (const m of String(styles).matchAll(/<w:style\b([^>]*)>([\s\S]*?)<\/w:style>/g)) {
+    if (!/w:type="paragraph"/.test(m[1])) continue;
+    const nombre = (m[2].match(/<w:name\s+w:val="([^"]+)"/) || [])[1];
+    const nivel = (m[2].match(/<w:outlineLvl\s+w:val="(\d+)"/) || [])[1];
+    if (!nombre || nivel === undefined) continue;
+    const h = Number(nivel) + 1;
+    // El nombre va entre comillas simples en el mapa de mammoth, así que uno que
+    // las lleve dentro no se puede expresar; y más de seis niveles no hay.
+    if (h < 1 || h > 6 || nombre.indexOf("'") >= 0 || vistos.has(nombre)) continue;
+    vistos.add(nombre);
+    reglas.push("p[style-name='" + nombre + "'] => h" + h + ":fresh");
+  }
+  return reglas;
+}
+
 // ---------------------------------------------------------------- importación completa
 async function importarDocx(input, opts = {}) {
-  const { value: html, messages } = await mammoth.convertToHtml(input);
+  const styleMap = await mapaDeTitulos(input);
+  const { value: html, messages } = await mammoth.convertToHtml(input, styleMap.length ? { styleMap } : undefined);
   const nodos = htmlANodos(html);
   const raiz = construirArbol(nodos);
   const avisos = [];
-  if (raiz.bloques.length) avisos.push(`${raiz.bloques.length} bloques antes del primer título (portada o índice); se ignoran.`);
+  if (raiz.bloques.length && !opts.incluirInicial) avisos.push(`${raiz.bloques.length} bloques antes del primer título (portada o índice); se ignoran.`);
 
   // 1) grupos de instancias en el primer nivel (p. ej. "Módulos del primer curso" + "... segundo curso")
   const grupos = [];
@@ -298,6 +342,20 @@ async function importarDocx(input, opts = {}) {
   }
 
   const secciones = []; const documento = {}; const instanciasOut = [];
+  // Contenido anterior al primer título. En la PD es portada e índice y se
+  // ignora, pero hay documentos (los PCCF) en los que el cuerpo entero va antes
+  // del primer título porque los apartados están escritos como párrafos
+  // numerados, no con estilos de título. Con `incluirInicial` se conserva como
+  // una sección más en lugar de perderlo; sus tablas (empresas, competencias)
+  // pasan así por el saneador.
+  if (opts.incluirInicial && raiz.bloques.length) {
+    const inicial = { nivel: 1, titulo: 'Contenido inicial', num: null, bloques: raiz.bloques, hijos: [] };
+    const can = fusionar([inicial], '');
+    can.id = 'contenido-inicial';
+    can.titulo = 'Contenido inicial';
+    secciones.push(can);
+    Object.assign(documento, extraer(can, inicial));
+  }
   for (const s of raiz.hijos) {
     const fam = familias.find((f) => f.grupos.some((g) => g.seccion === s));
     if (!fam) {
