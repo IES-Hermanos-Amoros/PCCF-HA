@@ -1,11 +1,12 @@
 // La barra de arriba, la misma en todas las pantallas.
 //
 // Es la del prototipo con las piezas que hay: marca, el documento con el que se
-// está trabajando, quién eres, el botón de tema y los de exportar. Lo que no
-// está todavía —curso, vistas de cambios, validaciones y coordinación— no se
-// deja como botón apagado: un botón que no hace nada no se distingue de uno
-// estropeado, que es exactamente lo que se corrigió de la barra de formato del
-// v1.
+// está trabajando, el selector de vista, quién eres, el botón de tema y los de
+// exportar. Lo que no está todavía —el curso, y las vistas de cambios y de
+// coordinación, que son el E5 y el E7— no se deja como botón apagado: un botón
+// que no hace nada no se distingue de uno estropeado, que es exactamente lo que
+// se corrigió de la barra de formato del v1. Por eso el selector de vista solo
+// lleva las vistas que existen, y con el E4 son dos: contenido y validaciones.
 //
 // DONDE ESTABA EL DESPLEGABLE DE PERSONA AHORA ESTÁ QUIÉN ERES
 //
@@ -109,7 +110,7 @@ function Identidad({ persona }) {
 }
 
 export default function BarraSuperior({
-  subtitulo, persona, onCajon, documentos, documentoId, exportar,
+  subtitulo, persona, onCajon, documentos, documentoId, exportar, vistas, vista, onVista,
 }) {
   return (
     <header className="topbar">
@@ -143,6 +144,26 @@ export default function BarraSuperior({
             ))}
           </select>
         </>
+      ) : null}
+
+      {/* El selector de vista, donde lo pone el prototipo. `aria-pressed` y no
+          `role="tab"`: no hay panel de pestañas debajo, hay dos pantallas
+          distintas, y un grupo de botones que dicen si están pulsados se lee
+          bien con el teclado y con lector. */}
+      {vistas && vistas.length > 1 ? (
+        <div className="segmentado" role="group" aria-label="Vista">
+          {vistas.map((v) => (
+            <button
+              type="button"
+              key={v.id}
+              className={v.id === vista ? 'on' : ''}
+              aria-pressed={v.id === vista}
+              onClick={() => onVista(v.id)}
+            >
+              {v.etiqueta}
+            </button>
+          ))}
+        </div>
       ) : null}
 
       <div className="topbar-derecha">

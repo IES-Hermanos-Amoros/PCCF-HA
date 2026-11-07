@@ -224,6 +224,62 @@ function buscarSeccion(plantilla, idSeccion) {
   };
 }
 
+// Todas las secciones de la plantilla que tienen un campo de un tipo, con el id del campo. Lo
+// necesitan las dos rutas del E4 —el PATCH, para comprobar las ponderaciones, y el panel de
+// comprobaciones, para buscarlas— y la respuesta no es «la sección que sea»: la PD real tiene DOS
+// apartados con ponderaciones por módulo («Ponderaciones de los resultados de aprendizaje…» y
+// «Recuperación de los resultados de aprendizaje»), así que quien busque por un id fijo se deja uno.
+//
+// Se devuelven en el orden de lectura del documento, que es el orden en el que el motor las pinta.
+function seccionesConCampo(plantilla, tipo) {
+  const out = [];
+  const bajar = (sec) => {
+    for (const campo of (sec.campos || [])) {
+      if (campo.tipo === tipo) out.push({ seccion: sec.id, campo: campo.id, repetidor: !!sec.repetidor });
+    }
+    (sec.hijos || []).forEach(bajar);
+  };
+  ((plantilla && plantilla.secciones) || []).forEach(bajar);
+  return out;
+}
+
+// El tipo de campo que el importador deja donde está la tabla de resultados de aprendizaje y
+// criterios de evaluación del módulo: `{ ra: [{ num, texto, ce: [{ letra, texto }] }] }`.
+const TIPO_RA_CE = 'auto.tabla_ra_ce';
+
+// Los RESULTADOS DE APRENDIZAJE QUE DECLARA UN MÓDULO, por su número.
+//
+// Es la lista contra la que se comprueba todo lo que habla de RA: las ponderaciones que se guardan
+// (un peso para un RA que el módulo no tiene no reparte nada y nadie lo encuentra para arreglarlo) y
+// los RA que ninguna situación de aprendizaje trabaja. Sale del apartado del propio módulo y de
+// ningún otro sitio: el catálogo de `core/unidades.js` tiene los módulos, no sus RA, que son del
+// currículo de cada título.
+//
+// Devuelve [] si el módulo no lo tiene escrito, y quien pregunta decide qué hacer con eso.
+async function raDelModulo(repo, documento, unidadId) {
+  const nums = new Set();
+  for (const { seccion, campo } of seccionesConCampo(documento.plantilla, TIPO_RA_CE)) {
+    const fila = await repo.apartados.leer(documento._id, seccion, unidadId);
+    const valor = fila && fila.valores ? fila.valores[campo] : undefined;
+    for (const num of raDeTablas(valor)) nums.add(num);
+  }
+  return [...nums].sort((a, b) => a - b);
+}
+
+// Los números de RA que hay en el valor de un campo `auto.tabla_ra_ce`, sin pasar por el
+// repositorio. Está aparte porque el panel de comprobaciones ya tiene todos los apartados en
+// memoria y no tiene por qué volver a pedirlos uno a uno; lo que no puede estar escrito dos veces es
+// esto: CÓMO se leen los RA del módulo.
+function raDeTablas(valor) {
+  const nums = [];
+  for (const tabla of (Array.isArray(valor) ? valor : [valor])) {
+    for (const ra of ((tabla && tabla.ra) || [])) {
+      if (ra && Number.isInteger(ra.num) && nums.indexOf(ra.num) < 0) nums.push(ra.num);
+    }
+  }
+  return nums.sort((a, b) => a - b);
+}
+
 // ---------------------------------------------------------------- lo que pide el motor
 
 // Las cuatro colecciones en las que §2.3 parte el documento, de vuelta a la forma del motor. Es la
@@ -327,6 +383,10 @@ module.exports = {
   sinPlantilla,
   puedeEditarApartado,
   buscarSeccion,
+  seccionesConCampo,
+  raDelModulo,
+  raDeTablas,
+  TIPO_RA_CE,
   leerParaElMotor,
   tituloDelTomo,
   nombreDeArchivo,

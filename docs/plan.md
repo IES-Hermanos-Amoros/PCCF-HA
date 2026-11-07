@@ -284,6 +284,28 @@ para que no se queden en la conversación en que aparecieron.
   vuelve idéntico. Hace falta separarlas porque hay cambios que el PDF no nota —dejar el `_id` del
   repositorio dentro de un texto compartido, por ejemplo— y que sin embargo ensucian los datos.
 
+### Lo que la herramienta ha encontrado en la programación de verdad
+
+No son fallos del código: son cosas que llevan en el documento del departamento y que no se veían
+porque nadie las podía mirar de golpe. Conviene arreglarlas en el documento.
+
+- **Seis situaciones de aprendizaje seguidas numeradas «5»**, y en total **15 de las 78 fichas
+  repetidas llegan con un número que no es su posición**. Una llega con el número **0**, y el
+  generador la descarta de la tabla resumen **sin decir nada**: está en el documento, ocupa sus
+  sesiones y no aparece en el recuento. Al guardar desde la aplicación se renumeran solas.
+- **En «Diseño de interfaces web» hay un encabezado con dos fichas debajo** («Interfaces web con
+  framework.»). El generador solo cuenta la primera, así que la segunda **se imprime pero no sale en
+  la tabla resumen**. Se arregla separando el encabezado en dos; la aplicación lo acepta tal cual
+  para que el apartado se pueda seguir guardando.
+- **La evaluación está escrita de dos maneras**: «1º» en ocho fichas y «1ª» en las otras sesenta y
+  ocho. Un desplegable con solo los tres valores buenos habría cambiado «2º» por «1ª» con solo abrir
+  la ficha y guardarla, así que el editor ofrece además lo que la ficha ya trae. Unificarlo es una
+  decisión del departamento, no algo que deba hacer una herramienta por su cuenta.
+- **De los 34 avisos que imprime hoy el PDF, 22 no son errores**: son el otro convenio de
+  ponderación de los criterios. Los otros **10 sí** lo son (14,94 % donde debería haber 15 %). El
+  panel de validaciones los distingue, pero **qué convenio vale es una decisión del departamento** y
+  sigue pendiente.
+
 ### Lo que ha dejado el E1
 
 - **El criterio de aceptación se cumple con el documento real**, no solo con uno sintético: se importa

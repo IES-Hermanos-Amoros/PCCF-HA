@@ -22,6 +22,7 @@
 //
 //   Criterio del centro (la severidad es la que tiene hoy cada una):
 //     - RA sin situación de aprendizaje                          -> avisosRaSinSituacion   (aviso)
+//     - situación de aprendizaje sin evaluación                  -> avisosSaSinEvaluacion  (aviso)
 //     - apartado vacío                                           -> apartadoVacio          (aviso)
 //     - heredado del curso anterior sin revisar                  -> heredadoSinRevisar     (aviso)
 //     - copia propia desactualizada                              -> copiasDesactualizadas  (aviso)
@@ -51,6 +52,21 @@
 // Lo que cuesta aceptar los dos, y es el argumento de fondo: la comprobación se debilita. Con un
 // RA que pondera 30 y unos CE que suman 100, ya no se distingue el convenio relativo de alguien
 // que se ha equivocado escribiendo 100 en lugar de 30. Por eso el motor es estricto.
+//
+// Y POR ESO EL AVISO SE DISTINGUE (E4)
+//
+// El panel de comprobaciones tiene que usar el MISMO convenio que el motor, o sus avisos dejan de
+// coincidir uno a uno con los de la cajita roja del PDF, que es el criterio de aceptación del E4.
+// Con el estricto, de los 34 avisos del documento real 22 no son erratas: son los RA del otro
+// convenio. Esconderlos cambiando de convenio rompería la coincidencia; dejarlos como 22 errores
+// indistinguibles de los 10 descuadres de verdad (14,94 % donde debería haber 15 %) deja el panel
+// inútil.
+//
+// Así que el aviso lleva el mismo `titulo` —el que imprime el PDF, que no se toca— y, cuando los
+// criterios suman EXACTAMENTE 100 %, un `detalle` que lo dice con esas palabras y la marca
+// `convenio: 'cien_dentro_del_ra'`, para que la interfaz pueda separar «esto habrá que decidirlo»
+// de «aquí hay una errata». La severidad no cambia: bajarla a aviso sería decidir el convenio por
+// la puerta de atrás, y esa decisión es del departamento.
 //
 // LA SUMA DE LOS RA: EL ALCANCE LO DECIDE CADA LADO
 //
@@ -106,6 +122,11 @@
     return convenioCe === CONVENIOS_CE.PESO_DEL_RA_O_CIEN && Math.abs(suma - 100) < TOLERANCIA;
   }
 
+  // La marca del aviso que casi siempre es el otro convenio y no una errata: los criterios suman
+  // exactamente 100 % dentro de su RA. Solo puede aparecer con el convenio estricto, porque con el
+  // laxo ese reparto cuadra y no hay aviso.
+  const CIEN_DENTRO_DEL_RA = 'cien_dentro_del_ra';
+
   // Aviso de un RA cuyos criterios no reparten su peso. Lista vacía si cuadran.
   //   { ra, peso, pesosCe }
   function avisosCriteriosDeRa({ ra, peso, pesosCe }, convenioCe) {
@@ -114,11 +135,18 @@
     const reglaCorta = convenioCe === CONVENIOS_CE.PESO_DEL_RA_O_CIEN
       ? 'el peso del RA (' + porcentaje(peso) + ') o 100 % si se reparten dentro del RA'
       : 'el peso del RA (' + porcentaje(peso) + ')';
-    return [{
+    // Mismo `titulo` en los dos casos: es el que imprime la cajita roja del PDF y es lo que hace
+    // que el panel y el papel digan lo mismo. Lo que cambia es la explicación (ver la cabecera).
+    const cienDentroDelRa = Math.abs(suma - 100) < TOLERANCIA;
+    const aviso = {
       severidad: 'error',
       titulo: `RA${ra}: los criterios suman ${porcentaje(suma)} y el RA pondera ${porcentaje(peso)}.`,
-      detalle: 'Los criterios de un resultado de aprendizaje tienen que sumar ' + reglaCorta + '.',
-    }];
+      detalle: cienDentroDelRa
+        ? `Los criterios de este RA suman exactamente 100 %, así que este módulo está usando el otro convenio: reparte 100 % dentro del RA en lugar de repartir su peso (${porcentaje(peso)}), y el peso real de cada criterio sale de multiplicar. Casi nunca es una errata: es la decisión de convenio que el departamento tiene pendiente. Mientras el documento se imprima con el convenio estricto, el PDF lo seguirá sacando en la cajita roja.`
+        : 'Los criterios de un resultado de aprendizaje tienen que sumar ' + reglaCorta + '.',
+    };
+    if (cienDentroDelRa) aviso.convenio = CIEN_DENTRO_DEL_RA;
+    return [aviso];
   }
 
   // Sí la suma de los RA es 100 %.
@@ -143,6 +171,31 @@
       titulo: 'RA' + num + ' no aparece en ninguna situación de aprendizaje',
       detalle: 'Todos los resultados de aprendizaje tienen que trabajarse en al menos una situación.',
     }));
+  }
+
+  // Una situación de aprendizaje que no dice en qué evaluación va. Era el hueco que el E0 dejó
+  // apuntado (docs/plan.md, «Para el E4»): `render-generico.js` agrupa las fichas por
+  // `evaluacion || ''`, así que una ficha sin evaluación acaba en un grupo SIN NOMBRE de la tabla
+  // resumen y hasta ahora no lo advertía nadie.
+  //
+  // ES AVISO Y NO ERROR, a diferencia de `sinDocente`. Tres razones: el documento sigue
+  // imprimiéndose y la ficha sale entera, con sus sesiones contadas en el total —lo único raro es la
+  // fila del resumen—; es un campo de una ficha, y bloquear la aprobación del tomo entero por un
+  // desplegable sin elegir es desproporcionado; y el hueco lo abre el propio importador, que deja la
+  // evaluación vacía cuando el Word no la decía porque no debe inventar nada (ver la nota de
+  // DIFERENCIA en core/sa.js), así que un error castigaría la importación y no al departamento. En
+  // la PD de DAW las 84 fichas traen evaluación: esto protege a las que se crean en la aplicación.
+  //
+  // `fichas` es la lista de fichas del apartado, en la forma de core/sa.js.
+  function avisosSaSinEvaluacion(fichas) {
+    return (fichas || [])
+      .filter((f) => f && !String(f.evaluacion == null ? '' : f.evaluacion).trim())
+      .map((f) => ({
+        severidad: 'aviso',
+        titulo: 'SA ' + (f.num === null || f.num === undefined ? '?' : f.num)
+          + (f.titulo ? ' («' + f.titulo + '»)' : '') + ' no dice en qué evaluación va',
+        detalle: 'La tabla resumen agrupa las situaciones por evaluación, así que una situación sin evaluación acaba en un grupo sin nombre y no se sabe cuándo se trabaja.',
+      }));
   }
 
   // `estado` lleva `bloques` (lista) y `origen`; `lugar` es cómo se nombra el apartado en el texto.
@@ -194,6 +247,7 @@
 
   const api = {
     CONVENIOS_CE,
+    CIEN_DENTRO_DEL_RA,
     porcentaje,
     sumaPesos,
     cuadraCriterios,
@@ -201,6 +255,7 @@
     sumaRaCuadra,
     avisosSumaRa,
     avisosRaSinSituacion,
+    avisosSaSinEvaluacion,
     apartadoVacio,
     heredadoSinRevisar,
     copiasDesactualizadas,

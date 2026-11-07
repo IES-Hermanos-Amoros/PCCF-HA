@@ -63,11 +63,17 @@ export function Tramos({ valor }) {
 // Las celdas cubiertas por un `colspan` o un `rowspan` vienen OMITIDAS del
 // modelo (las reconstruye `rejilla()` en el motor), así que aquí se pintan tal
 // cual: el navegador hace lo mismo que el PDF con los mismos atributos.
-export function Tabla({ filas, etiqueta }) {
+// `nota` es lo que se dice de la tabla debajo de su etiqueta. Por omisión,
+// «todavía sin editor», que es el caso de las tablas importadas. El E4 la usa
+// para decir otra cosa de las que sí tienen editor: la vista previa de una ficha
+// de situación de aprendizaje no está sin editor, es el resultado del editor.
+// `nota={null}` la quita.
+export function Tabla({ filas, etiqueta, nota }) {
   if (!Array.isArray(filas) || !filas.length) return null;
+  const dice = nota === undefined ? 'todavía sin editor' : nota;
   return (
     <div className="bloque bloque-tabla">
-      <span className="tabla-etq">{(etiqueta || 'tabla del documento') + ' · todavía sin editor'}</span>
+      <span className="tabla-etq">{(etiqueta || 'tabla del documento') + (dice ? ' · ' + dice : '')}</span>
       <div className="tabla-marco">
         <table className="tabla-doc">
           <tbody>

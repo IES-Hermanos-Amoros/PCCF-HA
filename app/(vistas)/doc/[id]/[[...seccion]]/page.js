@@ -31,6 +31,10 @@ export default async function PaginaDocumento({ params, searchParams }) {
       // La unidad va por su id estable y nunca por su índice: un índice apunta a
       // otro módulo en cuanto alguien reordena (docs/mockup-v2/README.md).
       unidadInicial={consulta && consulta.u ? String(consulta.u) : null}
+      // Y la vista, también en la dirección: el panel de validaciones es una
+      // pantalla que se manda por enlace («mira los errores de tu módulo»), así
+      // que tiene que poder copiarse y recargarse como cualquier apartado.
+      vistaInicial={consulta && consulta.vista ? String(consulta.vista) : null}
     />
   );
 }

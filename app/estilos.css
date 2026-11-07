@@ -741,3 +741,31 @@ kbd {
    ¶ párrafo, subir y bajar) y en una ventana estrecha, sin envolver, se saldrían
    por el lado. La regla original no lo necesitaba porque allí eran dos. */
 .bloque-acciones, .item-acciones { flex-wrap: wrap; }
+
+/* ------------------------------------------------------------ el E4
+   Las pantallas del E4 —situaciones de aprendizaje, ponderaciones con la suma
+   en vivo y el panel de validaciones agrupado— reutilizan las clases que el
+   prototipo ya había dejado en esta hoja: `.tabla-matriz`, `.lista-sa`,
+   `.sa-item`, `.sa-campo`, `.sa-ra`, `.sa-ce`, `.sa-actividades`,
+   `#previa-sa`, `.tabla-pond`, `.fila-ra`, `.fila-ce`, `.fila-suma`,
+   `.total`, `.grupo-avisos`, `.lista-avisos`, `.marca-error`, `.marca-aviso`
+   y `.segmentado`. Lo único que faltaba es esto. */
+
+/* La marca de un aviso («decisión de convenio pendiente») dentro de la lista de
+   avisos. `.lista-avisos li > div` es una columna flex, así que una pastilla
+   suelta se estira de lado a lado y deja de parecer una pastilla. */
+.lista-avisos .marca-aviso { align-self: flex-start; margin-bottom: 2px; }
+
+/* Un aviso sin nada que arreglar: el grupo se enseña igual —«qué módulo tengo
+   que mirar» no se contesta escondiendo los que están bien— y dice que no hay
+   nada dentro. */
+.grupo-avisos > .bien { padding: 2px 12px 12px; margin: 0; }
+
+/* El campo de un peso. La regla del prototipo (`.tabla-pond input`) ya lo
+   viste; esto solo evita que un peso largo («16,67») se salga de la celda. */
+.tabla-pond input { max-width: 100%; }
+
+/* El título de una situación en la lista es un botón, no un enlace: `.enlace`
+   lo deja sin fondo y `.sa-titulo` le pone el color del texto, pero el botón
+   trae su propio relleno del navegador. */
+.sa-item .sa-titulo { padding: 0; }

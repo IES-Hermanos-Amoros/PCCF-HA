@@ -52,6 +52,9 @@ const SUITES = [
 
   // --- E3: escribir ------------------------------------------------------
   { archivo: 'test/edicion.js', nombre: 'edición de apartados y conflictos' },
+
+  // --- E4: lo estructurado -----------------------------------------------
+  { archivo: 'test/estructurados.js', nombre: 'situaciones de aprendizaje, ponderaciones y avisos' },
 ];
 
 const AZUL = '\x1b[34m'; const ROJO = '\x1b[31m'; const VERDE = '\x1b[32m';

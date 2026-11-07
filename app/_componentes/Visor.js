@@ -27,6 +27,20 @@
 // `router.push` cada clic en el árbol volvería a pintar la página en el servidor
 // para acabar pidiendo lo mismo.
 //
+// DOS VISTAS, Y LA VISTA TAMBIÉN VA EN LA URL
+//
+// El prototipo pone arriba cuatro —Contenido · Cambios · Validaciones ·
+// Coordinación— y de esas existen dos: el contenido y el panel de
+// comprobaciones del E4. Las otras son el E5 y el E7 y no se dejan como botones
+// apagados.
+//
+// La vista va en `?vista=validaciones` por lo mismo que la sección va en la
+// dirección: el panel de comprobaciones es la pantalla que la jefatura manda por
+// enlace («mira los errores de tu módulo»), y tiene que poder copiarse, recargarse
+// y volver con la flecha de atrás. Desde un aviso se salta al apartado que falla, y
+// ese salto cambia de vista y de apartado a la vez: es un `pushState` normal, así
+// que la flecha de atrás devuelve al panel.
+//
 // DOS PETICIONES, NUNCA EL DOCUMENTO ENTERO
 //
 // Al abrirse: el documento y su árbol. Al pinchar un apartado: ese apartado. Una
@@ -40,9 +54,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ApartadoEditable from './ApartadoEditable';
 import Arbol from './Arbol';
 import BarraSuperior from './BarraSuperior';
+import Ponderaciones from './Ponderaciones';
+import Situaciones from './Situaciones';
+import Validaciones from './Validaciones';
 import Valores from './Valores';
 import { pedir } from './api';
 import { abiertosHasta, estados as calcularEstados, indexar } from './arbol-cliente';
+import { TIPO_FICHA, TIPO_PONDERACION, TIPO_RESUMEN } from './sa-cliente';
 import { useSesion } from './sesion-cliente';
 import {
   GLIFO, NOMBRE_ESTADO, NOMBRE_ESTADO_DOC, NOMBRE_TIPO, codigoDeUnidad, deQuienEs, motivoBloqueo,
@@ -79,9 +97,19 @@ const corto = (d) => [
   d.curso,
 ].filter(Boolean).join(' · ');
 
-export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
+const VISTAS = [
+  { id: 'contenido', etiqueta: 'Contenido' },
+  { id: 'validaciones', etiqueta: 'Validaciones' },
+];
+
+const esVista = (v) => VISTAS.some((x) => x.id === v);
+
+export default function Visor({
+  documentoId, seccionInicial, unidadInicial, vistaInicial,
+}) {
   const [seccion, setSeccion] = useState(seccionInicial || null);
   const [unidadId, setUnidadId] = useState(unidadInicial || null);
+  const [vista, setVista] = useState(() => (esVista(vistaInicial) ? vistaInicial : 'contenido'));
 
   const [documento, setDocumento] = useState(null);
   const [arbol, setArbol] = useState(null);
@@ -165,10 +193,17 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
 
   // ---------------------------------------------------------------- la URL
 
-  const escribirRuta = useCallback((sec, uni, reemplazar) => {
+  const escribirRuta = useCallback((sec, uni, reemplazar, vis) => {
     const partes = ['/doc', encodeURIComponent(documentoId)];
     if (sec) partes.push(sec.split('/').map(encodeURIComponent).join('/'));
-    const url = partes.join('/') + (uni ? '?u=' + encodeURIComponent(uni) : '');
+    const q = new URLSearchParams();
+    if (uni) q.set('u', uni);
+    // `contenido` es la vista por omisión y no se escribe: así el enlace de un
+    // apartado sigue siendo el mismo que antes del E4 y los que ya se hayan
+    // mandado por correo siguen abriendo lo mismo.
+    if (vis && vis !== 'contenido') q.set('vista', vis);
+    const cola = q.toString();
+    const url = partes.join('/') + (cola ? '?' + cola : '');
     if (window.location.pathname + window.location.search === url) return;
     if (reemplazar) window.history.replaceState(null, '', url);
     else window.history.pushState(null, '', url);
@@ -180,26 +215,45 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
     const volver = () => {
       const camino = window.location.pathname.split('/').filter(Boolean); // doc, id, ...seccion
       const sec = camino.length > 2 ? camino.slice(2).map(decodeURIComponent).join('/') : null;
+      const consulta = new URLSearchParams(window.location.search);
       setSeccion(sec);
-      setUnidadId(new URLSearchParams(window.location.search).get('u') || null);
+      setUnidadId(consulta.get('u') || null);
+      const v = consulta.get('vista');
+      setVista(esVista(v) ? v : 'contenido');
     };
     window.addEventListener('popstate', volver);
     return () => window.removeEventListener('popstate', volver);
   }, []);
 
+  // Ir a un nodo del árbol. Siempre vuelve a la vista de contenido: desde el
+  // panel de comprobaciones, pinchar un aviso es «llévame al apartado que
+  // falla», no «quédate en el panel».
   const ir = useCallback((k) => {
     const e = indice.get(k);
     if (!e) return;
     setSeccion(e.nodo.seccion);
     setUnidadId(e.nodo.unidadId);
+    setVista('contenido');
     setAbiertos((previos) => {
       const siguiente = new Set(previos);
       for (const c of abiertosHasta(indice, k)) siguiente.add(c);
       return siguiente;
     });
-    escribirRuta(e.nodo.seccion, e.nodo.unidadId, false);
+    escribirRuta(e.nodo.seccion, e.nodo.unidadId, false, 'contenido');
     setCajon(false);
   }, [indice, escribirRuta]);
+
+  // Ir a un apartado por su sección y su unidad, que es cómo lo nombran los
+  // avisos del panel de comprobaciones y el panel de situaciones: ellos no
+  // conocen la clave del árbol.
+  const irAApartado = useCallback((sec, uni) => {
+    ir(clave(uni || null, sec, documentoId));
+  }, [ir, documentoId]);
+
+  const cambiarVista = useCallback((v) => {
+    setVista(v);
+    escribirRuta(seccion, unidadId, false, v);
+  }, [escribirRuta, seccion, unidadId]);
 
   const alternar = useCallback((k, abrir) => {
     setAbiertos((previos) => {
@@ -261,6 +315,45 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
     }
     return n;
   }, [resumen, rellenos, indice]);
+
+  // ---------------------------------------------------------------- los hermanos del apartado
+  //
+  // Dos cosas que el apartado abierto necesita y que no vienen en su respuesta,
+  // porque ninguna ruta manda la plantilla: en qué apartado del MISMO módulo
+  // están los resultados de aprendizaje con sus criterios —los que se eligen en
+  // la ficha de una situación— y cuál es el otro apartado de situaciones de
+  // aprendizaje, el padre o el repetidor.
+  //
+  // Salen del árbol, que ya está en memoria, y se buscan por el título y no por
+  // un id escrito a mano: el id de una sección lo genera el importador a partir
+  // del título del Word y se recorta («…criterios-de-evaluacio», sin la n
+  // final), así que un id a mano se rompe el día que alguien renombra el
+  // apartado o importa otro documento.
+  const contexto = useMemo(() => {
+    if (!nodo || !nodo.unidadId || !entrada) return null;
+    const unidad = entrada.camino.find((n) => n.tipo === 'unidad');
+    if (!unidad) return null;
+
+    const dentro = [];
+    (function recorre(n) {
+      for (const h of n.hijos || []) { dentro.push(h); recorre(h); }
+    })(unidad);
+
+    const raCe = dentro.find((n) => /resultados de aprendizaje y criterios/i.test(n.titulo || ''));
+
+    // El otro apartado de situaciones: si estamos en el repetidor, su padre; si
+    // estamos en el padre, el repetidor que tiene dentro.
+    const padre = entrada.camino.length > 1 ? entrada.camino[entrada.camino.length - 2] : null;
+    const hijoRepetidor = (nodo.hijos || []).find((h) => h.repetidor);
+    const hermano = nodo.repetidor ? padre : hijoRepetidor;
+
+    return {
+      raCe: raCe ? raCe.seccion : null,
+      hermanoSa: hermano && hermano.seccion
+        ? { seccion: hermano.seccion, titulo: hermano.titulo }
+        : null,
+    };
+  }, [nodo, entrada]);
 
   // ---------------------------------------------------------------- recorrido lineal
 
@@ -473,9 +566,18 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
           documentoId={documentoId}
           apartado={apartado}
           onGuardado={alGuardar}
+          contexto={contexto}
+          onIr={irAApartado}
         />
       );
     }
+
+    const campos = apartado.campos || [];
+    const esSa = apartado.repetidor
+      || campos.some((c) => c.tipo === TIPO_FICHA || c.tipo === TIPO_RESUMEN);
+    const dePonderacion = campos.filter((c) => c.tipo === TIPO_PONDERACION);
+    const restoDeCampos = campos.filter((c) => c.tipo !== TIPO_FICHA
+      && c.tipo !== TIPO_RESUMEN && c.tipo !== TIPO_PONDERACION);
 
     return (
       <>
@@ -497,18 +599,47 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
             ) : null}
           </div>
         </div>
-        <Valores
-          campos={apartado.campos}
-          valores={apartado.valores}
-          compartidos={apartado.compartidos}
-          repetidor={apartado.repetidor}
-          titulo={apartado.titulo}
-        />
+        {/* Sin permiso para escribir se sigue viendo lo mismo que antes, pero
+            con los paneles del E4 en lectura: quien no lleva el módulo también
+            necesita la tabla resumen calculada y la lista de situaciones, que es
+            justo lo que el documento no trae al día. Lo que no hay son botones. */}
+        {esSa ? (
+          <Situaciones
+            documentoId={documentoId}
+            apartado={apartado}
+            valores={apartado.valores}
+            editable={false}
+            onCambiar={() => {}}
+            seccionRaCe={contexto ? contexto.raCe : null}
+            hermano={contexto ? contexto.hermanoSa : null}
+            onIr={irAApartado}
+          />
+        ) : null}
+        {dePonderacion.map((campo) => (
+          <Ponderaciones
+            key={campo.id}
+            valor={apartado.valores[campo.id]}
+            etiqueta={campo.etiqueta || 'Ponderaciones'}
+            editable={false}
+          />
+        ))}
+        {apartado.repetidor ? null : (
+          <Valores
+            campos={restoDeCampos}
+            valores={apartado.valores}
+            compartidos={apartado.compartidos}
+            titulo={apartado.titulo}
+          />
+        )}
       </>
     );
   };
 
   const contenido = () => {
+    // El panel de comprobaciones es del DOCUMENTO entero, no del apartado
+    // abierto, así que sustituye al contenido y no se mete al lado: lo que se
+    // está haciendo ahí es repasar lo que falta, no escribir.
+    if (vista === 'validaciones') return <Validaciones documentoId={documentoId} onIr={irAApartado} />;
     if (!nodo) return <p className="suave">Ese apartado no está en este documento.</p>;
     if (nodo.tipo === 'raiz' || nodo.tipo === 'bloque') return vistaResumen(nodo);
     if (nodo.tipo === 'unidad') return vistaUnidad(nodo);
@@ -557,6 +688,9 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
         documentoId={documentoId}
         onCajon={() => setCajon((x) => !x)}
         exportar={{ pdf: `${base}/pdf`, docx: `${base}/docx` }}
+        vistas={VISTAS}
+        vista={vista}
+        onVista={cambiarVista}
       />
 
       <div className={'workspace' + (cajon ? ' cajon-abierto' : '')}>
@@ -628,8 +762,12 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
 
           <div className="cabecera">
             <div>
-              <h1>{nodo ? ((nodo.num ? nodo.num + '. ' : '') + nodo.titulo) : corto(documento)}</h1>
-              <div className="chips">{chips()}</div>
+              <h1>
+                {vista === 'validaciones'
+                  ? 'Comprobaciones del documento'
+                  : (nodo ? ((nodo.num ? nodo.num + '. ' : '') + nodo.titulo) : corto(documento))}
+              </h1>
+              <div className="chips">{vista === 'validaciones' ? null : chips()}</div>
             </div>
           </div>
 

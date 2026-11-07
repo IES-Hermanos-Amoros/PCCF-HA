@@ -33,7 +33,8 @@
 //    candado; quien decide es esto. Un docente en un módulo que no lleva, o la jefatura de estudios
 //    en cualquiera, reciben 403 aunque tengan el editor delante (docs/plan.md, criterio del E2).
 //
-// 2. LOS VALORES SE VALIDAN ANTES DE ESCRIBIR, con core/bloques.js. Es el riesgo nº 1 del proyecto
+// 2. LOS VALORES SE VALIDAN ANTES DE ESCRIBIR, con core/bloques.js los de texto y con
+//    core/estructurados.js los demás. Es el riesgo nº 1 del proyecto
 //    (docs/interfaz-web.md §2.3): el PDF solo sale bien si lo guardado es exactamente la forma que
 //    espera el generador, y por la API puede entrar cualquier cosa —un tipo de bloque que nadie
 //    sabe pintar, una clave de más, un nivel de lista que no existe—. Si un solo campo no pasa, 400
@@ -71,25 +72,44 @@
 // no existe: si alguien ha escrito entre la lectura y la escritura, la escritura no cuaja y la
 // respuesta es un 409.
 //
-// POR QUÉ EN EL E3 SOLO SE GUARDAN LOS CAMPOS DE TEXTO
+// QUÉ TIPOS DE CAMPO SE GUARDAN POR AQUÍ (Y QUÉ CAMBIÓ EN EL E4)
 //
-// `core/bloques.js` sabe decir si una lista de bloques es exactamente lo que el generador espera.
-// Las ponderaciones de RA y CE, las fichas de situación de aprendizaje y las rejillas importadas
-// tienen cada una su forma y su editor, y llegan en el E4 con su propia validación. Hasta entonces
-// esta ruta los rechaza con un 400 que lo dice, en lugar de aceptarlos sin comprobar nada: un campo
-// que entra sin puerta es un documento que deja de salir.
+// El E3 solo abrió los campos de texto, con la puerta de `core/bloques.js`. El E4 abre dos más, cada
+// uno con la suya en `core/estructurados.js`:
+//
+//   ponderacion_ra_ce            los pesos de cada RA y de sus criterios
+//   ficha_situacion_aprendizaje  las fichas de situación de aprendizaje (84 en la PD de DAW)
+//   el repetidor que las agrupa  `{ items: [...] }`, la lista entera
+//
+// Lo demás —las rejillas importadas, la tabla de RA y CE, la ficha del módulo— sigue rechazándose
+// con un 400 que lo dice, y las tablas DERIVADAS (el resumen de situaciones) se rechazan para
+// siempre: se calculan al imprimir y guardarlas a mano devolvería las dos versiones que la
+// aplicación vino a quitar. Quien decide qué tipo pasa es `core/estructurados.js` y no esta ruta,
+// para que el editor del navegador y la API no puedan tener ideas distintas.
+//
+// DOS COSAS QUE LA RUTA HACE AL GUARDAR, Y QUE NO SON VALIDAR
+//
+//   · RENUMERA LAS FICHAS de un repetidor por su posición, que es la numeración que imprime el
+//     documento, y suelta la tabla importada de las que cambian de número. La numeración se arregla
+//     al guardar (ver la nota de `core/sa.js`) y hace falta: 15 de las 78 fichas repetidas de la PD
+//     real llegan con un número que no es su posición, una con el 0 —que el resumen del PDF descarta
+//     sin decir nada— y seis seguidas llamadas «5».
+//   · CONSERVA LAS `filas` DE LAS PONDERACIONES, que no se dejan escribir. De la primera celda de
+//     esa tabla importada saca el exportador a Word el código del módulo («Resultado de aprendizaje
+//     (0614.1)»), que el modelo no guarda. Así el cliente no tiene que devolverla ni puede
+//     estropearla, y el Word exportado no pierde el código.
+//
+// Las dos operaciones están en `core/estructurados.js` —`renumerarItems` y `conservarFilas`— porque
+// son reglas del modelo y la interfaz tiene que poder enseñar lo mismo que se va a guardar.
 
 'use strict';
 
-const Bloques = require('../../../core/bloques');
+const Estructurados = require('../../../core/estructurados');
 const { listasDeTexto } = require('../../../motor/compartidos');
 const {
-  conErrores, abrirDocumento, puedeEditarApartado, buscarSeccion, leerJson,
+  conErrores, abrirDocumento, puedeEditarApartado, buscarSeccion, leerJson, raDelModulo,
   fallo, malaPeticion, noEncontrado, SIN_PERMISO,
 } = require('./comun');
-
-// El tipo de campo que guarda bloques de texto: el que edita el editor del E3.
-const TEXTO = 'texto_largo';
 
 // Los ids de los textos compartidos a los que apunta este apartado. `listasDeTexto` recorre las
 // listas de bloques de texto de unos valores, también las que están dentro de ítems repetidos, que
@@ -226,7 +246,10 @@ const iso = (f) => (f ? new Date(f).toISOString() : null);
 // Todo se comprueba ANTES de escribir, y el primer campo que no pasa corta la petición entera. La
 // respuesta dice cuál y por qué, en castellano, para que la interfaz pueda señalar el campo en lugar
 // de enseñar «error al guardar».
-function revisarValores(valores, { seccion, info }) {
+//
+// `contexto` lleva lo que las puertas no pueden saber solas: los RA que declara el módulo
+// (`raDelModulo` de comun.js), para que una ponderación no pueda apuntar a un RA que no existe.
+function revisarValores(valores, { seccion, info, contexto }) {
   if (valores === undefined) {
     return { fallo: malaPeticion('Falta «valores»: los campos que se guardan, en forma { idDeCampo: valor }.') };
   }
@@ -239,6 +262,23 @@ function revisarValores(valores, { seccion, info }) {
     return { fallo: malaPeticion('«valores» no trae ningún campo: no hay nada que guardar.') };
   }
 
+  // Un repetidor no es `{ campo: valor }` como los demás apartados: su valor es `{ items: [...] }`,
+  // la lista entera (es lo que produce el importador y lo que espera el motor). Se manda completa
+  // porque añadir, duplicar, mover y borrar son operaciones sobre la lista: con «añade esta» y
+  // «quita esa», dos pestañas acabarían con un orden que no eligió ninguna de las dos. Es el mismo
+  // argumento que el del reparto de unidades (docs/api.md).
+  if (info.seccion.repetidor) {
+    const motivo = Estructurados.motivoItems(valores, info.campos);
+    if (motivo) {
+      return {
+        fallo: fallo(400, 'peticion',
+          `El apartado «${seccion}» son fichas de situación de aprendizaje: ${motivo} No se ha guardado nada.`,
+          { campo: Estructurados.CAMPO_ITEMS, motivo }),
+      };
+    }
+    return {};
+  }
+
   const campos = new Map((info.campos || []).map((c) => [c.id, c]));
 
   for (const [id, valor] of entradas) {
@@ -249,20 +289,34 @@ function revisarValores(valores, { seccion, info }) {
     if (!campo) {
       return { fallo: fallo(400, 'peticion', `El apartado «${seccion}» no tiene ningún campo «${id}». No se ha guardado nada.`, { campo: id }) };
     }
-    if (campo.tipo !== TEXTO) {
-      return { fallo: fallo(400, 'peticion', `El campo «${campo.etiqueta || id}» es de tipo «${campo.tipo}» y todavía no se guarda por aquí: esta ruta guarda los campos de texto. No se ha guardado nada.`, { campo: id }) };
-    }
-    const motivo = Bloques.motivoAlGuardar(valor);
+    const motivo = Estructurados.motivoDeCampo(campo, valor, contexto);
     if (motivo) {
       return {
         fallo: fallo(400, 'peticion',
-          `El campo «${campo.etiqueta || id}» no se puede guardar: ${motivo} No se ha guardado nada.`,
+          `El campo «${campo.etiqueta || id}» (tipo «${campo.tipo}») no se puede guardar: ${motivo} No se ha guardado nada.`,
           { campo: id, motivo }),
       };
     }
   }
 
   return {};
+}
+
+// Lo que se escribe a partir de lo que se ha mandado, cuando ya ha pasado la puerta: la numeración
+// de las fichas al día y las tablas importadas de las ponderaciones de vuelta en su sitio. Ver la
+// cabecera, «dos cosas que la ruta hace al guardar».
+function alGuardar(valores, { info, guardados }) {
+  if (info.seccion.repetidor) {
+    const ficha = (info.campos || []).find((c) => c.tipo === Estructurados.TIPO_FICHA);
+    return { items: Estructurados.renumerarItems(valores.items, ficha && ficha.id) };
+  }
+  const salida = { ...valores };
+  for (const campo of (info.campos || [])) {
+    if (campo.tipo !== Estructurados.TIPO_PONDERACION) continue;
+    if (salida[campo.id] === undefined) continue;
+    salida[campo.id] = Estructurados.conservarFilas(salida[campo.id], guardados[campo.id]);
+  }
+  return salida;
 }
 
 // El orden de las comprobaciones importa, porque cada una dice algo distinto (docs/api.md):
@@ -274,8 +328,8 @@ function revisarValores(valores, { seccion, info }) {
 //   409  alguien lo ha guardado desde que lo leíste
 //
 // El 403 va antes de leer el cuerpo: a quien no puede editar no se le contesta sobre su contenido.
-// Y las dos negativas de estructura —un nodo que solo agrupa, un repetidor— van antes del 403
-// porque no dependen de quién pregunte: ahí no puede escribir nadie, ni el soporte.
+// Y la negativa de estructura —un nodo que solo agrupa— va antes del 403 porque no depende de quién
+// pregunte: ahí no puede escribir nadie, ni el soporte.
 const PATCH = conErrores(async (peticion, parametros) => {
   const abierto = await abrirApartado(peticion, parametros);
   if (abierto.fallo) return abierto.fallo;
@@ -283,11 +337,6 @@ const PATCH = conErrores(async (peticion, parametros) => {
 
   if (!info.campos.length) {
     return malaPeticion(`El apartado «${seccion}» no tiene campos propios: solo agrupa a los de dentro.`);
-  }
-  // Los ítems repetidos (las situaciones de aprendizaje) no son `{ campo: valor }`, son
-  // `{ items: [...] }`, y se crean, duplican, mueven y borran: eso es el E4, con core/sa.js.
-  if (info.seccion.repetidor) {
-    return malaPeticion(`El apartado «${seccion}» son fichas que se añaden y se ordenan, y todavía no se guardan por aquí.`);
   }
 
   if (!puedeEditarApartado({ usuario, documento, unidad, seccion, edita: info.edita, contenido: true })) {
@@ -300,11 +349,16 @@ const PATCH = conErrores(async (peticion, parametros) => {
   const { fallo: falloVersion, espera } = versionPedida(cuerpo);
   if (falloVersion) return falloVersion;
 
-  const { fallo: falloValores } = revisarValores(cuerpo.valores, { seccion, info });
+  // Lo que las puertas no pueden saber solas. En un apartado común no se pasa la lista: «existe en
+  // el módulo» no significa nada cuando no hay módulo, y una lista vacía rechazaría cualquier RA.
+  const contexto = { raModulo: unidadId ? await raDelModulo(repo, documento, unidadId) : undefined };
+
+  const { fallo: falloValores } = revisarValores(cuerpo.valores, { seccion, info, contexto });
   if (falloValores) return falloValores;
 
   const fila = await repo.apartados.leer(documento._id, seccion, unidadId);
-  const valores = { ...((fila && fila.valores) || {}), ...cuerpo.valores };
+  const guardados = (fila && fila.valores) || {};
+  const valores = { ...guardados, ...alGuardar(cuerpo.valores, { info, guardados }) };
 
   let guardado;
   try {
