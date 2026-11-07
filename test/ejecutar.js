@@ -49,6 +49,9 @@ const SUITES = [
   // --- E2: quién eres y qué llevas ----------------------------------------
   { archivo: 'test/sesiones.js', nombre: 'identidad: invitación, acceso y sesión' },
   { archivo: 'test/asignacion.js', nombre: 'reparto de unidades al profesorado' },
+
+  // --- E3: escribir ------------------------------------------------------
+  { archivo: 'test/edicion.js', nombre: 'edición de apartados y conflictos' },
 ];
 
 const AZUL = '\x1b[34m'; const ROJO = '\x1b[31m'; const VERDE = '\x1b[32m';

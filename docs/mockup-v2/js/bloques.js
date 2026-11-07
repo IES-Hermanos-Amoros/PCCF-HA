@@ -1,4 +1,6 @@
-// Editor de bloques. El estado es el array que espera el renderer del PDF:
+// Editor de bloques: EL PINTADO. El modelo está en core/bloques.js.
+//
+// El estado es el array que espera el renderer del PDF:
 //
 //   { type: 'p',    text: '…' }
 //   { type: 'p',    text: [{ text: 'La nota ' }, { text: 'mínima', bold: true }] }
@@ -10,6 +12,18 @@
 // por construcción solo puede devolver texto plano; con `contenteditable` (lo que
 // hacía el v1) cualquier pegado desde Word mete HTML en el modelo y el PDF deja
 // de salir igual.
+//
+// QUÉ SUBIÓ A core/bloques.js Y POR QUÉ
+//
+// El modelo: `aTramos`, `aMarcas`, `plano`, `marcar`, las operaciones (`aplicar`,
+// `OPS`) y la validación (`valido`). Lo consumen dos sitios —este editor y la ruta
+// que guarda un apartado por la API—, y era justo la duplicación que se arrastraba
+// de los permisos y de las fichas de SA (docs/plan.md §2.2): la validación del
+// formato del PDF escrita dos veces es la validación escrita cero veces.
+//
+// Aquí se queda lo que necesita el navegador: `pintar` y sus ayudas, `aHtml`
+// (necesita `esc`), `aJSON`, y la operación `desvincular`, que lee los textos
+// compartidos de muestra del prototipo.
 //
 // NEGRITA Y CURSIVA
 //
@@ -40,119 +54,11 @@
 
   const { esc } = global.Util;
   const C = global.Contenido;
+  const M = global.Core.bloques;
 
   const copia = (x) => JSON.parse(JSON.stringify(x));
 
-  // ---------------------------------------------------------------- formato
-  // ***las dos*** primero, para que no se lo coman las reglas más cortas.
-  const MARCAS = /\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
-
-  // Texto plano de un valor que puede ser cadena o lista de tramos.
-  const plano = (t) => (Array.isArray(t)
-    ? t.map((r) => (r && typeof r === 'object' ? (r.text || '') : r)).join('')
-    : String(t == null ? '' : t));
-
-  // Lo que se escribe en el campo -> lo que se guarda en el modelo.
-  // Si no hay ninguna marca se devuelve la cadena tal cual: el modelo más simple
-  // posible, y el que produce el importador.
-  function aTramos(texto) {
-    const cadena = String(texto == null ? '' : texto);
-    const out = [];
-    let i = 0;
-    let m;
-    MARCAS.lastIndex = 0;
-    while ((m = MARCAS.exec(cadena))) {
-      if (m.index > i) out.push({ text: cadena.slice(i, m.index) });
-      if (m[1] != null) out.push({ text: m[1], bold: true, italics: true });
-      else if (m[2] != null) out.push({ text: m[2], bold: true });
-      else out.push({ text: m[3], italics: true });
-      i = m.index + m[0].length;
-    }
-    if (i < cadena.length) out.push({ text: cadena.slice(i) });
-    return out.some((r) => r.bold || r.italics) ? out : cadena;
-  }
-
-  // Lo que se guarda en el modelo -> lo que se escribe en el campo.
-  function aMarcas(valor) {
-    if (!Array.isArray(valor)) return String(valor == null ? '' : valor);
-    return valor.map((r) => {
-      const t = r && typeof r === 'object' ? String(r.text == null ? '' : r.text) : String(r);
-      if (!r || typeof r !== 'object') return t;
-      if (r.bold && r.italics) return '***' + t + '***';
-      if (r.bold) return '**' + t + '**';
-      if (r.italics) return '*' + t + '*';
-      return t;
-    }).join('');
-  }
-
-  // ---- el botón N / C: poner y quitar las marcas alrededor de un trozo
-  //
-  // Es una función pura —texto y selección entran, texto y selección salen— para
-  // poder probarla sin navegador; ui.js solo lee y devuelve la selección del
-  // <textarea>. Cuenta los asteriscos pegados a los bordes de la selección, así
-  // que el botón funciona como interruptor y las dos marcas se combinan:
-  //
-  //   hola  + N -> **hola**        **hola**  + N -> hola
-  //   *hola* + N -> ***hola***     ***hola*** + C -> **hola**
-  const PALABRA = /[0-9A-Za-zÀ-ÖØ-öø-ÿ_]/;
-
-  function marcar(valor, desde, hasta, tipo) {
-    const texto = String(valor == null ? '' : valor);
-    const tope = texto.length;
-    const limita = (n) => Math.max(0, Math.min(tope, Number.isFinite(n) ? n : 0));
-    let a = Math.min(limita(desde), limita(hasta));
-    let b = Math.max(limita(desde), limita(hasta));
-
-    // Sin selección, la marca va a la palabra donde esté el cursor, que es lo
-    // que hace cualquier procesador de textos.
-    if (a === b) {
-      while (a > 0 && PALABRA.test(texto[a - 1])) a -= 1;
-      while (b < tope && PALABRA.test(texto[b])) b += 1;
-    }
-    // Los espacios y los asteriscos de los bordes se dejan fuera, para no
-    // generar marcas sueltas del tipo `** hola**` ni anidarlas por error.
-    while (a < b && /\s/.test(texto[a])) a += 1;
-    while (b > a && /\s/.test(texto[b - 1])) b -= 1;
-    while (a < b && texto[a] === '*') a += 1;
-    while (b > a && texto[b - 1] === '*') b -= 1;
-
-    const marca = tipo === 'bold' ? '**' : '*';
-
-    // Cursor en un hueco sin palabra: se abren las marcas y el cursor se queda
-    // dentro, para seguir escribiendo ya en negrita.
-    if (a === b) {
-      return {
-        valor: texto.slice(0, a) + marca + marca + texto.slice(a),
-        desde: a + marca.length,
-        hasta: a + marca.length,
-        puesta: true,
-      };
-    }
-
-    const seguidos = (trozo, porElFinal) => {
-      let n = 0;
-      while (n < 3 && trozo[porElFinal ? trozo.length - 1 - n : n] === '*') n += 1;
-      return n;
-    };
-    const n = Math.min(seguidos(texto.slice(0, a), true), seguidos(texto.slice(b), false));
-    const puesta = tipo === 'bold' ? n < 2 : (n !== 1 && n !== 3);
-    const dentro = texto.slice(a, b);
-
-    if (puesta) {
-      return {
-        valor: texto.slice(0, a) + marca + dentro + marca + texto.slice(b),
-        desde: a + marca.length,
-        hasta: b + marca.length,
-        puesta: true,
-      };
-    }
-    return {
-      valor: texto.slice(0, a - marca.length) + dentro + texto.slice(b + marca.length),
-      desde: a - marca.length,
-      hasta: b - marca.length,
-      puesta: false,
-    };
-  }
+  const { aTramos, aMarcas, plano, marcar, valido } = M;
 
   // Tramos -> HTML, para pintarlos en la página (y en la vista previa).
   function aHtml(valor) {
@@ -172,6 +78,11 @@
   // como vienen (celdas con colspan y rowspan) y de momento NO se editan aquí:
   // cada una necesita su propio editor, como el de ponderaciones. Mientras no
   // existan, al menos se ven, en lugar de desaparecer del apartado.
+  //
+  // Ojo: estas tablas NO son bloques de un campo de texto. Son otros campos de la
+  // plantilla (`tabla`, `auto.tabla_ra_ce`, `tabla_clave_valor`…) y el prototipo las
+  // pinta por aquí por comodidad. Por eso `core/bloques.js` no las admite: dentro de
+  // un `texto_largo` no las pone el importador ni las sabe pintar el renderer.
   function pintarTabla(filas, etiqueta) {
     if (!Array.isArray(filas) || !filas.length) return '';
     const cuerpo = filas.map((fila) => '<tr>' + (fila || []).map((c) => {
@@ -270,121 +181,19 @@
   const aJSON = (bloques) => JSON.stringify(bloques, null, 2);
 
   // ---------------------------------------------------------------- operaciones
-  // Todas devuelven un array nuevo; quien llama decide si lo guarda.
-  const OPS = {
-    // lo que llega es lo escrito en el campo (con sus marcas); lo que se guarda
-    // son los tramos
-    'texto': (bs, { bloque, valor }) => { bs[bloque].text = aTramos(valor); return bs; },
-
-    'texto-item': (bs, { bloque, item, valor }) => { bs[bloque].items[item].text = aTramos(valor); return bs; },
-
-    'a-lista': (bs, { bloque }) => {
-      // una frase por línea, y si no hay saltos, una sola entrada. Se pasa por
-      // las marcas para no perder el formato que ya tuviera.
-      const texto = aMarcas(bs[bloque].text);
-      const items = texto.split('\n').map((t) => t.trim()).filter(Boolean)
-        .map((t) => ({ text: aTramos(t), level: 0 }));
-      bs[bloque] = { type: 'list', items: items.length ? items : [{ text: '', level: 0 }] };
-      return bs;
-    },
-
-    'a-parrafo': (bs, { bloque }) => {
-      const items = bs[bloque].items || [];
-      bs[bloque] = { type: 'p', text: aTramos(items.map((it) => aMarcas(it.text)).join('\n')) };
-      return bs;
-    },
-
-    'anadir-parrafo': (bs) => { bs.push({ type: 'p', text: '' }); return bs; },
-
-    'anadir-lista': (bs) => { bs.push({ type: 'list', items: [{ text: '', level: 0 }] }); return bs; },
-
-    'anadir-item': (bs, { bloque }) => { bs[bloque].items.push({ text: '', level: 0 }); return bs; },
-
-    'quitar-item': (bs, { bloque, item }) => {
-      bs[bloque].items.splice(item, 1);
-      if (!bs[bloque].items.length) bs.splice(bloque, 1);
-      return bs;
-    },
-
-    'sangrar': (bs, { bloque, item }) => {
-      const it = bs[bloque].items[item];
-      it.level = Math.min(2, (it.level || 0) + 1);
-      return bs;
-    },
-
-    'desangrar': (bs, { bloque, item }) => {
-      const it = bs[bloque].items[item];
-      it.level = Math.max(0, (it.level || 0) - 1);
-      return bs;
-    },
-
-    'quitar': (bs, { bloque }) => { bs.splice(bloque, 1); return bs; },
-
-    'subir': (bs, { bloque }) => {
-      if (bloque <= 0) return bs;
-      bs.splice(bloque - 1, 0, bs.splice(bloque, 1)[0]);
-      return bs;
-    },
-
-    'bajar': (bs, { bloque }) => {
-      if (bloque >= bs.length - 1) return bs;
-      bs.splice(bloque + 1, 0, bs.splice(bloque, 1)[0]);
-      return bs;
-    },
-
-    // Desvincular: la referencia se sustituye por una copia propia del texto,
-    // igual que hace `desvincular()` en motor/compartidos.js.
+  // Las del modelo están en core/bloques.js. Aquí solo se añade la que depende de
+  // los datos de muestra del prototipo: desvincular sustituye la referencia por una
+  // copia propia del texto, igual que hace `desvincular()` en motor/compartidos.js.
+  const OPS = Object.assign({}, M.OPS, {
     'desvincular': (bs, { bloque }) => {
       const c = C.COMPARTIDOS[bs[bloque].ref];
       if (!c) return bs;
       bs[bloque] = Object.assign(copia(c.bloque), { desvinculado_de: bs[bloque].ref, version_origen: c.version });
       return bs;
     },
-  };
+  });
 
-  // Aplica una operación sobre una copia de los bloques. Devuelve el array nuevo,
-  // o el mismo si la operación no existe o los índices no cuadran.
-  function aplicar(bloques, op, args) {
-    const fn = OPS[op];
-    if (!fn) return bloques;
-    const bs = copia(bloques);
-    const b = args && args.bloque;
-    if (b != null && !bs[b]) return bloques;
-    try { return fn(bs, args || {}); } catch (e) { return bloques; }
-  }
-
-  // ¿Es un modelo válido para el renderer? Lo usa la prueba de fidelidad.
-  // Un valor de texto: cadena, o lista de tramos con su texto plano.
-  const textoValido = (t) => typeof t === 'string'
-    || (Array.isArray(t) && t.length > 0
-      && t.every((r) => r && typeof r === 'object' && typeof r.text === 'string'));
-
-  function valido(bloques) {
-    return Array.isArray(bloques) && bloques.every((b) => {
-      if (!b || typeof b !== 'object') return false;
-      if (typeof b.ref === 'string') return true;
-      if (b.type === 'p') return textoValido(b.text);
-      if (b.type === 'list') {
-        return Array.isArray(b.items)
-          && b.items.every((it) => it && textoValido(it.text) && Number.isInteger(it.level || 0));
-      }
-      // Las tablas que llegan del Word: celdas de texto plano, nada de HTML.
-      if (b.type === 'tabla') {
-        return Array.isArray(b.filas) && b.filas.every((fila) => Array.isArray(fila)
-          && fila.every((c) => c && typeof c === 'object' && textoValido(c.text == null ? '' : String(c.text))));
-      }
-      if (b.type === 'pares') {
-        return Array.isArray(b.pares) && b.pares.every((x) => x && textoValido(String(x.etiqueta == null ? '' : x.etiqueta))
-          && textoValido(String(x.valor == null ? '' : x.valor)));
-      }
-      if (b.type === 'ra_ce') {
-        return Array.isArray(b.ra) && b.ra.every((r) => r && Number.isFinite(Number(r.num))
-          && textoValido(String(r.texto == null ? '' : r.texto))
-          && (r.ce || []).every((ce) => ce && textoValido(String(ce.texto == null ? '' : ce.texto))));
-      }
-      return false;
-    });
-  }
+  const aplicar = (bloques, op, args) => M.aplicar(bloques, op, args, OPS);
 
   global.Bloques = {
     pintar, aJSON, aplicar, valido,
