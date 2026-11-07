@@ -597,3 +597,30 @@ mark.pon { background: color-mix(in srgb, var(--verde) 26%, transparent); color:
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ===================================================== la aplicación (E1)
+   Lo poco que la aplicación necesita y el prototipo no tenía. Son variantes de
+   reglas de arriba, con los mismos tokens: el formulario de subida reutiliza
+   `.linea-estructura`, que en el prototipo solo llevaba `input` porque allí no
+   había desplegables ni selectores de fichero.                              */
+
+.linea-estructura select,
+.linea-estructura input[type="file"] {
+  flex: 1; min-width: 200px; border: 1px solid var(--borde); border-radius: 8px;
+  background: var(--panel-2); color: var(--texto); padding: 6px 9px; outline: none;
+}
+.linea-estructura select:focus,
+.linea-estructura input[type="file"]:focus { border-color: var(--acento); background: var(--panel); }
+
+/* La ayuda de cada campo va debajo y no al lado: a la derecha de un desplegable
+   estrecho se parte en cuatro líneas y descoloca la fila. */
+.linea-estructura .ayuda { flex: 1 1 100%; margin-left: 150px; line-height: 1.5; }
+@media (max-width: 700px) { .linea-estructura .ayuda { margin-left: 0; } }
+
+/* La marca es un enlace a la portada: el subrayado del navegador le sobra. */
+a.marca { text-decoration: none; color: inherit; }
+a.marca:hover .marca-texto span { color: var(--acento); }
+
+/* En la portada el contenido no se centra verticalmente como en el prototipo:
+   es una lista que crece. */
+.main > .tarjeta + .tarjeta { margin-top: 16px; }

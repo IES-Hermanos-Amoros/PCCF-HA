@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PCCF·HA v2 — Editor de documentos</title>
-<link rel="stylesheet" href="css/estilos.css">
+<link rel="stylesheet" href="../../app/estilos.css">
 </head>
 <body>
 
@@ -146,9 +146,11 @@
 <script src="../../core/permisos.js"></script>
 <script src="../../core/sa.js"></script>
 <script src="../../core/validaciones.js"></script>
+<script src="../../core/unidades.js"></script>
+<!-- Los módulos del mockup siguen leyendo global.Unidades; el catálogo ya vive en Core.unidades -->
+<script>globalThis.Unidades = globalThis.Core.unidades;</script>
 
 <script src="js/util.js"></script>
-<script src="js/unidades.js"></script>
 <script src="js/plantilla.js"></script>
 <script src="js/estructura.js"></script>
 <script src="js/permisos.js"></script>

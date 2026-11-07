@@ -143,6 +143,27 @@
 
   const raizSeccion = (seccion) => String(seccion || '').split('/')[0];
 
+  // -------------------------------------------------------- el id del usuario
+
+  // Un usuario llega con el identificador en un campo o en otro según de dónde
+  // venga: el repositorio devuelve `_id`, que es lo que guarda Mongo, y el motor
+  // y el mockup usan `id`. Las dos formas se cruzan en cuanto la API coge un
+  // usuario del repositorio y le pregunta al motor si puede editar algo.
+  //
+  // Y el fallo que provoca es el peor de los posibles: no es un error, es un
+  // `false`. `datos.instancias[i].docentes.includes(undefined)` es false y
+  // `asignaciones[k].includes(undefined)` también, así que un docente
+  // simplemente no puede editar su propio módulo y en ningún sitio consta por
+  // qué. Un permiso que se niega en silencio no se distingue de un permiso que
+  // no se tiene.
+  //
+  // Por eso el id se lee siempre por aquí y nunca con `usuario.id` a pelo.
+  const idDeUsuario = (usuario) => {
+    if (!usuario) return null;
+    const id = usuario.id != null ? usuario.id : usuario._id;
+    return id == null ? null : String(id);
+  };
+
   // ---------------------------------------------------------------- exportado
 
   const api = {
@@ -154,6 +175,7 @@
     quienEdita,
     apartadoComun,
     raizSeccion,
+    idDeUsuario,
   };
 
   // Vale como <script> en el mockup, como `require` en el motor y en las

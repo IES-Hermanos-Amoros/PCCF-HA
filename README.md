@@ -16,6 +16,7 @@ Fase de pruebas de concepto.
 
 | Carpeta | Qué contiene |
 |---|---|
+| [`app/`](app/) | La aplicación: rutas de la API, la portada y el visor del documento, y `estilos.css`, que es **la misma** hoja que carga el prototipo |
 | [`motor/`](motor/) | Motor: importador de Word que deduce plantilla y datos, render de la PD en PDF con pdfmake, exportación a Word, saneado y permisos. Sus funciones HTTP están en `motor/api/` |
 | [`scripts/`](scripts/) | Órdenes de consola: importar, generar el ejemplo saneado, sanear documentos y las pruebas del motor |
 | [`docs/plan.md`](docs/plan.md) | Plan de construcción de la aplicación: cómo se pasa del motor y del prototipo a la aplicación, por evolutivos |
@@ -23,6 +24,19 @@ Fase de pruebas de concepto.
 | [`docs/mockups/`](docs/mockups/) | Primer prototipo de la interfaz: fija la forma de la pantalla y el árbol real de los documentos |
 | [`docs/mockup-v2/`](docs/mockup-v2/) | Segunda versión del prototipo: unidades con id estable, estado en la URL, editor de bloques, arrastre entre cursos, situaciones de aprendizaje y panel de coordinación |
 | [`docs/entrada_ej/`](docs/entrada_ej/) | Los documentos de entrada. No se versionan, ni los originales ni los ejemplos saneados: aquí solo está documentado cómo se sanean |
+
+## Cómo se levanta
+
+`npm install` y `npm run dev`. Sin `MONGODB_URI` arranca con el repositorio en memoria, así que
+funciona recién clonado y lo que se escriba se pierde al reiniciar.
+
+- `npm run sembrar` crea las personas de muestra con las que se entra mientras no haya autenticación
+  (los cuatro roles, inventadas); con `--desde out/importado --ciclo daw --curso 2026-27`, o con
+  `--docx <fichero>`, siembra además un documento con el que navegar. Con el repositorio en memoria
+  la aplicación siembra las personas ella sola al arrancar, porque el guion es otro proceso y no
+  comparte memoria con el servidor; para sembrar de verdad hace falta `MONGODB_URI`. Un documento
+  sembrado así se pide con `PCCF_SEMILLA_DESDE=out/importado PCCF_SEMILLA_CICLO=daw npm run dev`.
+- `npm run importar <fichero.docx>` importa un Word por consola y deja el resultado en `out/`.
 
 ## Datos personales
 

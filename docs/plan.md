@@ -186,8 +186,10 @@ El mockup **no se congela**: pasa a cargar `core/` con `<script src="../../core/
 siguen ejecutándose. Es la referencia visual de cada vista que se porta y la forma más rápida de
 probar un cambio de lógica sin levantar nada.
 
-La interfaz se porta a **React, vista por vista**, reutilizando `css/estilos.css` tal cual —son los
+La interfaz se porta a **React, vista por vista**, reutilizando la hoja de estilos tal cual —son los
 mismos tokens, así que la paridad visual sale gratis— y `js/ui.js` como implementación de referencia.
+La hoja vive en `app/estilos.css` desde el E1 y el prototipo la carga de ahí, igual que carga
+`core/`: **una sola copia**, o las dos se separan y la paridad deja de significar nada.
 No se envuelve el mockup entero: con `contenteditable` ya hubo esa tentación en el v1 y el E3 (guardado
 por rama, permisos de servidor) no cabe dentro de un prototipo sin servidor.
 
@@ -280,6 +282,23 @@ para que no se queden en la conversación en que aparecieron.
 - Comprueba **dos cosas que parecen la misma y no lo son**: que el PDF sale idéntico, y que `datos`
   vuelve idéntico. Hace falta separarlas porque hay cambios que el PDF no nota —dejar el `_id` del
   repositorio dentro de un texto compartido, por ejemplo— y que sin embargo ensucian los datos.
+
+### Lo que ha dejado el E1
+
+- **El criterio de aceptación se cumple con el documento real**, no solo con uno sintético: se importa
+  la PD de DAW por la ruta, se guarda, se vuelve a leer y se exporta, y la definición del PDF es
+  idéntica a la que da el importador directamente, en borrador y en aprobado. Tarda 4,5–5,2 s y entran
+  57 secciones, 11 unidades, 220 apartados y 12 textos compartidos.
+- **El límite de 4,5 MB que Vercel pone al cuerpo de una petición está sin comprobar.** El `.docx` de
+  la PD de DAW pesa 1,3 MB y cabe de sobra, pero no se ha verificado en un despliegue de verdad, y un
+  documento más gordo —o un PCCF con imágenes— podría no entrar. Si pasa, la salida es subir el
+  fichero a Vercel Blob y que la función lo lea de allí.
+- **Hay dos formas de escribir el identificador de un usuario** y confundirlas niega permisos en
+  silencio: el repositorio devuelve `_id`, y el motor y el mockup usan `id`. Se lee siempre con
+  `core/permisos.js` → `idDeUsuario`, nunca con `usuario.id` a pelo. El fallo no daba ningún error:
+  un docente simplemente no podía editar su propio módulo.
+- **Las unidades sin docentes siguen sin poder editarse por nadie** salvo la jefatura, que es el aviso
+  nº 2 de `interfaz-web.md` y lo que resuelve el E2. La importación las crea con `docentes: []`.
 
 ---
 

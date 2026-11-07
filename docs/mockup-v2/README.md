@@ -32,7 +32,7 @@ además lleva el inventario de los ficheros tocados fuera de esta carpeta.
 
 | Problema del v1 | Qué hace el v2 |
 |---|---|
-| La unidad se identificaba **por su título**, y los títulos cambian cada curso (ya pasa tres veces entre 2025-26 y 2026-27). Cada septiembre se perdían las asignaciones de los módulos renombrados | Catálogo de unidades con **id interno estable** + código del título, en [`js/unidades.js`](js/unidades.js). El título es solo la etiqueta, y `titulos` guarda la variante de cada curso |
+| La unidad se identificaba **por su título**, y los títulos cambian cada curso (ya pasa tres veces entre 2025-26 y 2026-27). Cada septiembre se perdían las asignaciones de los módulos renombrados | Catálogo de unidades con **id interno estable** + código del título, en [`core/unidades.js`](../../core/unidades.js). El título es solo la etiqueta, y `titulos` guarda la variante de cada curso |
 | Los nodos se identificaban **por posición** (`pd/9/2/0`): insertar un apartado rompía cualquier enlace | Los nodos se identifican por **slug**, igual que los ids que ya produce el importador en `plantilla.json` |
 | Los apartados de un módulo se **duplicaban** por módulo | Una sola sección compartida por las 11 unidades, con la unidad aparte: es el par `(seccion, instancia)` del motor |
 | El selector mezclaba **rol y asignaciones** ("Docente DAW y RL" era las dos cosas a la vez) | `usuario = { rol, unidades, apartados }`. El rol sale de un desplegable y las unidades se reparten en el panel de **Asignaciones** |
@@ -114,7 +114,7 @@ la app real salen del importador; mientras tanto se quedan donde están.
 ## Avisos
 
 - **Los códigos de módulo hay que confirmarlos.** Los de DAW (RD 686/2010) y SMR (RD 1691/2007) están
-  puestos de memoria en [`js/unidades.js`](js/unidades.js) y no se han verificado contra la normativa.
+  puestos de memoria en [`core/unidades.js`](../../core/unidades.js) y no se han verificado contra la normativa.
   Los módulos nuevos de la LOFP (sostenibilidad, digitalización, introducción a la programación) van
   con `codigo: null` a propósito: la interfaz los pinta como *"código pendiente"* en lugar de
   inventárselo. El id interno no depende del código, así que confirmarlos luego no rompe nada.
@@ -150,9 +150,7 @@ mockup-v2/
   CAMBIOS.md          qué se nota al abrirlo, e inventario de lo tocado
   index.html          portada de departamentos
   app.html            el editor
-  css/estilos.css     mismos tokens que el v1, más diff, matriz, cajón y modal
   js/util.js          cuatro ayudas compartidas
-  js/unidades.js      catálogo de unidades: id estable + código + títulos por curso
   js/plantilla.js     cambios de estructura: renombrar, añadir, reordenar, retirar
   js/importado.js     GENERADO: contenido del documento de ejemplo saneado
   js/sa.js            situaciones de aprendizaje: modelo, resumen SA x RA y ficha impresa
@@ -163,6 +161,21 @@ mockup-v2/
   js/bloques.js       modelo de bloques y sus operaciones
   js/ui.js            árbol accesible, rutas, vistas y paneles
   test.js             50 pruebas, sin dependencias
+
+y de fuera de esta carpeta, la lógica que comparte con el motor y con la aplicación (decisión §2.2 de
+[`../plan.md`](../plan.md)), que `app.html` carga como `<script>` igual que las de aquí:
+
+```
+core/permisos.js     la regla de quién ve y quién edita
+core/sa.js           modelo e impresión de las fichas de situación de aprendizaje
+core/validaciones.js las comprobaciones del documento
+core/unidades.js     catálogo de unidades: id estable + código + títulos por curso
+app/estilos.css      la hoja de estilos, que es LA misma que usa la aplicación
+```
+
+La hoja se movió a `app/` en el E1 y no se copió: si hubiera dos, se separarían en una
+semana y la paridad visual entre este prototipo —que es lo que aprobó el departamento— y la
+aplicación dejaría de significar nada.
 
   herramientas/extraer-contenido.js   genera js/importado.js desde out/ejemplo/
 ```

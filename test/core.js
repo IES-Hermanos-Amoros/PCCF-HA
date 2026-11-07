@@ -18,6 +18,8 @@ const assert = require('assert');
 
 const P = require('../core/permisos');
 const S = require('../core/sa');
+const C = require('../core/conciliar');
+const CAT = require('../core/unidades');
 
 let fallos = 0;
 const prueba = (nombre, fn) => {
@@ -357,6 +359,145 @@ prueba('validaciones: con un error abierto el documento no se aprueba; con aviso
   assert.strictEqual(V.puedeAprobarse(aviso), true, 'solo avisos: se aprueba');
   assert.strictEqual(V.puedeAprobarse([]), true, 'sin nada: se aprueba');
   assert.deepStrictEqual(V.cuenta(todo), { error: 1, aviso: 1, info: 0 });
+});
+
+// ---------------------------------------------------------- conciliar
+// Las instancias del importador contra el catálogo de core/unidades.js. Los títulos son los
+// reales de la cabecera del catálogo: si alguno cambia, esto es lo que se rompe primero.
+
+const concilia = (titulos, curso, ciclo, catalogo) => C.conciliar(
+  titulos.map((titulo) => ({ titulo })),
+  Object.assign({ curso, ciclo }, catalogo ? { catalogo } : {}));
+
+prueba('conciliar: los tres módulos renombrados concilian con la misma unidad en 2025-26 y en 2026-27', () => {
+  const casos = [
+    ['Desarrollo web en entornos cliente', 'Desarrollo web en entorno cliente', 'daw', 'daw-0612'],
+    ['Sostenibilidad aplicada a los sectores productivos', 'Sostenibilidad aplicada al sistema productivo', 'daw', 'daw-sost'],
+    ['Sostenibilidad aplicada a los sectores productivos', 'Sostenibilidad aplicada al sistema productivo', 'smr', 'smr-sost'],
+  ];
+  for (const [viejo, nuevo, ciclo, id] of casos) {
+    const a = concilia([viejo], '2025-26', ciclo).unidades[0];
+    const b = concilia([nuevo], '2026-27', ciclo).unidades[0];
+    assert.strictEqual(a.unidadId, id, `2025-26: ${viejo}`);
+    assert.strictEqual(b.unidadId, id, `2026-27: ${nuevo}`);
+    assert.strictEqual(a.como, C.COMO.tituloDelCurso);
+    assert.strictEqual(b.como, C.COMO.tituloDelCurso);
+  }
+});
+
+prueba('conciliar: un título de otro curso concilia, y el como lo dice', () => {
+  // Un documento de 2026-27 que trae todavía el título de 2025-26.
+  const r = concilia(['Desarrollo web en entornos cliente'], '2026-27', 'daw').unidades[0];
+  assert.strictEqual(r.unidadId, 'daw-0612');
+  assert.strictEqual(r.como, C.COMO.tituloDeOtroCurso);
+  assert.strictEqual(r.confianza, 'alta');
+});
+
+prueba('conciliar: la sostenibilidad sin ciclo es ambigua y sale sin resolver; con ciclo, no', () => {
+  const sin = C.conciliar([{ titulo: 'Sostenibilidad aplicada al sistema productivo' }], { curso: '2026-27' });
+  assert.strictEqual(sin.unidades[0].unidadId, null, 'no se elige entre DAW y SMR');
+  assert.strictEqual(sin.sinResolver.length, 1);
+  assert.match(sin.sinResolver[0].motivo, /ciclo/);
+  assert.strictEqual(concilia(['Sostenibilidad aplicada al sistema productivo'], '2026-27', 'smr').unidades[0].unidadId, 'smr-sost');
+});
+
+prueba('conciliar: un título que no se parece a nada sale en sinResolver', () => {
+  const r = concilia(['Taller de cerámica de los jueves'], '2026-27', 'daw');
+  assert.deepStrictEqual(r.unidades, [{ titulo: 'Taller de cerámica de los jueves', unidadId: null, como: 'sin_resolver', confianza: null }]);
+  assert.strictEqual(r.sinResolver.length, 1);
+  assert.strictEqual(r.sinResolver[0].indice, 0);
+  assert.strictEqual(r.sinResolver[0].titulo, 'Taller de cerámica de los jueves');
+  assert.ok(r.sinResolver[0].motivo.length > 0, 'dice por qué');
+});
+
+prueba('conciliar: dos instancias que apuntarían a la misma unidad, la segunda sale sin resolver', () => {
+  // Las dos son el mismo módulo escrito con dos títulos de curso distintos.
+  const r = concilia(['Desarrollo web en entorno cliente', 'Desarrollo web en entornos cliente'], '2026-27', 'daw');
+  assert.deepStrictEqual(r.unidades.map((u) => u.unidadId), ['daw-0612', null]);
+  assert.strictEqual(r.unidades[0].como, C.COMO.tituloDelCurso);
+  assert.deepStrictEqual(r.sinResolver.map((s) => s.indice), [1]);
+  assert.match(r.sinResolver[0].motivo, /daw-0612/);
+});
+
+prueba('conciliar: el orden de salida es el de entrada, también con huecos', () => {
+  const entrada = ['Diseño de interfaces web', 'Taller de cerámica', 'Base de datos', 'Entornos de desarrollo'];
+  const r = concilia(entrada, '2026-27', 'daw');
+  assert.strictEqual(r.unidades.length, entrada.length);
+  assert.deepStrictEqual(r.unidades.map((u) => u.titulo), entrada);
+  assert.deepStrictEqual(r.unidades.map((u) => u.unidadId), ['daw-0615', null, 'daw-0484', 'daw-0487']);
+  assert.deepStrictEqual(r.sinResolver.map((s) => s.indice), [1]);
+});
+
+prueba('conciliar: tildes, mayúsculas y puntuación distintas concilian por normalización, y el como lo dice', () => {
+  const r = concilia(['  DISEÑO   de interfaces web.  '], '2026-27', 'daw').unidades[0];
+  assert.strictEqual(r.unidadId, 'daw-0615');
+  assert.strictEqual(r.como, C.COMO.tituloNormalizado);
+  assert.strictEqual(r.confianza, 'media');
+});
+
+prueba('conciliar: el código aparece en el título como número completo', () => {
+  const r = concilia(['Sistemas Informáticos (0483)'], '2026-27', 'daw').unidades[0];
+  assert.strictEqual(r.unidadId, 'daw-0483');
+  assert.strictEqual(r.como, C.COMO.codigoEnTitulo);
+  assert.strictEqual(r.confianza, 'baja');
+  // «10483» no es «0483» aunque lo contenga.
+  assert.strictEqual(concilia(['Sistemas Informáticos 10483'], '2026-27', 'daw').unidades[0].unidadId, null);
+});
+
+prueba('conciliar: una unidad con codigo null no casa por código con nada', () => {
+  // Con `String(null)` el texto «null» casaría; no debe.
+  const catalogo = [{ id: 'x-null', codigo: null, ambito: 'eso', titulo: 'Taller de robótica' }];
+  const r = concilia(['Módulo null 2'], '2026-27', undefined, catalogo);
+  assert.strictEqual(r.unidades[0].unidadId, null);
+  assert.strictEqual(r.sinResolver.length, 1);
+});
+
+prueba('conciliar: un acierto exacto no pierde la unidad frente a un código citado de pasada, vaya antes o después', () => {
+  const anexo = 'Anexo con el modulo 0485 citado de pasada';
+  const r = concilia([anexo, 'Programación'], '2026-27', 'daw');
+  assert.strictEqual(r.unidades[1].unidadId, 'daw-0485', 'Programación se queda con su unidad');
+  assert.strictEqual(r.unidades[1].como, C.COMO.tituloDelCurso);
+  assert.strictEqual(r.unidades[0].unidadId, null, 'el anexo no se lleva la unidad');
+  assert.strictEqual(r.sinResolver[0].indice, 0);
+  assert.match(r.sinResolver[0].motivo, /Programación/, 'el motivo dice quién se la ha quedado');
+  assert.match(r.sinResolver[0].motivo, /título de ese curso/);
+});
+
+prueba('conciliar: con el orden invertido, el resultado es el mismo (ya no decide el orden de llegada)', () => {
+  const anexo = 'Anexo con el modulo 0485 citado de pasada';
+  const a = concilia([anexo, 'Programación'], '2026-27', 'daw');
+  const b = concilia(['Programación', anexo], '2026-27', 'daw');
+  const porTitulo = (r) => Object.fromEntries(r.unidades.map((u) => [u.titulo, [u.unidadId, u.como]]));
+  assert.deepStrictEqual(porTitulo(b), porTitulo(a));
+  assert.deepStrictEqual(b.sinResolver.map((s) => s.titulo), [anexo]);
+});
+
+prueba('conciliar: dentro de una misma pasada, empate: gana el primero del documento', () => {
+  const r = concilia(['Módulo 0612 primera mención', 'Módulo 0612 segunda mención'], '2026-27', 'daw');
+  assert.deepStrictEqual(r.unidades.map((u) => u.unidadId), ['daw-0612', null]);
+  assert.deepStrictEqual(r.sinResolver.map((s) => s.indice), [1]);
+  assert.match(r.sinResolver[0].motivo, /daw-0612/);
+});
+
+prueba('conciliar: los códigos de como son estables y el mapa de etiquetas los cubre todos', () => {
+  const codigos = Object.values(C.COMO);
+  assert.deepStrictEqual(codigos.slice().sort(), [
+    'codigo_en_el_titulo', 'sin_resolver', 'titulo_de_otro_curso', 'titulo_del_curso', 'titulo_normalizado',
+  ]);
+  for (const c of codigos) {
+    assert.match(c, /^[a-z_]+$/, `${c} sin tildes ni espacios`);
+    assert.strictEqual(typeof C.ETIQUETAS_COMO[c], 'string', `falta la etiqueta de ${c}`);
+    assert.ok(C.ETIQUETAS_COMO[c].length > 0);
+  }
+  assert.strictEqual(C.ETIQUETAS_COMO[C.COMO.tituloDeOtroCurso], 'título de otro curso');
+  assert.strictEqual(Object.keys(C.ETIQUETAS_COMO).length, codigos.length, 'sin etiquetas de más');
+});
+
+prueba('conciliar: no modifica el catálogo y pide el curso', () => {
+  const antes = JSON.stringify(CAT.UNIDADES);
+  concilia(['Desarrollo web en entornos cliente', 'Algo'], '2025-26', 'daw');
+  assert.strictEqual(JSON.stringify(CAT.UNIDADES), antes);
+  assert.throws(() => C.conciliar([{ titulo: 'Base de datos' }], {}), /curso/);
 });
 
 // ----------------------------------------------------------------- resumen

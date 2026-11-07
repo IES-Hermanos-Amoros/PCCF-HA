@@ -75,6 +75,37 @@ prueba('desvincular: solo textos sugeridos y en un módulo propio', () => {
   assert.equal(puedeDesvincular(u.ana, plantilla, datos, 'c003', prog), false);
 });
 
+// El usuario llega con el identificador en `id` o en `_id` según de dónde venga:
+// el repositorio devuelve `_id` (es lo que guarda Mongo) y el resto del motor
+// escribe `id`. Las dos formas se cruzan en cuanto la API coge un usuario del
+// repositorio y le pregunta al motor si puede editar algo, y el fallo que daba no
+// era un error: era un `false`. Un docente no podía editar su propio módulo y en
+// ningún sitio constaba por qué.
+prueba('da igual que el usuario traiga `id` o `_id`: es el mismo usuario', () => {
+  const comoRepo = (x) => ({ _id: x.id, rol: x.rol, departamento: x.departamento });
+
+  for (const nombre of Object.keys(u)) {
+    const conId = u[nombre];
+    const conGuion = comoRepo(conId);
+    for (const [queEs, donde] of [['su módulo', prog], ['el de otro', bd], ['un común', comun]]) {
+      assert.equal(
+        puedeEditar(conGuion, plantilla, datos, donde),
+        puedeEditar(conId, plantilla, datos, donde),
+        `${nombre} sobre ${queEs}`,
+      );
+    }
+    assert.equal(puedeVer(conGuion, datos), puedeVer(conId, datos), nombre + ' ve');
+    assert.equal(
+      puedeEditarCompartido(conGuion, plantilla, datos, 'c002'),
+      puedeEditarCompartido(conId, plantilla, datos, 'c002'),
+      nombre + ' compartido',
+    );
+  }
+
+  // Y que la prueba no pasa por vacía: ana sí edita Programación, que es suyo.
+  assert.equal(puedeEditar(comoRepo(u.ana), plantilla, datos, prog), true);
+});
+
 prueba('admin ve y edita todo', () => {
   assert.equal(puedeEditar(u.admin, plantilla, datos, prog), true);
   assert.equal(puedeEditarCompartido(u.admin, plantilla, datos, 'c003'), true);

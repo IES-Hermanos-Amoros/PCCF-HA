@@ -56,6 +56,12 @@ async function usuarioDeLaPeticion(peticion) {
   // en un error del servidor (500).
   let u = null;
   try {
+    // Con el adaptador de memoria no hay nadie en la base de datos hasta que
+    // alguien la siembra, y sembrar al pintar una página deja a las rutas de la
+    // API sirviendo vacío si se las llama antes de abrir ninguna. Así que la
+    // siembra se asegura aquí, que es por donde pasan todas. Es idempotente y no
+    // hace nada cuando hay base de datos de verdad: allí siembra `npm run sembrar`.
+    await require('./semilla').asegurarSemilla();
     u = await obtenerRepositorio().usuarios.obtener(id);
   } catch (e) {
     return null;

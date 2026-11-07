@@ -39,6 +39,14 @@ function obtenerRepositorio() {
 
   globalThis[CLAVE] = crearRepositorio({ adaptador });
   globalThis[CLAVE].enMemoria = !uri;
+
+  // Solo se siembra solo el repositorio que crea esta función. Las pruebas
+  // meten el suyo en `globalThis[CLAVE]` antes de que nadie llame aquí —para
+  // que un MONGODB_URI del entorno no pueda mandarlas a una base de datos de
+  // verdad— y ese repositorio ya trae los datos que la prueba quiere, ni uno
+  // más: sembrarlo encima le cambiaría los recuentos bajo los pies.
+  globalThis[CLAVE].autoSemilla = !uri;
+
   return globalThis[CLAVE];
 }
 

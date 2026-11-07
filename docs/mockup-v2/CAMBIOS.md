@@ -220,7 +220,7 @@ Si preferís lo del v1, se vuelve atrás sin tocar nada más.
 
 Arquitectura, que es lo que había que arreglar antes de construir la app encima:
 
-1. **Unidades con id interno estable** (`js/unidades.js`) en lugar de identificarlas por su título.
+1. **Unidades con id interno estable** (hoy en `core/unidades.js`, que el E1 llevó a la lógica compartida porque el servidor lo necesita para conciliar al importar) en lugar de identificarlas por su título.
    Los títulos cambian de curso a curso —tres veces entre 2025-26 y 2026-27— y con el título como
    clave se perdían las asignaciones de los módulos renombrados.
 2. **Código del título como dato aparte**, no como identificador. Sin confirmar: los de DAW y SMR

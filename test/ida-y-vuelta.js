@@ -493,7 +493,7 @@ prueba('dos módulos con el mismo título no se pisan', async () => {
 });
 
 prueba('el unidadId sale de conciliar() cuando se le pasa, no del título', async () => {
-  // Lo que hará el E1 con el catálogo de docs/mockup-v2/js/unidades.js: el título cambia de curso a
+  // Lo que hace el E1 con el catálogo de core/unidades.js: el título cambia de curso a
   // curso y el id estable no, así que el documento se tiene que poder leer igual con los dos.
   const catalogo = {
     'Lenguaje de Marcas y Sistemas de Gestión de Información': 'daw-0373',

@@ -13,8 +13,10 @@
 // `puedeDesvincular`, `quienEdita`— porque es la que ya usan scripts/ y la que
 // usará la API de la aplicación.
 //
-// Un usuario es { id, rol, departamento }. Los roles y qué puede cada uno están
-// explicados en core/permisos.js.
+// Un usuario es { id | _id, rol, departamento }: el identificador se lee con
+// `C.idDeUsuario`, porque el repositorio lo devuelve en `_id` y el resto del
+// motor lo escribe `id`, y confundirlos niega permisos en silencio. Los roles y
+// qué puede cada uno están explicados en core/permisos.js.
 
 'use strict';
 
@@ -30,7 +32,7 @@ const buscarInstancia = (datos, instancia) => (typeof instancia === 'number'
 const asignado = (datos, idSeccion, plantilla, usuario) => {
   const a = (datos && datos.asignaciones) || {};
   return [idSeccion, C.apartadoComun(plantilla, idSeccion)]
-    .some((k) => k && (a[k] || []).includes(usuario.id));
+    .some((k) => k && (a[k] || []).includes(C.idDeUsuario(usuario)));
 };
 
 function puedeVer(usuario, datos) {
@@ -46,7 +48,7 @@ function puedeEditar(usuario, plantilla, datos, { seccion, instancia } = {}) {
 
   return C.reglaEdicion(usuario, {
     edita: C.quienEdita(plantilla, seccion),
-    esDocenteDeLaUnidad: !!ins && (ins.docentes || []).includes(usuario.id),
+    esDocenteDeLaUnidad: !!ins && (ins.docentes || []).includes(C.idDeUsuario(usuario)),
     tieneApartadoAsignado: asignado(datos, seccion, plantilla, usuario),
   });
 }

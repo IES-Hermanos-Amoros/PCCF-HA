@@ -10,6 +10,7 @@
     "start": "next start",
     "test": "node test/ejecutar.js",
     "importar": "node scripts/importar.js",
+    "sembrar": "node scripts/sembrar.js",
     "ejemplo": "node scripts/generar-ejemplo.js",
     "sanear": "node scripts/sanear-docx.js",
     "serve": "node scripts/serve.js",

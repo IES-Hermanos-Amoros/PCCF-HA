@@ -15,7 +15,8 @@ require('../../core/permisos.js');
 require('../../core/sa.js');
 require('../../core/validaciones.js');
 require('./js/util.js');
-require('./js/unidades.js');
+require('../../core/unidades.js');
+globalThis.Unidades = globalThis.Core.unidades; // el mockup lee global.Unidades; ver app.html
 require('./js/plantilla.js');
 require('./js/estructura.js');
 require('./js/permisos.js');

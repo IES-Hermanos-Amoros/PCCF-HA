@@ -1,5 +1,9 @@
 // Catálogo de unidades: módulos de FP, materias de ESO/Bachillerato y los bloques
-// con permiso propio (PIAR I y II). Es la pieza que arregla el punto débil del v1:
+// con permiso propio (PIAR I y II). Es DATO COMPARTIDO (docs/plan.md §2.2): lo usa la
+// interfaz para pintar el árbol y lo usa el servidor para conciliar al importar
+// (core/conciliar.js). Por eso vive en core/ y no en el prototipo.
+//
+// Es la pieza que arregla el punto débil del v1:
 // allí la unidad se identificaba por su título, y los títulos cambian de un curso a
 // otro aunque el módulo sea el mismo. Entre 2025-26 y 2026-27 ya pasa tres veces:
 //
@@ -96,5 +100,12 @@
 
   const unidad = (id) => porId.get(id) || null;
 
-  global.Unidades = { UNIDADES, unidad, tituloDe, etiquetaCodigo, deCiclo, deAmbito, hijasDe };
+  const api = { UNIDADES, unidad, tituloDe, etiquetaCodigo, deCiclo, deAmbito, hijasDe };
+
+  // Mismo patrón que core/permisos.js: un único objeto `Core` en el navegador y en
+  // las pruebas, `module.exports` si existe `module`. El mockup todavía lee
+  // `global.Unidades`; el alias lo pone quien lo carga (docs/mockup-v2/app.html).
+  global.Core = global.Core || {};
+  global.Core.unidades = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

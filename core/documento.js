@@ -131,7 +131,8 @@
   //
   // Conciliar el título con el catálogo estable de unidades es trabajo del E1, no de esta pieza, así
   // que la decisión entra por parámetro: el E1 le pasará una función construida sobre el catálogo de
-  // docs/mockup-v2/js/unidades.js (que busca por código o por el título de ese curso, `titulos`).
+  // core/unidades.js, a través de core/conciliar.js (que busca por código o por
+  // el título de ese curso, `titulos`).
   // Sin ella se usa un id derivado del título de forma determinista, que sirve para las pruebas y
   // para el día que llegue un documento de un ciclo que no esté en el catálogo.
   function aFilas({ plantilla, datos } = {}, opciones = {}) {

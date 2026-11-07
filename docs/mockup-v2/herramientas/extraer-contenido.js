@@ -130,7 +130,8 @@ const kb = (x) => Math.round(JSON.stringify(x).length / 1024);
 function mockup() {
   const g = globalThis;
   require(path.join(__dirname, '..', 'js', 'util.js'));
-  require(path.join(__dirname, '..', 'js', 'unidades.js'));
+  require(path.join(__dirname, '..', '..', '..', 'core', 'unidades.js'));
+  g.Unidades = g.Core.unidades;
   require(path.join(__dirname, '..', 'js', 'plantilla.js'));
   require(path.join(__dirname, '..', 'js', 'estructura.js'));
   const nodos = g.Estructura.aplanar(g.Estructura.construirArbol(DOC, CURSO)).map((x) => x.nodo);
