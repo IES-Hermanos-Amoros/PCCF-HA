@@ -1,0 +1,29 @@
+# `docker build` no lee .gitignore: los documentos del departamento y lo que
+# generan se excluyen aquí.
+docs/entrada_ej/
+out/
+data/
+entrada/
+*.docx
+*.doc
+*.odt
+*.pdf
+
+.env
+.env.*
+!.env.example
+
+node_modules/
+.next/
+.git/
+.github/
+.vercel/
+
+docs/
+test/
+poc-pdfmake/
+*.md
+!README.md
+docker-compose*.yml
+Dockerfile
+.dockerignore

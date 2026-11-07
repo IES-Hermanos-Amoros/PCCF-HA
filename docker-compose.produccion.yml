@@ -1,0 +1,38 @@
+# La aplicación y su base de datos en una sola máquina.
+#
+#   cp .env.example .env.produccion     y rellenarlo
+#   docker compose -f docker-compose.produccion.yml up -d --build
+#
+# Necesita un proxy delante con HTTPS: la cookie de sesión se marca `Secure` en
+# producción. Copias de seguridad y cortafuegos, en docs/infraestructura.md.
+
+services:
+  app:
+    build: .
+    image: pccf-ha
+    restart: unless-stopped
+    env_file: .env.produccion
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB: ${MONGODB_DB:-pccf}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    # Sin `ports`: solo la alcanza la aplicación.
+    volumes:
+      - mongo-datos:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  mongo-datos:

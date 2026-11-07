@@ -1,0 +1,46 @@
+name: Pruebas
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+
+    services:
+      mongo:
+        image: mongo:8
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval db.adminCommand('ping').ok"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # Las dos pasadas hacen falta: test/repositorio.js ejecuta la misma batería
+      # contra los dos adaptadores, y con el de memoria la mitad de
+      # repositorio/mongo.js no se prueba.
+      - name: Pruebas con el adaptador de memoria
+        run: npm test
+
+      - name: Pruebas contra MongoDB
+        env:
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: pccf_pruebas
+        run: npm test
+
+      - name: La aplicación compila
+        run: npm run build

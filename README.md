@@ -20,6 +20,8 @@ Fase de pruebas de concepto.
 | [`motor/`](motor/) | Motor: importador de Word que deduce plantilla y datos, render de la PD en PDF con pdfmake, exportación a Word, saneado y permisos. Sus funciones HTTP están en `motor/api/` |
 | [`scripts/`](scripts/) | Órdenes de consola: importar, generar el ejemplo saneado, sanear documentos y las pruebas del motor |
 | [`docs/plan.md`](docs/plan.md) | Plan de construcción de la aplicación: cómo se pasa del motor y del prototipo a la aplicación, por evolutivos |
+| [`docs/api.md`](docs/api.md) | El contrato de la API: las rutas, los errores y el porqué de cada decisión |
+| [`docs/infraestructura.md`](docs/infraestructura.md) | Qué montar para desplegarla —MongoDB en local, Atlas, Vercel, copias—, en qué orden y qué no hace falta |
 | [`docs/interfaz-web.md`](docs/interfaz-web.md) | Arquitectura de la aplicación: modelo de datos, API sobre `motor/`, que ya existe, editores por tipo de campo y roadmap |
 | [`docs/mockups/`](docs/mockups/) | Primer prototipo de la interfaz: fija la forma de la pantalla y el árbol real de los documentos |
 | [`docs/mockup-v2/`](docs/mockup-v2/) | Segunda versión del prototipo: unidades con id estable, estado en la URL, editor de bloques, arrastre entre cursos, situaciones de aprendizaje y panel de coordinación |

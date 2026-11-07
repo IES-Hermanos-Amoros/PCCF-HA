@@ -10,6 +10,13 @@
 /** @type {import('next').NextConfig} */
 const config = {
   serverExternalPackages: ['pdfmake', 'mammoth', 'node-html-parser', 'mongodb', 'jszip'],
+
+  // Deja en .next/standalone un servidor que arranca solo, con las dependencias
+  // que usa y nada más. Lo usa el Dockerfile.
+  output: 'standalone',
+
+  // Evita que `next dev` deje un AGENTS.md en la raíz al arrancar.
+  agentRules: false,
 };
 
 module.exports = config;
