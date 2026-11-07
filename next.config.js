@@ -11,9 +11,10 @@
 const config = {
   serverExternalPackages: ['pdfmake', 'mammoth', 'node-html-parser', 'mongodb', 'jszip'],
 
-  // Deja en .next/standalone un servidor que arranca solo, con las dependencias
-  // que usa y nada más. Lo usa el Dockerfile.
-  output: 'standalone',
+  // Solo al construir la imagen: deja en .next/standalone un servidor que
+  // arranca solo, con las dependencias que usa y nada más. Fuera de ahí no se
+  // activa, porque `next start` no funciona con esta salida.
+  output: process.env.PCCF_STANDALONE ? 'standalone' : undefined,
 
   // Evita que `next dev` deje un AGENTS.md en la raíz al arrancar.
   agentRules: false,

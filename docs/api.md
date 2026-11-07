@@ -96,7 +96,7 @@ título. Omitirlo significa «apartado común del documento».
 | `GET /api/documentos/[id]/docx?estado=&unidad=` | lo mismo en Word | E1 |
 | `GET /api/documentos/[id]/unidades` | el reparto: las unidades con sus docentes, las personas que pueden llevarlas y **cuántas unidades no tiene nadie** | E2 |
 | `PUT /api/documentos/[id]/unidades/[unidad]/docentes` | cambia quién lleva esa unidad. Cuerpo: `{ docentes: [id] }`, la lista completa | E2 |
-| `PATCH /api/documentos/[id]/apartado?seccion=&unidad=` | guarda esa rama. Cuerpo: `{ valores, esperaUpdatedAt }`. Devuelve 409 si no cuadra la versión | E3 |
+| `PATCH /api/documentos/[id]/apartado?seccion=&unidad=` | guarda esa rama. Cuerpo: `{ valores, esperaUpdatedAt }`, con **solo los campos de texto que se han tocado**. Devuelve 409 si no cuadra la versión | E3 |
 | `GET /api/documentos/[id]/validaciones` | los avisos, agrupados por unidad | E4 |
 
 `estado` es `borrador` (con marca de agua) o `aprobado`. Por omisión, el del documento.

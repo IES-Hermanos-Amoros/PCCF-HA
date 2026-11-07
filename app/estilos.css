@@ -702,3 +702,42 @@ kbd {
   border: 1px solid var(--borde); border-bottom-width: 2px; border-radius: 5px;
   background: var(--panel-2); color: var(--texto);
 }
+
+/* ------------------------------------------------------------ el editor del E3
+   Lo que faltaba para el editor de apartados. Todo lo demás —`.toolbar`,
+   `.tb-formato`, `.tb-donde`, `.campo`, `.bloque-parrafo`, `.bloque-lista`,
+   `.vista-previa`, `.mini` y `.chip-guardado`— ya estaba en esta hoja, puesto
+   por el prototipo: el editor reutiliza sus clases tal cual. */
+
+/* La línea de estado del autoguardado, encima de los campos. Quien escribe
+   tiene que poder cerrar el portátil sabiendo si se ha guardado, así que vive
+   pegada al apartado y no en la barra de arriba, donde se pierde de vista. */
+.estado-apartado {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  min-height: 24px; font-size: 12px;
+}
+.chip-guardando { border-color: var(--acento); color: var(--acento); }
+
+/* El 409. Es un aviso de los que hay que leer, así que lleva el borde rojo de
+   los errores y no el ámbar de `.nota-lock`. */
+.nota-error { border-left-color: var(--rojo); }
+.conflicto { border-left: 3px solid var(--rojo); }
+.conflicto-dos {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;
+}
+.conflicto-caja {
+  border: 1px solid var(--borde); border-radius: 8px; padding: 10px 12px;
+  background: var(--panel-2); max-height: 320px; overflow: auto;
+}
+.conflicto-caja h3 {
+  margin: 0 0 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--suave);
+}
+/* Dentro de la comparación las tarjetas no llevan su propio marco: serían un
+   recuadro dentro de otro recuadro dentro del panel. */
+.conflicto-caja .tarjeta { border: 0; box-shadow: none; padding: 0 0 8px; background: none; }
+
+/* Los botones de un bloque se envuelven: la lista lleva cuatro (+ elemento,
+   ¶ párrafo, subir y bajar) y en una ventana estrecha, sin envolver, se saldrían
+   por el lado. La regla original no lo necesitaba porque allí eran dos. */
+.bloque-acciones, .item-acciones { flex-wrap: wrap; }

@@ -1,8 +1,15 @@
 // El visor del documento: la pantalla de trabajo.
 //
 // Referencia: docs/mockup-v2/app.html y docs/mockup-v2/js/ui.js, que es la
-// especificación funcional aprobada por el departamento. En el E1 se navega y se
-// exporta; editar es el E3.
+// especificación funcional aprobada por el departamento.
+//
+// DÓNDE SE PUEDE ESCRIBIR LO DICE EL SERVIDOR
+//
+// `GET .../apartado` devuelve `puedeEditar`, y es eso y nada más lo que decide
+// si el apartado se pinta con el editor del E3 (ApartadoEditable.js) o en
+// lectura con el motivo (`Valores.js` y `motivoBloqueo`). El cliente no lo
+// deduce: para resolverlo haría falta el reparto de unidades y las asignaciones,
+// y el PATCH lo vuelve a comprobar de todas formas (docs/plan.md §2.5).
 //
 // EL ESTADO VIVE EN LA URL
 //
@@ -30,6 +37,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ApartadoEditable from './ApartadoEditable';
 import Arbol from './Arbol';
 import BarraSuperior from './BarraSuperior';
 import Valores from './Valores';
@@ -85,6 +93,12 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
   const [cargandoApartado, setCargandoApartado] = useState(false);
   const [errorApartado, setErrorApartado] = useState(null);
 
+  // Los apartados que se han escrito en esta sesión. `relleno` lo calculó el
+  // servidor al mandar el árbol, así que sin esto el icono de un apartado recién
+  // escrito seguiría diciendo «vacío» hasta recargar. Se corrige el nodo en
+  // lugar de volver a pedir el árbol —250 apartados— en cada autoguardado.
+  const [rellenos, setRellenos] = useState(() => new Map());
+
   const [abiertos, setAbiertos] = useState(() => new Set());
   const [busqueda, setBusqueda] = useState('');
   const [cajon, setCajon] = useState(false);
@@ -129,7 +143,10 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
     () => (arbol ? indexar(arbol) : { indice: new Map(), lineal: [] }),
     [arbol],
   );
-  const estados = useMemo(() => (arbol ? calcularEstados(arbol) : new Map()), [arbol]);
+  const estados = useMemo(
+    () => (arbol ? calcularEstados(arbol, rellenos) : new Map()),
+    [arbol, rellenos],
+  );
 
   const activa = clave(unidadId, seccion, documentoId);
   const entrada = indice.get(activa) || indice.get(documentoId) || null;
@@ -213,6 +230,37 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
       .finally(() => { if (vivo) setCargandoApartado(false); });
     return () => { vivo = false; };
   }, [documentoId, nodo]);
+
+  // ---------------------------------------------------------------- lo que se escribe
+
+  // Lo llama el editor después de cada autoguardado correcto. Tiene que ser
+  // estable: ApartadoEditable la mete dentro de su función de guardar, y una
+  // función nueva en cada repintado haría que el efecto de limpieza se
+  // ejecutara —es decir, que mandara el apartado— en medio de una tecleada.
+  const alGuardar = useCallback(({ relleno }) => {
+    const k = nodo ? nodo.clave : null;
+    if (!k) return;
+    setRellenos((previos) => {
+      if (previos.get(k) === relleno) return previos;
+      const siguiente = new Map(previos);
+      siguiente.set(k, relleno);
+      return siguiente;
+    });
+  }, [nodo]);
+
+  // El progreso de la barra lateral, con las correcciones de esta sesión: el
+  // resumen lo calculó el servidor con el árbol de entonces.
+  const rellenosAhora = useMemo(() => {
+    if (!resumen) return 0;
+    let n = resumen.rellenos;
+    for (const [k, v] of rellenos) {
+      const e = indice.get(k);
+      if (!e || !e.nodo.contenido) continue;
+      if (v && !e.nodo.relleno) n += 1;
+      else if (!v && e.nodo.relleno) n -= 1;
+    }
+    return n;
+  }, [resumen, rellenos, indice]);
 
   // ---------------------------------------------------------------- recorrido lineal
 
@@ -342,8 +390,12 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
         <header className="tarjeta-cab"><h2>{n.titulo}</h2></header>
         <div className="metricas">
           <Metrica valor={resumen ? resumen.apartados : '—'} etq="apartados" />
-          <Metrica valor={resumen ? resumen.rellenos : '—'} etq="con contenido" />
-          <Metrica valor={resumen ? resumen.vacios : '—'} etq="vacíos" clase={resumen && resumen.vacios ? 'ambar' : ''} />
+          <Metrica valor={resumen ? rellenosAhora : '—'} etq="con contenido" />
+          <Metrica
+            valor={resumen ? resumen.apartados - rellenosAhora : '—'}
+            etq="vacíos"
+            clase={resumen && resumen.apartados - rellenosAhora ? 'ambar' : ''}
+          />
           <Metrica valor={resumen ? resumen.unidades : '—'} etq="unidades" />
         </div>
         <dl className="ficha">
@@ -409,30 +461,42 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
       );
     }
     if (!apartado) return null;
+
+    // Donde se puede escribir, el editor; donde no, lo mismo que antes: se ve en
+    // lectura y con el motivo. La decisión es del servidor, y el `key` hace que
+    // cambiar de apartado desmonte el editor, que es lo que manda lo que quede
+    // pendiente antes de irse.
+    if (apartado.puedeEditar) {
+      return (
+        <ApartadoEditable
+          key={nodo.clave}
+          documentoId={documentoId}
+          apartado={apartado}
+          onGuardado={alGuardar}
+        />
+      );
+    }
+
     return (
       <>
-        {!apartado.puedeEditar ? (
-          <div className="nota nota-lock">
-            <Candado />
-            <div>
-              {motivoBloqueo(nodo, rol)}
-              {' '}
-              <span className="suave">
-                En este evolutivo nadie edita todavía: el editor de bloques es el E3.
-              </span>
-              {/* Si el candado es porque no se lleva el módulo, el arreglo está
-                  en el reparto: se dice dónde, en vez de dejar solo el «no». */}
-              {nodo.edita === 'docentes_del_modulo' ? (
-                <div className="ayuda">
-                  <a className="enlace" href={`/reparto/${encodeURIComponent(documentoId)}`}>
-                    Ver quién lleva esta unidad
-                  </a>
-                  {' · '}lo reparte la jefatura del departamento
-                </div>
-              ) : null}
-            </div>
+        <div className="nota nota-lock">
+          <Candado />
+          <div>
+            {motivoBloqueo(nodo, rol)}
+            {' '}
+            <span className="suave">Se puede leer y exportar, pero no escribir.</span>
+            {/* Si el candado es porque no se lleva el módulo, el arreglo está
+                en el reparto: se dice dónde, en vez de dejar solo el «no». */}
+            {nodo.edita === 'docentes_del_modulo' ? (
+              <div className="ayuda">
+                <a className="enlace" href={`/reparto/${encodeURIComponent(documentoId)}`}>
+                  Ver quién lleva esta unidad
+                </a>
+                {' · '}lo reparte la jefatura del departamento
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
         <Valores
           campos={apartado.campos}
           valores={apartado.valores}
@@ -536,13 +600,13 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
           <div className="sidebar-pie">
             <div className="progreso-texto">
               <span>Apartados con contenido</span>
-              <strong>{resumen && resumen.apartados ? Math.round((resumen.rellenos / resumen.apartados) * 100) : 0} %</strong>
+              <strong>{resumen && resumen.apartados ? Math.round((rellenosAhora / resumen.apartados) * 100) : 0} %</strong>
             </div>
             <div className="barra">
-              <i style={{ width: (resumen && resumen.apartados ? (resumen.rellenos / resumen.apartados) * 100 : 0) + '%' }} />
+              <i style={{ width: (resumen && resumen.apartados ? (rellenosAhora / resumen.apartados) * 100 : 0) + '%' }} />
             </div>
             <span id="progreso-detalle">
-              {resumen ? `${resumen.rellenos} de ${resumen.apartados} apartados escritos` : ''}
+              {resumen ? `${rellenosAhora} de ${resumen.apartados} apartados escritos` : ''}
             </span>
             {/* La leyenda solo lleva los tres estados que el E1 sabe: «validado»
                 necesita el arrastre entre cursos (E5) y «con errores», el panel

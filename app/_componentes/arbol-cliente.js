@@ -40,7 +40,16 @@ export function indexar(raiz) {
 
 // De `relleno` a los tres estados que el E1 sabe (ver etiquetas.js: los otros dos
 // del prototipo necesitan el E4 y el E5 y no se finge que existan).
-const estadoHoja = (nodo) => (nodo.relleno ? 'completo' : 'vacio');
+//
+// `rellenos` son los apartados que se han escrito EN ESTA SESIÓN desde el E3:
+// `relleno` lo calculó el servidor al mandar el árbol, y después de escribir en
+// un apartado vacío el icono seguiría diciendo «vacío» hasta recargar la página.
+// Se pasa un mapa de correcciones en lugar de volver a pedir el árbol entero
+// —250 apartados— en cada autoguardado.
+const estadoHoja = (nodo, rellenos) => {
+  const escrito = rellenos && rellenos.has(nodo.clave) ? rellenos.get(nodo.clave) : nodo.relleno;
+  return escrito ? 'completo' : 'vacio';
+};
 
 // El estado de una rama a partir de sus hijas y del suyo propio, con la misma
 // regla que el prototipo: «incompleto» solo le pasa a las ramas, y significa que
@@ -59,12 +68,12 @@ function agregar(estados) {
 // unidad en sí no se edita, pero si no puedes tocar nada de dentro, en el árbol
 // tiene que verse cerrada. Es la misma regla del prototipo, con el `puedeEditar`
 // que manda el servidor en lugar de uno calculado aquí.
-export function estados(raiz) {
+export function estados(raiz, rellenos) {
   const mapa = new Map();
 
   (function rec(nodo) {
     const hijos = (nodo.hijos || []).map(rec);
-    const propio = nodo.contenido ? estadoHoja(nodo) : null;
+    const propio = nodo.contenido ? estadoHoja(nodo, rellenos) : null;
     const todos = hijos.map((h) => h.agregado).filter(Boolean).concat(propio ? [propio] : []);
     const agregado = agregar(todos);
 

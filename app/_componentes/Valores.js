@@ -1,5 +1,15 @@
-// El contenido de un apartado, en solo lectura. En el E1 se navega y se exporta;
-// editar es el E3.
+// El contenido de un apartado, en solo lectura: lo que se ve donde no se puede
+// escribir, y lo que sigue pintando los campos que todavía no tienen editor.
+//
+// LAS PIEZAS SE EXPORTAN A PROPÓSITO
+//
+// `Tramos`, `Tabla`, `Compartido` y `Valor` las usa el editor del E3
+// (ApartadoEditable.js y Editor.js): dentro de un apartado que se puede escribir
+// hay campos que no —la ficha del módulo, las ponderaciones, las fichas de
+// situación de aprendizaje—, y la mitad de la pantalla sigue siendo esta. Si se
+// volvieran a escribir allí, el mismo apartado se pintaría de dos maneras según
+// quién lo mire, que es el fallo que nadie detecta porque cada pantalla, por
+// separado, parece correcta.
 //
 // POR QUÉ SE REPARTE POR LA FORMA DEL VALOR Y NO SOLO POR `campo.tipo`
 //
@@ -33,7 +43,7 @@ import { Fragment } from 'react';
 // `text` puede ser una cadena o una lista de tramos `{ text, bold, italics }`,
 // que es lo que acepta pdfmake y lo que el modelo guarda desde el E0. Los saltos
 // de línea del Word se respetan: dentro de una celda son parte del contenido.
-function Tramos({ valor }) {
+export function Tramos({ valor }) {
   const trozos = Array.isArray(valor) ? valor : [{ text: valor == null ? '' : String(valor) }];
   return trozos.map((t, i) => {
     const texto = t && typeof t === 'object' ? String(t.text == null ? '' : t.text) : String(t);
@@ -53,7 +63,7 @@ function Tramos({ valor }) {
 // Las celdas cubiertas por un `colspan` o un `rowspan` vienen OMITIDAS del
 // modelo (las reconstruye `rejilla()` en el motor), así que aquí se pintan tal
 // cual: el navegador hace lo mismo que el PDF con los mismos atributos.
-function Tabla({ filas, etiqueta }) {
+export function Tabla({ filas, etiqueta }) {
   if (!Array.isArray(filas) || !filas.length) return null;
   return (
     <div className="bloque bloque-tabla">
@@ -174,7 +184,7 @@ function Ponderaciones({ lista }) {
 // módulos lo referencian. Llega resuelto en la misma respuesta del apartado
 // (docs/api.md, «Por qué el apartado viaja con sus campos y sus compartidos»),
 // porque sin el texto al que apunta es un hueco en la pantalla.
-function Compartido({ cid, compartidos }) {
+export function Compartido({ cid, compartidos }) {
   const c = compartidos && compartidos[cid];
   if (!c) return <p className="bloque aviso-roto">[texto compartido {cid} no encontrado]</p>;
   return (
@@ -210,14 +220,14 @@ function Bloques({ bloques, compartidos }) {
 
 // ---------------------------------------------------------------- el reparto
 
-const vacio = (v) => v === null || v === undefined
+export const vacio = (v) => v === null || v === undefined
   || (typeof v === 'string' && v.trim() === '')
   || (Array.isArray(v) && v.length === 0);
 
 const esBloque = (x) => !!x && typeof x === 'object' && (typeof x.type === 'string' || typeof x.ref === 'string');
 
 // Un valor suelto, con la etiqueta de su campo si hace falta.
-function Valor({ valor, etiqueta, compartidos }) {
+export function Valor({ valor, etiqueta, compartidos }) {
   if (vacio(valor)) return null;
 
   if (typeof valor === 'string') return <p className="bloque">{valor}</p>;
@@ -293,9 +303,7 @@ export default function Valores({ campos, valores, compartidos, repetidor, titul
   const conAlgo = lista.filter((campo) => !vacio(valores && valores[campo.id]));
   if (!conAlgo.length) {
     return (
-      <p className="vacio-apartado">
-        Este apartado está vacío. Escribir en él llega con el editor del E3.
-      </p>
+      <p className="vacio-apartado">Este apartado está vacío.</p>
     );
   }
 

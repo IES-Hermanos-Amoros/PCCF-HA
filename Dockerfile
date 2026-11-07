@@ -15,6 +15,9 @@ FROM node:24-alpine AS compilacion
 WORKDIR /app
 COPY --from=dependencias /app/node_modules ./node_modules
 COPY . .
+# Activa `output: standalone` (next.config.js). Fuera de la imagen no se pone,
+# porque con esa salida `npm run start` no funciona.
+ENV PCCF_STANDALONE=1
 RUN npm run build
 
 FROM node:24-alpine AS ejecucion
