@@ -90,7 +90,10 @@ título. Omitirlo significa «apartado común del documento».
 | `GET /api/documentos` | lista, sin `plantilla` | E1 |
 | `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `ciclo`, `curso`, `departamento`, y `forzar` opcional. Importa, concilia unidades y guarda. La importan `admin` y `jefe_departamento`, y solo en su departamento | E1 |
 | `GET /api/documentos/[id]` | el documento sin `plantilla` | E1 |
-| `GET /api/documentos/[id]/arbol` | el árbol de apartados y unidades, con el estado de cada nodo | E1 |
+| `GET /api/documentos/[id]/arbol` | el árbol de apartados y unidades, con el estado de cada nodo, el `origen` de cada apartado y el recuento `revision` (apartados, revisados, heredados y pendientes) | E1·E5 |
+| `POST /api/documentos/[id]/siguiente-curso` | crea el documento del curso siguiente a partir de este. Cuerpo opcional `{ curso }`, por omisión el siguiente al suyo. Copia la plantilla, las unidades con sus docentes, los apartados con su contenido y los textos compartidos; todos los apartados nacen `heredado` y el documento, en `borrador`, con `anteriorId`. 201 con el documento nuevo. La jefatura de departamento y el soporte, en su departamento. 409 si ese curso ya existe | E5 |
+| `GET /api/documentos/[id]/anterior/apartado?seccion=&unidad=` | el mismo apartado en el curso anterior, con la forma de `/apartado` y solo lectura. Si no hay curso anterior, o el apartado o el módulo no existían allí, responde 200 con `existe: false` y un `motivo`: `sin_curso_anterior`, `seccion_nueva`, `unidad_nueva` o `sin_contenido` | E5 |
+| `POST /api/documentos/[id]/apartado/revisar?seccion=&unidad=` | da la rama por revisada: `origen: revisado`, con `revisadoPor` y `revisadoEn`. Cuerpo `{ esperaUpdatedAt }`. Quien puede editar la rama. 409 si cambió desde que se leyó | E5 |
 | `GET /api/documentos/[id]/apartado?seccion=&unidad=` | una rama: `valores`, `origen`, `updatedAt`, si quien pregunta puede editarla, y además `campos` y `compartidos` (ver abajo) | E1 |
 | `GET /api/documentos/[id]/pdf?estado=&unidad=` | el PDF. Sin `unidad`, el tomo completo | E1 |
 | `GET /api/documentos/[id]/docx?estado=&unidad=` | lo mismo en Word | E1 |

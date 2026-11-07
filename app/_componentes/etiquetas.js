@@ -29,27 +29,54 @@ export const NOMBRE_ESTADO_DOC = {
 
 // ---------------------------------------------------------------- el estado de un apartado
 //
-// EN EL E1 SOLO SE SABEN TRES DE LOS CINCO ESTADOS
+// DESDE EL E5 SE SABEN CUATRO DE LOS CINCO ESTADOS
 //
 // El prototipo distingue cinco: vacío · incompleto · completo · validado · con
-// errores. Los dos últimos necesitan datos que este evolutivo no tiene todavía:
-// «validado» sale del `origen` de cada apartado y de quién lo ha dado por bueno,
-// que es el arrastre entre cursos del E5, y «con errores» sale del panel de
-// validaciones, que es el E4. `GET .../arbol` manda `relleno`, y con eso salen
-// tres estados honrados. Los otros dos NO se finge que existan: ni se pintan ni
-// aparecen en la leyenda, porque un ✓ verde que no quiere decir «lo ha revisado
-// alguien» es peor que no tener ✓.
+// errores. «Validado» llega con este evolutivo: sale del `origen` de cada
+// apartado, que `GET .../arbol` manda nodo a nodo desde que existe el arrastre
+// entre cursos, así que el ✓ ya quiere decir lo que dice —que alguien lo ha
+// mirado para ESTE curso— y por eso se pinta y entra en la leyenda. «Completo»
+// pasa a significar lo que significaba en el prototipo: escrito, pero pendiente
+// de que alguien lo dé por bueno.
+//
+// El que sigue sin estar es «con errores»: sale de cruzar los avisos del panel de
+// validaciones con cada nodo del árbol, y `/arbol` no los manda. Mientras no los
+// mande NO se finge que exista, porque un ! que no sale cuando hay un error es
+// peor que no tener !.
+//
+// El ÁRBOL DICE SI ESTÁ HECHO Y BIEN, NO DE DÓNDE VIENE (punto 6 de
+// docs/mockup-v2/CAMBIOS.md). La procedencia —que esto venga del curso pasado—
+// va en la cabecera del apartado y en la vista *Cambios*, que es otra pregunta y
+// otro sitio: ver `NOMBRE_ORIGEN`, justo debajo.
 export const NOMBRE_ESTADO = {
   vacio: 'vacío',
   incompleto: 'incompleto: falta algún apartado',
-  completo: 'con contenido',
+  completo: 'con contenido, pendiente de revisar',
+  validado: 'revisado para este curso',
 };
 
 // El color es el que lleva la información, igual que en el prototipo y en el v1;
 // la forma va detrás para que también se distinga sin color (anillo punteado,
-// medio relleno, relleno). Las clases son las de la hoja: .glifo-vacio,
-// .glifo-incompleto, .glifo-completo.
-export const GLIFO = { vacio: '', incompleto: '', completo: '' };
+// medio relleno, relleno, ✓). Las clases son las de la hoja: .glifo-vacio,
+// .glifo-incompleto, .glifo-completo, .glifo-validado.
+export const GLIFO = { vacio: '', incompleto: '', completo: '', validado: '✓' };
+
+// ---------------------------------------------------------------- la procedencia
+//
+// De dónde viene el apartado, con las palabras del prototipo
+// (`NOMBRE_ORIGEN` de docs/mockup-v2/js/ui.js). Esto NO se pinta en el árbol: va
+// en la cabecera del apartado y en la vista *Cambios*, que es donde hace falta
+// —delante de las dos versiones— y no mezclado con «está hecho y bien».
+//
+// `null` es un apartado sin fila o importado antes de que el modelo guardara la
+// procedencia: no se le inventa ninguna.
+export const NOMBRE_ORIGEN = {
+  heredado: 'viene del curso anterior, sin revisar',
+  revisado: 'revisado sin cambios',
+  modificado: 'reescrito este curso',
+  nuevo: 'nuevo este curso',
+  vacio: 'vacío',
+};
 
 // ---------------------------------------------------------------- el candado
 //

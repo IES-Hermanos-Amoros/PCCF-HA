@@ -769,3 +769,39 @@ kbd {
    lo deja sin fondo y `.sa-titulo` le pone el color del texto, pero el botón
    trae su propio relleno del navegador. */
 .sa-item .sa-titulo { padding: 0; }
+
+/* ------------------------------------------------------------ el E5
+   El arrastre entre cursos y la vista *Cambios* reutilizan lo que el prototipo
+   ya había dejado en esta hoja: `.diff`, `.diff-par`, `.diff-col`,
+   `.diff-antes`, `.diff-ahora`, `.diff-etq`, `mark.quita`, `mark.pon`,
+   `.diff-pie`, `.chip-origen`, `.glifo-validado`, `.chip-validado`,
+   `.filtros`, `.estructura`, `.linea-estructura` y la regla que pasa la
+   comparación a una sola columna por debajo de 1150 px. Lo único que faltaba
+   es esto. */
+
+/* Una pareja de líneas: el resumen en texto («4 palabras quitadas · 6
+   añadidas») encima de las dos columnas. `.diff-par` es una rejilla de dos
+   columnas, así que el resumen no puede ir dentro: ocuparía una celda. */
+.diff-pareja { display: flex; flex-direction: column; gap: 4px; }
+.diff-pareja > .ayuda { padding-left: 2px; }
+
+/* Una línea de la comparación. Un elemento de lista se distingue de un párrafo
+   por su viñeta y por su sangría, que es la del documento: sangrar un elemento
+   un nivel más cambia el PDF y tiene que verse. */
+.diff-linea { margin: 6px 0 0; line-height: 1.65; }
+.diff-item::before { content: "• "; color: var(--suave); }
+.diff-otro { color: var(--suave); font-style: italic; }
+
+/* QUE NO SE DISTINGA SOLO POR EL COLOR.
+   `<del>` y `<ins>` son lo que lo quitado y lo añadido son en HTML, así que un
+   lector de pantalla puede anunciarlos; y encima el navegador les pone tachado
+   y subrayado, que se ven igual en escala de grises. El tachado ya venía en
+   `mark.quita`; el subrayado se declara aquí para no depender de la hoja del
+   navegador, y con grosor para que se note sobre el verde. */
+ins > mark.pon { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 2px; }
+del > mark.quita { text-decoration-thickness: 2px; }
+
+/* Lo que dice el botón de validar cuando el servidor se niega. Va al lado del
+   botón —también en la cabecera, que es estrecha— así que se le pone un ancho
+   máximo para que un mensaje de dos frases no empuje la fila entera. */
+.aviso-validar { font-size: 12px; line-height: 1.45; max-width: 46ch; }

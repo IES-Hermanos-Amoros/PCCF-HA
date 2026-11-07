@@ -370,7 +370,32 @@ function unidadPedida(url, unidades) {
   return { unidad: unidades[indice], indice };
 }
 
+// ---------------------------------------------------------------- el curso
+
+// El curso tiene la forma de la importación, 2026-27. Las dos puertas que lo piden (importar y crear
+// el curso siguiente) usan esta misma expresión para no aceptar cosas distintas.
+const CURSO_RE = /^\d{4}-\d{2}$/;
+
+// El curso que viene después de uno dado: 2026-27 → 2027-28. Es lo que se propone por omisión al
+// crear el documento del curso siguiente; quien lo pide puede dar otro.
+function cursoSiguiente(curso) {
+  const anio = Number(String(curso).slice(0, 4)) + 1;
+  return `${anio}-${String((anio + 1) % 100).padStart(2, '0')}`;
+}
+
+// ---------------------------------------------------------------- el origen de un apartado
+
+// Los cuatro valores de `origen` (docs/plan.md §2.1). Lo heredado es lo que viene del curso anterior
+// sin que nadie lo haya mirado; lo revisado, lo que alguien ha dado por bueno; lo modificado, lo que
+// alguien ha reescrito; lo nuevo, lo que nace en este curso.
+// La regla vive en core/documento.js, que es de donde la lee también el navegador.
+const { ORIGENES, esRevisado } = require('../../../core/documento');
+
 module.exports = {
+  CURSO_RE,
+  cursoSiguiente,
+  ORIGENES,
+  esRevisado,
   fallo,
   malaPeticion,
   noEncontrado,

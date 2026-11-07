@@ -15,14 +15,29 @@
 //
 // Y NO LLEVA EL CONTENIDO
 //
-// 250 apartados × sus valores es el documento entero. De cada apartado sale solo `relleno`, que es
-// lo que la barra lateral necesita para enseñar qué queda por escribir; el contenido se pide
-// apartado por apartado. Ver el comentario de core/arbol.js.
+// 250 apartados × sus valores es el documento entero. De cada apartado sale solo `relleno` (qué queda
+// por escribir) y `origen` (qué queda por revisar, en el curso siguiente): dos palabras, nunca el
+// contenido. El contenido se pide apartado por apartado. Ver el comentario de core/arbol.js.
 
 'use strict';
 
 const Arbol = require('../../../core/arbol');
-const { conErrores, abrirDocumento, puedeEditarApartado, tituloDelTomo } = require('./comun');
+const { conErrores, abrirDocumento, puedeEditarApartado, tituloDelTomo, esRevisado } = require('./comun');
+
+// El progreso por revisión (docs/plan.md §2.1): de los apartados con contenido propio, cuántos ya se
+// han mirado y cuántos siguen pendientes. Un heredado sin mirar es pendiente aunque esté lleno de
+// texto, y uno vacío también: el progreso mide revisión y no relleno. Los nodos que solo agrupan no
+// se revisan, igual que no se editan, así que no entran en el recuento.
+function recuentoRevision(nodos) {
+  const conContenido = nodos.filter((n) => n.contenido);
+  const revisados = conContenido.filter((n) => esRevisado(n.origen)).length;
+  return {
+    apartados: conContenido.length,
+    revisados,
+    heredados: conContenido.filter((n) => n.origen === 'heredado').length,
+    pendientes: conContenido.length - revisados,
+  };
+}
 
 const GET = conErrores(async (peticion, parametros) => {
   const { fallo, usuario, documento, repo } = await abrirDocumento(peticion, parametros);
@@ -45,7 +60,13 @@ const GET = conErrores(async (peticion, parametros) => {
   });
 
   const porId = new Map(unidades.map((u) => [u.unidadId, u]));
-  for (const nodo of Arbol.aplanar(arbol)) {
+
+  // El `origen` de cada apartado con contenido, que es lo que la interfaz pinta como progreso por
+  // revisión. Sale de las filas que ya están leídas, sin pedir nada más, y solo se anota en los nodos
+  // que tienen contenido propio: el origen de un nodo que solo agrupa no significa nada.
+  const porCelda = new Map(apartados.map((a) => [`${a.unidadId || ''}|${a.seccion}`, a]));
+  const nodos = Arbol.aplanar(arbol);
+  for (const nodo of nodos) {
     nodo.puedeEditar = puedeEditarApartado({
       usuario,
       documento,
@@ -54,10 +75,21 @@ const GET = conErrores(async (peticion, parametros) => {
       edita: nodo.edita,
       contenido: nodo.contenido,
     });
+    const fila = nodo.tipo === 'apartado' && nodo.contenido
+      ? porCelda.get(`${nodo.unidadId || ''}|${nodo.seccion}`)
+      : null;
+    nodo.origen = (fila && fila.origen) || null;
   }
 
   return Response.json(
-    { documentoId: documento._id, arbol, resumen: Arbol.resumen(arbol) },
+    {
+      documentoId: documento._id,
+      arbol,
+      resumen: Arbol.resumen(arbol),
+      // El progreso por revisión, aparte y no dentro de `resumen`: `resumen` es lo que ya da la
+      // ruta y lo comprueba test/api.js con igualdad estricta.
+      revision: recuentoRevision(nodos),
+    },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 });

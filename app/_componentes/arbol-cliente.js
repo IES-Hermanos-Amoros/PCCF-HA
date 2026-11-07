@@ -18,6 +18,8 @@
 
 'use client';
 
+import { esRevisado } from './arrastre-cliente';
+
 // ---------------------------------------------------------------- índice y recorrido
 
 // Devuelve { indice, lineal }. `lineal` deja fuera la raíz: la portada del
@@ -38,28 +40,42 @@ export function indexar(raiz) {
 
 // ---------------------------------------------------------------- estados
 
-// De `relleno` a los tres estados que el E1 sabe (ver etiquetas.js: los otros dos
-// del prototipo necesitan el E4 y el E5 y no se finge que existan).
+// De `relleno` y `origen` a los cuatro estados que se saben (ver etiquetas.js:
+// «con errores» necesita que /arbol mande los avisos y no se finge que exista).
 //
-// `rellenos` son los apartados que se han escrito EN ESTA SESIÓN desde el E3:
-// `relleno` lo calculó el servidor al mandar el árbol, y después de escribir en
-// un apartado vacío el icono seguiría diciendo «vacío» hasta recargar la página.
-// Se pasa un mapa de correcciones en lugar de volver a pedir el árbol entero
-// —250 apartados— en cada autoguardado.
-const estadoHoja = (nodo, rellenos) => {
-  const escrito = rellenos && rellenos.has(nodo.clave) ? rellenos.get(nodo.clave) : nodo.relleno;
-  return escrito ? 'completo' : 'vacio';
+// EL ÁRBOL DICE SI ESTÁ HECHO Y BIEN, Y «BIEN» INCLUYE QUE ALGUIEN LO HAYA
+// MIRADO ESTE CURSO (punto 6 y punto 7 de docs/mockup-v2/CAMBIOS.md). Un
+// apartado heredado del curso pasado que nadie ha tocado está PENDIENTE aunque
+// esté lleno de texto: sale `completo` y no `validado`, y por eso el progreso da
+// un número más bajo que el de antes y es el que dice cuánto trabajo queda.
+//
+// `cambios` son las correcciones de ESTA SESIÓN: `relleno` y `origen` los
+// calculó el servidor al mandar el árbol, y después de escribir en un apartado
+// —o de darlo por revisado— el icono seguiría diciendo lo de antes hasta recargar
+// la página. Se pasa un mapa de correcciones `clave -> { relleno, origen }` en
+// lugar de volver a pedir el árbol entero —250 apartados— en cada autoguardado.
+const estadoHoja = (nodo, cambios) => {
+  const local = cambios ? cambios.get(nodo.clave) : null;
+  const escrito = local && local.relleno !== undefined ? local.relleno : nodo.relleno;
+  if (!escrito) return 'vacio';
+  const origen = local && local.origen !== undefined ? local.origen : nodo.origen;
+  // Sin `origen` —un árbol de antes del arrastre, o un apartado sin fila— no se
+  // puede decir que esté revisado, así que se queda en «con contenido»: es lo
+  // único honrado que se sabe.
+  return esRevisado(origen) ? 'validado' : 'completo';
 };
 
 // El estado de una rama a partir de sus hijas y del suyo propio, con la misma
-// regla que el prototipo: «incompleto» solo le pasa a las ramas, y significa que
-// hay cosas hechas pero falta alguna. Una rama entera vacía se dice vacía, no
-// incompleta, porque no se ha empezado.
+// regla que el prototipo (`agregar` de docs/mockup-v2/js/ui.js): «incompleto»
+// solo le pasa a las ramas, y significa que hay cosas hechas pero falta alguna.
+// Una rama entera vacía se dice vacía, no incompleta, porque no se ha empezado; y
+// una rama es `validado` solo si lo está TODO lo que tiene dentro, que es lo que
+// convierte el árbol en el mapa de lo que queda por revisar.
 function agregar(estados) {
   if (!estados.length) return null;
   if (estados.every((x) => x === 'vacio')) return 'vacio';
   if (estados.some((x) => x === 'vacio' || x === 'incompleto')) return 'incompleto';
-  return 'completo';
+  return estados.every((x) => x === 'validado') ? 'validado' : 'completo';
 }
 
 // Devuelve Map(clave -> { propio, agregado, bloqueado }).
@@ -68,12 +84,12 @@ function agregar(estados) {
 // unidad en sí no se edita, pero si no puedes tocar nada de dentro, en el árbol
 // tiene que verse cerrada. Es la misma regla del prototipo, con el `puedeEditar`
 // que manda el servidor en lugar de uno calculado aquí.
-export function estados(raiz, rellenos) {
+export function estados(raiz, cambios) {
   const mapa = new Map();
 
   (function rec(nodo) {
     const hijos = (nodo.hijos || []).map(rec);
-    const propio = nodo.contenido ? estadoHoja(nodo, rellenos) : null;
+    const propio = nodo.contenido ? estadoHoja(nodo, cambios) : null;
     const todos = hijos.map((h) => h.agregado).filter(Boolean).concat(propio ? [propio] : []);
     const agregado = agregar(todos);
 
@@ -86,6 +102,34 @@ export function estados(raiz, rellenos) {
   })(raiz);
 
   return mapa;
+}
+
+// ---------------------------------------------------------------- el progreso
+
+// EL PROGRESO CUENTA REVISIÓN, NO RELLENO (punto 7 de docs/mockup-v2/CAMBIOS.md).
+//
+// El recuento de verdad lo manda el servidor en `revision` (apartados, revisados,
+// heredados y pendientes), y es el que se enseña: la regla de qué cuenta como
+// revisado vive allí (`esRevisado` de app/_lib/rutas/comun.js) y un segundo total
+// calculado aquí podría discrepar del suyo.
+//
+// Esto es solo la CORRECCIÓN de esta sesión sobre ese recuento, el mismo apaño que
+// ya se hacía con `relleno`: al validar o al escribir en un apartado, el número
+// tiene que moverse sin volver a pedir el árbol de 250 nodos. Devuelve cuántos
+// apartados han pasado a contar como revisados (o han dejado de contar) desde que
+// llegó el árbol.
+export function correccionDeRevision(indice, cambios) {
+  if (!cambios || !cambios.size) return 0;
+  let delta = 0;
+  for (const [clave, local] of cambios) {
+    const entrada = indice.get(clave);
+    if (!entrada || !entrada.nodo.contenido) continue;
+    const antes = esRevisado(entrada.nodo.origen);
+    const ahora = esRevisado(local.origen !== undefined ? local.origen : entrada.nodo.origen);
+    if (ahora && !antes) delta += 1;
+    else if (!ahora && antes) delta -= 1;
+  }
+  return delta;
 }
 
 // ---------------------------------------------------------------- buscador

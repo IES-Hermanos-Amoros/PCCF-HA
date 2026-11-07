@@ -322,7 +322,17 @@ export function useAutoguardado({ url, valoresIniciales, versionInicial, onGuard
       // MISMA regla que usó el servidor al montarlo (core/arbol.js). Se mira el
       // apartado entero y no solo lo que viajó: los campos que no se tocan
       // también cuentan para el icono.
-      if (onGuardado) onGuardado({ relleno: Arbol.algoEscrito(ultimo.current) });
+      //
+      // Y de su PROCEDENCIA, que el PATCH acaba de cambiar: quien reescribe un
+      // apartado lo deja en `origen: 'modificado'`, o sea, revisado para este
+      // curso, y el progreso del E5 tiene que moverse sin recargar. El valor lo
+      // pone el servidor en la respuesta; no se supone aquí.
+      if (onGuardado) {
+        onGuardado({
+          relleno: Arbol.algoEscrito(ultimo.current),
+          origen: (r && r.origen) || undefined,
+        });
+      }
 
       // Si han llegado más teclas mientras se guardaba, otro viaje.
       if (sucio.current) guardar();

@@ -237,7 +237,20 @@
 
   // ---------------------------------------------------------------------- exportado
 
-  const api = { aFilas, aMotor, idDeTitulo };
+  // ------------------------------------------------- de dónde viene un apartado
+
+  const ORIGENES = ['heredado', 'revisado', 'modificado', 'nuevo'];
+
+  // Cuenta como revisado en cuanto alguien lo ha mirado: lo ha dado por bueno, lo
+  // ha reescrito, o lo escribió en este curso. Solo queda pendiente lo heredado
+  // sin mirar, aunque esté lleno de texto: el progreso mide revisión y no relleno.
+  //
+  // Está aquí, y no en el servidor ni en el navegador, porque los dos la
+  // necesitan —el recuento del progreso y el icono de cada nodo del árbol— y dos
+  // copias de una regla acaban dando dos cifras distintas. Es la lección del E0.
+  const esRevisado = (origen) => origen === 'revisado' || origen === 'modificado' || origen === 'nuevo';
+
+  const api = { aFilas, aMotor, idDeTitulo, ORIGENES, esRevisado };
 
   global.Core = global.Core || {};
   global.Core.documento = api;

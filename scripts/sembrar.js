@@ -170,6 +170,9 @@ async function sembrarDocumento(repo, fuente, opciones) {
   const porTitulo = new Map(resuelto.unidades.map((u) => [u.titulo, u.unidadId]));
 
   const filas = aFilas({ plantilla, datos }, {
+    // Igual que la ruta de importación: lo que entra de un Word es de este curso,
+    // no heredado, o el progreso de revisión arrancaría a cero sin motivo.
+    origenApartados: 'nuevo',
     tipo: tipo || plantilla.tipo,
     ciclo,
     curso,

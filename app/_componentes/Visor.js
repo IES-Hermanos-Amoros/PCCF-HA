@@ -27,19 +27,31 @@
 // `router.push` cada clic en el árbol volvería a pintar la página en el servidor
 // para acabar pidiendo lo mismo.
 //
-// DOS VISTAS, Y LA VISTA TAMBIÉN VA EN LA URL
+// TRES VISTAS, Y LA VISTA TAMBIÉN VA EN LA URL
 //
 // El prototipo pone arriba cuatro —Contenido · Cambios · Validaciones ·
-// Coordinación— y de esas existen dos: el contenido y el panel de
-// comprobaciones del E4. Las otras son el E5 y el E7 y no se dejan como botones
-// apagados.
+// Coordinación— y de esas existen tres: el contenido, la comparación con el
+// curso anterior (E5) y el panel de comprobaciones (E4). La que falta es
+// *Coordinación*, que es el E7, y no se deja como botón apagado: un botón que no
+// hace nada no se distingue de uno estropeado.
 //
-// La vista va en `?vista=validaciones` por lo mismo que la sección va en la
-// dirección: el panel de comprobaciones es la pantalla que la jefatura manda por
-// enlace («mira los errores de tu módulo»), y tiene que poder copiarse, recargarse
-// y volver con la flecha de atrás. Desde un aviso se salta al apartado que falla, y
-// ese salto cambia de vista y de apartado a la vez: es un `pushState` normal, así
-// que la flecha de atrás devuelve al panel.
+// La vista va en `?vista=cambios` o `?vista=validaciones` por lo mismo que la
+// sección va en la dirección: el panel de comprobaciones es la pantalla que la
+// jefatura manda por enlace («mira los errores de tu módulo») y la comparación es
+// la que se manda para preguntar «¿esto lo cambiaste tú?», y las dos tienen que
+// poder copiarse, recargarse y volver con la flecha de atrás. Desde un aviso se
+// salta al apartado que falla, y ese salto cambia de vista y de apartado a la
+// vez: es un `pushState` normal, así que la flecha de atrás devuelve al panel.
+//
+// EL PROGRESO CUENTA REVISIÓN, NO RELLENO
+//
+// Desde el E5 la barra de la izquierda mide cuántos apartados ha mirado alguien
+// para ESTE curso, no cuántos tienen texto (punto 7 de
+// docs/mockup-v2/CAMBIOS.md). El número sale más bajo que el de antes, y es el
+// que dice cuánto trabajo queda de verdad: lo que viene del curso anterior sin
+// que nadie lo haya revisado cuenta como pendiente aunque esté lleno. El recuento
+// lo manda el servidor en `revision`; aquí solo se le aplican las correcciones de
+// lo que se ha hecho en esta sesión.
 //
 // DOS PETICIONES, NUNCA EL DOCUMENTO ENTERO
 //
@@ -54,16 +66,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ApartadoEditable from './ApartadoEditable';
 import Arbol from './Arbol';
 import BarraSuperior from './BarraSuperior';
+import Cambios, { BotonValidar } from './Cambios';
+import CursoSiguiente from './CursoSiguiente';
 import Ponderaciones from './Ponderaciones';
 import Situaciones from './Situaciones';
 import Validaciones from './Validaciones';
 import Valores from './Valores';
 import { pedir } from './api';
-import { abiertosHasta, estados as calcularEstados, indexar } from './arbol-cliente';
+import {
+  abiertosHasta, correccionDeRevision, estados as calcularEstados, indexar,
+} from './arbol-cliente';
 import { TIPO_FICHA, TIPO_PONDERACION, TIPO_RESUMEN } from './sa-cliente';
 import { useSesion } from './sesion-cliente';
 import {
-  GLIFO, NOMBRE_ESTADO, NOMBRE_ESTADO_DOC, NOMBRE_TIPO, codigoDeUnidad, deQuienEs, motivoBloqueo,
+  GLIFO, NOMBRE_ESTADO, NOMBRE_ESTADO_DOC, NOMBRE_ORIGEN, NOMBRE_TIPO,
+  codigoDeUnidad, deQuienEs, motivoBloqueo,
 } from './etiquetas';
 
 // La clave de un nodo, con el mismo formato que `core/arbol.js`: la sección sola
@@ -97,8 +114,11 @@ const corto = (d) => [
   d.curso,
 ].filter(Boolean).join(' · ');
 
+// El orden es el del prototipo: Contenido · Cambios · Validaciones. Falta
+// *Coordinación*, que es el E7.
 const VISTAS = [
   { id: 'contenido', etiqueta: 'Contenido' },
+  { id: 'cambios', etiqueta: 'Cambios' },
   { id: 'validaciones', etiqueta: 'Validaciones' },
 ];
 
@@ -114,18 +134,27 @@ export default function Visor({
   const [documento, setDocumento] = useState(null);
   const [arbol, setArbol] = useState(null);
   const [resumen, setResumen] = useState(null);
+  // El progreso por revisión, que lo cuenta el servidor con el árbol delante
+  // (`revision` de GET .../arbol). Null mientras no llegue, o si el árbol es de
+  // antes del arrastre: entonces no se enseña un porcentaje inventado.
+  const [revision, setRevision] = useState(null);
   const [documentos, setDocumentos] = useState([]);
   const [errorCarga, setErrorCarga] = useState(null);
 
   const [apartado, setApartado] = useState(null);
   const [cargandoApartado, setCargandoApartado] = useState(false);
   const [errorApartado, setErrorApartado] = useState(null);
+  // Se pide otra vez el apartado abierto, sin cambiar de apartado: es lo que hace
+  // falta tras un 409 al validar («vuelve a cargarlo»).
+  const [recargas, setRecargas] = useState(0);
 
-  // Los apartados que se han escrito en esta sesión. `relleno` lo calculó el
-  // servidor al mandar el árbol, así que sin esto el icono de un apartado recién
-  // escrito seguiría diciendo «vacío» hasta recargar. Se corrige el nodo en
-  // lugar de volver a pedir el árbol —250 apartados— en cada autoguardado.
-  const [rellenos, setRellenos] = useState(() => new Map());
+  // Lo que ha cambiado en esta sesión, por apartado: `clave -> { relleno, origen }`.
+  // Los dos los calculó el servidor al mandar el árbol, así que sin esto el icono
+  // de un apartado recién escrito seguiría diciendo «vacío» y el de uno recién
+  // validado seguiría diciendo «pendiente» hasta recargar la página. Se corrige
+  // el nodo en lugar de volver a pedir el árbol —250 apartados— en cada
+  // autoguardado.
+  const [locales, setLocales] = useState(() => new Map());
 
   const [abiertos, setAbiertos] = useState(() => new Set());
   const [busqueda, setBusqueda] = useState('');
@@ -153,6 +182,7 @@ export default function Visor({
         setDocumento(doc.documento);
         setArbol(ar.arbol);
         setResumen(ar.resumen);
+        setRevision(ar.revision || null);
       } catch (e) {
         if (vivo) setErrorCarga(e);
       }
@@ -172,8 +202,8 @@ export default function Visor({
     [arbol],
   );
   const estados = useMemo(
-    () => (arbol ? calcularEstados(arbol, rellenos) : new Map()),
-    [arbol, rellenos],
+    () => (arbol ? calcularEstados(arbol, locales) : new Map()),
+    [arbol, locales],
   );
 
   const activa = clave(unidadId, seccion, documentoId);
@@ -283,38 +313,70 @@ export default function Visor({
       .catch((e) => { if (vivo) { setApartado(null); setErrorApartado(e); } })
       .finally(() => { if (vivo) setCargandoApartado(false); });
     return () => { vivo = false; };
-  }, [documentoId, nodo]);
+  }, [documentoId, nodo, recargas]);
 
   // ---------------------------------------------------------------- lo que se escribe
 
-  // Lo llama el editor después de cada autoguardado correcto. Tiene que ser
+  // Anota lo que ha cambiado de un apartado en esta sesión. Tiene que ser
   // estable: ApartadoEditable la mete dentro de su función de guardar, y una
   // función nueva en cada repintado haría que el efecto de limpieza se
   // ejecutara —es decir, que mandara el apartado— en medio de una tecleada.
-  const alGuardar = useCallback(({ relleno }) => {
-    const k = nodo ? nodo.clave : null;
+  const anotar = useCallback((k, parche) => {
     if (!k) return;
-    setRellenos((previos) => {
-      if (previos.get(k) === relleno) return previos;
+    setLocales((previos) => {
+      const antes = previos.get(k) || {};
+      const despues = { ...antes, ...parche };
+      if (antes.relleno === despues.relleno && antes.origen === despues.origen) return previos;
       const siguiente = new Map(previos);
-      siguiente.set(k, relleno);
+      siguiente.set(k, despues);
       return siguiente;
     });
-  }, [nodo]);
+  }, []);
 
-  // El progreso de la barra lateral, con las correcciones de esta sesión: el
-  // resumen lo calculó el servidor con el árbol de entonces.
+  // Lo llama el editor después de cada autoguardado correcto. El `origen` lo pone
+  // el servidor en la respuesta del PATCH (`modificado`), y es lo que hace que el
+  // progreso por revisión se mueva al reescribir un apartado heredado.
+  const alGuardar = useCallback(({ relleno, origen }) => {
+    anotar(nodo ? nodo.clave : null, origen === undefined ? { relleno } : { relleno, origen });
+  }, [anotar, nodo]);
+
+  // Lo llama el botón de validar con la respuesta del servidor. Se corrige el
+  // apartado abierto —para que el distintivo de la cabecera y el pie de la
+  // comparación digan ya «revisado»— y el nodo del árbol, para que el icono y el
+  // progreso se muevan sin recargar.
+  const alValidado = useCallback((r) => {
+    setApartado((previo) => (previo ? {
+      ...previo,
+      origen: r && r.origen ? r.origen : 'revisado',
+      updatedAt: r && r.updatedAt ? r.updatedAt : previo.updatedAt,
+      revisadoPor: r ? r.revisadoPor : previo.revisadoPor,
+      revisadoEn: r ? r.revisadoEn : previo.revisadoEn,
+    } : previo));
+    anotar(nodo ? nodo.clave : null, { origen: (r && r.origen) || 'revisado' });
+  }, [anotar, nodo]);
+
+  const recargarApartado = useCallback(() => setRecargas((n) => n + 1), []);
+
+  // Los dos recuentos de la barra lateral, con las correcciones de esta sesión:
+  // el servidor los calculó con el árbol de entonces.
   const rellenosAhora = useMemo(() => {
     if (!resumen) return 0;
     let n = resumen.rellenos;
-    for (const [k, v] of rellenos) {
+    for (const [k, v] of locales) {
+      if (v.relleno === undefined) continue;
       const e = indice.get(k);
       if (!e || !e.nodo.contenido) continue;
-      if (v && !e.nodo.relleno) n += 1;
-      else if (!v && e.nodo.relleno) n -= 1;
+      if (v.relleno && !e.nodo.relleno) n += 1;
+      else if (!v.relleno && e.nodo.relleno) n -= 1;
     }
     return n;
-  }, [resumen, rellenos, indice]);
+  }, [resumen, locales, indice]);
+
+  // El progreso de verdad: cuántos apartados ha mirado alguien para este curso.
+  const revisadosAhora = useMemo(
+    () => (revision ? revision.revisados + correccionDeRevision(indice, locales) : null),
+    [revision, locales, indice],
+  );
 
   // ---------------------------------------------------------------- los hermanos del apartado
   //
@@ -425,6 +487,19 @@ export default function Visor({
   const unidadDelNodo = nodo && nodo.unidadId ? codigoDeUnidad(nodo.unidadId) : null;
   const base = `/api/documentos/${encodeURIComponent(documentoId)}`;
 
+  // La procedencia del apartado abierto. Se mira primero lo que haya pasado en
+  // esta sesión, luego la respuesta del apartado y por último el nodo del árbol:
+  // el nodo la trae desde el principio, así que el distintivo de la cabecera no
+  // espera a que llegue el contenido.
+  const localDelNodo = nodo ? locales.get(nodo.clave) : null;
+  const origenDelNodo = (localDelNodo && localDelNodo.origen !== undefined ? localDelNodo.origen : null)
+    || (apartado ? apartado.origen : null)
+    || (nodo ? nodo.origen : null);
+
+  // El apartado tal como lo ve el botón de validar: con la procedencia corregida,
+  // para que no se pueda ofrecer dos veces lo mismo.
+  const apartadoAhora = apartado ? { ...apartado, origen: origenDelNodo } : null;
+
   // ---------------------------------------------------------------- las piezas de la pantalla
 
   const migas = () => {
@@ -483,6 +558,19 @@ export default function Visor({
         <header className="tarjeta-cab"><h2>{n.titulo}</h2></header>
         <div className="metricas">
           <Metrica valor={resumen ? resumen.apartados : '—'} etq="apartados" />
+          {/* Lo primero que se pregunta en septiembre es cuánto queda por
+              mirar, no cuánto tiene texto: lo heredado sin revisar está lleno y
+              sigue pendiente (punto 7 de docs/mockup-v2/CAMBIOS.md). */}
+          {revisadosAhora !== null ? (
+            <>
+              <Metrica valor={revisadosAhora} etq="revisados para este curso" />
+              <Metrica
+                valor={revision.apartados - revisadosAhora}
+                etq="pendientes de revisar"
+                clase={revision.apartados - revisadosAhora ? 'ambar' : ''}
+              />
+            </>
+          ) : null}
           <Metrica valor={resumen ? rellenosAhora : '—'} etq="con contenido" />
           <Metrica
             valor={resumen ? resumen.apartados - rellenosAhora : '—'}
@@ -491,6 +579,15 @@ export default function Visor({
           />
           <Metrica valor={resumen ? resumen.unidades : '—'} etq="unidades" />
         </div>
+        {revision && revision.heredados ? (
+          <p className="ayuda">
+            {revision.heredados === 1
+              ? '1 apartado viene del curso anterior sin que nadie lo haya mirado.'
+              : `${revision.heredados} apartados vienen del curso anterior sin que nadie los haya mirado.`}
+            {' '}Se repasan en la vista <strong>Cambios</strong> de cada uno, que los compara con el
+            curso pasado.
+          </p>
+        ) : null}
         <dl className="ficha">
           <dt>Tipo</dt><dd>{NOMBRE_TIPO[documento.tipo] || documento.tipo}</dd>
           {documento.ciclo ? <><dt>Ciclo</dt><dd>{String(documento.ciclo).toUpperCase()}</dd></> : null}
@@ -505,8 +602,26 @@ export default function Visor({
           <a className="mini" href={`/reparto/${encodeURIComponent(documentoId)}`}>
             Quién lleva cada unidad
           </a>
+          {documento.anteriorId ? (
+            <a className="mini" href={`/doc/${encodeURIComponent(documento.anteriorId)}`}>
+              El documento del curso anterior
+            </a>
+          ) : null}
         </div>
       </section>
+
+      {/* El arrastre entre cursos se ofrece aquí: es una decisión sobre ESTE
+          documento, y esta es la única pantalla donde se está mirando el
+          documento entero con su curso delante. */}
+      {n.tipo === 'raiz' ? (
+        <CursoSiguiente
+          documentoId={documentoId}
+          documento={documento}
+          documentos={documentos}
+          rol={rol}
+        />
+      ) : null}
+
       {listaHijos(n)}
     </>
   );
@@ -641,6 +756,20 @@ export default function Visor({
     // está haciendo ahí es repasar lo que falta, no escribir.
     if (vista === 'validaciones') return <Validaciones documentoId={documentoId} onIr={irAApartado} />;
     if (!nodo) return <p className="suave">Ese apartado no está en este documento.</p>;
+    // La comparación con el curso anterior es de UN apartado, así que necesita el
+    // nodo; en un nodo de paso lo dice y no pide nada al servidor.
+    if (vista === 'cambios') {
+      return (
+        <Cambios
+          documentoId={documentoId}
+          documento={documento}
+          nodo={nodo}
+          apartado={apartadoAhora}
+          onValidado={alValidado}
+          onRecargar={recargarApartado}
+        />
+      );
+    }
     if (nodo.tipo === 'raiz' || nodo.tipo === 'bloque') return vistaResumen(nodo);
     if (nodo.tipo === 'unidad') return vistaUnidad(nodo);
     if (!nodo.contenido) return listaHijos(nodo);
@@ -669,6 +798,17 @@ export default function Visor({
     }
     if (est.propio) {
       lista.push(<span className={'chip chip-' + est.propio} key="e">{NOMBRE_ESTADO[est.propio]}</span>);
+    }
+    // LA PROCEDENCIA VA AQUÍ, EN LA CABECERA DEL APARTADO, Y NO EN EL ÁRBOL
+    //
+    // El árbol dice si está hecho y bien, que es otra pregunta (punto 6 de
+    // docs/mockup-v2/CAMBIOS.md). De dónde viene el apartado se necesita cuando
+    // se está mirando ese apartado —para saber si hay que revisarlo— así que sale
+    // aquí y en la vista *Cambios*, que es donde están las dos versiones.
+    if (nodo && nodo.contenido && NOMBRE_ORIGEN[origenDelNodo]) {
+      lista.push(
+        <span className="chip chip-origen" key="o">{NOMBRE_ORIGEN[origenDelNodo]}</span>,
+      );
     }
     if (nodo && deQuienEs(nodo.edita)) {
       lista.push(<span className="chip" key="q">{deQuienEs(nodo.edita)}</span>);
@@ -731,28 +871,56 @@ export default function Visor({
             onAlternar={alternar}
           />
 
+          {/* EL PROGRESO CUENTA REVISIÓN, NO RELLENO (punto 7 de
+              docs/mockup-v2/CAMBIOS.md). Mientras el árbol no mande `revision`
+              —un servidor de antes del arrastre— se enseña el de relleno, que es
+              lo que de verdad se sabe, y se dice que es ese. */}
           <div className="sidebar-pie">
-            <div className="progreso-texto">
-              <span>Apartados con contenido</span>
-              <strong>{resumen && resumen.apartados ? Math.round((rellenosAhora / resumen.apartados) * 100) : 0} %</strong>
-            </div>
-            <div className="barra">
-              <i style={{ width: (resumen && resumen.apartados ? (rellenosAhora / resumen.apartados) * 100 : 0) + '%' }} />
-            </div>
-            <span id="progreso-detalle">
-              {resumen ? `${rellenosAhora} de ${resumen.apartados} apartados escritos` : ''}
-            </span>
-            {/* La leyenda solo lleva los tres estados que el E1 sabe: «validado»
-                necesita el arrastre entre cursos (E5) y «con errores», el panel
-                de validaciones (E4). Un ✓ que no quiere decir que lo haya
-                revisado alguien es peor que no tener ✓. */}
+            {revisadosAhora !== null ? (
+              <>
+                <div className="progreso-texto">
+                  <span>Apartados revisados</span>
+                  <strong>{revision.apartados ? Math.round((revisadosAhora / revision.apartados) * 100) : 0} %</strong>
+                </div>
+                <div className="barra">
+                  <i style={{ width: (revision.apartados ? (revisadosAhora / revision.apartados) * 100 : 0) + '%' }} />
+                </div>
+                <span id="progreso-detalle">
+                  {`${revisadosAhora} de ${revision.apartados} apartados revisados para este curso`}
+                  {resumen ? ` · ${rellenosAhora} con contenido` : ''}
+                </span>
+                <span className="ayuda">
+                  Cuenta lo que alguien ha mirado para este curso, no lo que tiene texto: un apartado
+                  heredado del curso pasado está pendiente aunque esté lleno.
+                </span>
+              </>
+            ) : (
+              <>
+                <div className="progreso-texto">
+                  <span>Apartados con contenido</span>
+                  <strong>{resumen && resumen.apartados ? Math.round((rellenosAhora / resumen.apartados) * 100) : 0} %</strong>
+                </div>
+                <div className="barra">
+                  <i style={{ width: (resumen && resumen.apartados ? (rellenosAhora / resumen.apartados) * 100 : 0) + '%' }} />
+                </div>
+                <span id="progreso-detalle">
+                  {resumen ? `${rellenosAhora} de ${resumen.apartados} apartados escritos` : ''}
+                </span>
+              </>
+            )}
+            {/* La leyenda lleva los cuatro estados que se saben. «Con errores»
+                sigue fuera: sale de cruzar los avisos del panel de validaciones
+                con cada nodo, y /arbol no los manda. Un ! que no aparece cuando
+                hay un error es peor que no tener !. */}
             <ul className="leyenda">
+              <li><i className="glifo glifo-validado" aria-hidden="true">✓</i> revisado</li>
               <li><i className="glifo glifo-completo" aria-hidden="true" /> con contenido</li>
               <li><i className="glifo glifo-incompleto" aria-hidden="true" /> incompleto</li>
               <li><i className="glifo glifo-vacio" aria-hidden="true" /> vacío</li>
             </ul>
             <span className="ayuda">
-              Validado y con errores llegan con las validaciones y el arrastre entre cursos.
+              El punto dice si el apartado está hecho y bien. De dónde viene —si es del curso
+              pasado— lo dice la cabecera del apartado y la vista Cambios.
             </span>
           </div>
         </aside>
@@ -769,6 +937,25 @@ export default function Visor({
               </h1>
               <div className="chips">{vista === 'validaciones' ? null : chips()}</div>
             </div>
+            {/* «Validar este apartado» también en la cabecera, como en el
+                prototipo: se da por bueno desde donde se está leyendo, sin tener
+                que pasar por la comparación. Solo aparece en lo heredado sin
+                mirar, y solo si el servidor dijo que se puede editar. */}
+            {vista === 'validaciones' ? null : (
+              <div className="cabecera-derecha">
+                {/* `key` por apartado: si no, al cambiar de apartado el botón se
+                    queda con el estado del anterior y podría enseñar el error de
+                    otro apartado. */}
+                <BotonValidar
+                  key={nodo ? nodo.clave : 'sin-nodo'}
+                  documentoId={documentoId}
+                  nodo={nodo}
+                  apartado={apartadoAhora}
+                  onValidado={alValidado}
+                  onRecargar={recargarApartado}
+                />
+              </div>
+            )}
           </div>
 
           {/* Sin `.rejilla`: la rejilla de dos columnas del prototipo reserva

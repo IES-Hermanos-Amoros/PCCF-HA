@@ -306,6 +306,18 @@ porque nadie las podía mirar de golpe. Conviene arreglarlas en el documento.
   panel de validaciones los distingue, pero **qué convenio vale es una decisión del departamento** y
   sigue pendiente.
 
+### Lo que ha dejado el E5
+
+- **Crear el curso siguiente dos veces a la vez no está protegido del todo.** Se comprueba antes de
+  crear, pero no es atómico: dos jefaturas pulsando a la vez podrían crear dos documentos. El arreglo
+  sería un índice único sobre `(tipo, ciclo, departamento, curso)` en Mongo, y **no se ha puesto a
+  propósito**: `ciclo` y `curso` pueden ser nulos, y un índice único con nulos chocaría consigo
+  mismo y bloquearía importaciones legítimas. Es una acción de una vez al año; si alguna vez molesta,
+  ese es el arreglo y esa es la pega.
+- **Al arrastrar el curso se copian los docentes de cada módulo y las asignaciones.** Lo normal es
+  que sigan los mismos, pero un curso nuevo puede tener otro reparto: conviene que la jefatura lo
+  revise en septiembre. Lo que no se copia son los comentarios ni el historial, cuando existan (E7).
+
 ### Lo que ha dejado el E1
 
 - **El criterio de aceptación se cumple con el documento real**, no solo con uno sintético: se importa

@@ -104,6 +104,7 @@
 
 'use strict';
 
+const C = require('../../../core/permisos');
 const Estructurados = require('../../../core/estructurados');
 const { listasDeTexto } = require('../../../motor/compartidos');
 const {
@@ -169,20 +170,13 @@ async function abrirApartado(peticion, parametros) {
 
 // ---------------------------------------------------------------- GET: leer la rama
 
-const GET = conErrores(async (peticion, parametros) => {
-  const abierto = await abrirApartado(peticion, parametros);
-  if (abierto.fallo) return abierto.fallo;
-  const { usuario, documento, repo, seccion, unidadId, unidad, info } = abierto;
-
-  const fila = await repo.apartados.leer(documento._id, seccion, unidadId);
-  const valores = (fila && fila.valores) || {};
-
-  // Solo los compartidos a los que apunta este apartado, y solo si apunta a alguno: la PD real tiene
-  // 40 textos compartidos y mandarlos todos en cada apartado sería traerse el documento a trozos.
+// Los textos compartidos a los que apunta una rama, y solo esos. Solo si apunta a alguno: la PD real
+// tiene 40 textos compartidos y mandarlos todos en cada apartado sería traerse el documento a trozos.
+async function compartidosDe(repo, documentoId, seccion, valores) {
   const refs = refsDe(seccion, valores);
   const compartidos = {};
   if (refs.size) {
-    for (const c of await repo.compartidos.listar(documento._id)) {
+    for (const c of await repo.compartidos.listar(documentoId)) {
       if (!refs.has(c.cid)) continue;
       compartidos[c.cid] = {
         cid: c.cid, bloque: c.bloque, seccion: c.seccion, comun: c.comun,
@@ -190,9 +184,15 @@ const GET = conErrores(async (peticion, parametros) => {
       };
     }
   }
+  return compartidos;
+}
 
-  return Response.json({
-    documentoId: documento._id,
+// Lo que devuelve el GET de una rama, sea la del documento o la de su curso anterior. Está en una
+// función para que las dos respuestas no puedan separarse: el apartado del curso anterior «devuelve
+// lo mismo que el apartado normal» (docs/api.md), y el día que una gane un campo la otra también.
+function cuerpoRama({ documentoId, seccion, unidadId, info, fila, compartidos, puedeEditar }) {
+  return {
+    documentoId,
     seccion,
     unidadId,
     titulo: info.seccion.titulo,
@@ -200,11 +200,9 @@ const GET = conErrores(async (peticion, parametros) => {
     contenido: info.campos.length > 0,
     repetidor: !!info.seccion.repetidor,
     edita: info.edita,
-    puedeEditar: puedeEditarApartado({
-      usuario, documento, unidad, seccion, edita: info.edita, contenido: info.campos.length > 0,
-    }),
+    puedeEditar,
     existe: !!fila,
-    valores,
+    valores: (fila && fila.valores) || {},
     origen: fila ? fila.origen : null,
     // El token de concurrencia: es la versión que el cliente tiene que devolver en el PATCH para
     // que el servidor sepa que no ha escrito nadie por medio (docs/api.md, `esperaUpdatedAt`).
@@ -212,6 +210,119 @@ const GET = conErrores(async (peticion, parametros) => {
     revisadoPor: fila ? fila.revisadoPor : null,
     revisadoEn: fila ? fila.revisadoEn : null,
     compartidos,
+  };
+}
+
+const GET = conErrores(async (peticion, parametros) => {
+  const abierto = await abrirApartado(peticion, parametros);
+  if (abierto.fallo) return abierto.fallo;
+  const { usuario, documento, repo, seccion, unidadId, unidad, info } = abierto;
+
+  const fila = await repo.apartados.leer(documento._id, seccion, unidadId);
+  const cuerpo = cuerpoRama({
+    documentoId: documento._id,
+    seccion,
+    unidadId,
+    info,
+    fila,
+    compartidos: await compartidosDe(repo, documento._id, seccion, (fila && fila.valores) || {}),
+    puedeEditar: puedeEditarApartado({
+      usuario, documento, unidad, seccion, edita: info.edita, contenido: info.campos.length > 0,
+    }),
+  });
+  return Response.json(cuerpo, { headers: { 'Cache-Control': 'no-store' } });
+});
+
+// ---------------------------------------------------------------- GET: el mismo apartado, en el curso anterior
+//
+// Para que la interfaz pueda enseñar en qué ha cambiado un apartado (docs/plan.md §2.1). Devuelve lo
+// mismo que el GET de la rama, del documento al que apunta `anteriorId`, y SOLO LEE: no se puede
+// escribir en el curso anterior desde aquí, ni para revisarlo.
+//
+// NO ES UN 404 CUANDO NO HAY NADA QUE ENSEÑAR. «Este apartado es nuevo» y «no existe» no son lo
+// mismo, y quien mira la pantalla tiene que poder distinguirlos: la respuesta sale 200 con
+// `existe: false` y un `motivo` que lo dice:
+//
+//   sin_curso_anterior  el documento no viene de ningún curso (se importó de cero)
+//   seccion_nueva       el apartado no está en la plantilla del curso anterior
+//   unidad_nueva        el módulo no estaba en el curso anterior
+//   sin_contenido       el apartado existía en el curso anterior y estaba vacío
+//
+// El 404 queda para lo que de verdad no existe: una sección o una unidad que no son de ESTE documento
+// (eso lo decide abrirApartado), o un curso anterior que ya no está en la base de datos.
+const ANTERIOR = conErrores(async (peticion, parametros) => {
+  const abierto = await abrirApartado(peticion, parametros);
+  if (abierto.fallo) return abierto.fallo;
+  const { usuario, documento, repo, seccion, unidadId, info } = abierto;
+
+  // Un apartado sin nada que enseñar: el de este documento tal cual, con `existe: false` y el motivo.
+  const sinDato = (motivo, mensaje, { infoQueMuestra, documentoId, anteriorId, curso }) => Response.json({
+    ...cuerpoRama({
+      documentoId, seccion, unidadId, info: infoQueMuestra, fila: null, compartidos: {}, puedeEditar: false,
+    }),
+    anteriorId,
+    curso,
+    motivo,
+    mensaje,
+  }, { headers: { 'Cache-Control': 'no-store' } });
+
+  if (!documento.anteriorId) {
+    return sinDato(
+      'sin_curso_anterior',
+      'Este documento no viene de un curso anterior: se creó desde cero, así que no hay nada con que compararlo.',
+      { infoQueMuestra: info, documentoId: null, anteriorId: null, curso: null },
+    );
+  }
+
+  let anterior = null;
+  try {
+    anterior = await repo.documentos.obtener(documento.anteriorId);
+  } catch (e) {
+    anterior = null;
+  }
+  // Se pide a quien puede ver este documento; el anterior es del mismo departamento por construcción
+  // (el arrastre no cambia de departamento), así que si no se puede ver es que falta, no que sea
+  // ajeno. Se dice así en lugar de un 404 a secas.
+  if (!anterior || !C.puedeVer(usuario, anterior)) {
+    return fallo(404, 'no_encontrado', 'El curso anterior de este documento ya no está disponible.');
+  }
+  const cursoAnt = anterior.curso ? `el curso ${anterior.curso}` : 'el curso anterior';
+  const datosAnt = { documentoId: anterior._id, anteriorId: anterior._id, curso: anterior.curso || null };
+
+  const infoAnt = buscarSeccion(anterior.plantilla, seccion);
+  if (!infoAnt) {
+    return sinDato('seccion_nueva', `Este apartado no existía en ${cursoAnt}: es nuevo en este curso.`,
+      { infoQueMuestra: info, ...datosAnt });
+  }
+
+  if (unidadId) {
+    const unidadAnt = await repo.unidades.obtener(anterior._id, unidadId);
+    if (!unidadAnt) {
+      return sinDato('unidad_nueva', `Este módulo no estaba en ${cursoAnt}: es nuevo en este curso.`,
+        { infoQueMuestra: info, ...datosAnt });
+    }
+  }
+
+  const fila = await repo.apartados.leer(anterior._id, seccion, unidadId);
+  if (!fila) {
+    return sinDato('sin_contenido', `En ${cursoAnt} este apartado existía, pero estaba vacío.`,
+      { infoQueMuestra: infoAnt, ...datosAnt });
+  }
+
+  return Response.json({
+    ...cuerpoRama({
+      documentoId: anterior._id,
+      seccion,
+      unidadId,
+      info: infoAnt,
+      fila,
+      compartidos: await compartidosDe(repo, anterior._id, seccion, fila.valores || {}),
+      puedeEditar: false,
+    }),
+    anteriorId: anterior._id,
+    curso: anterior.curso || null,
+    motivo: null,
+    mensaje: null,
   }, { headers: { 'Cache-Control': 'no-store' } });
 });
 
@@ -240,6 +351,21 @@ function versionPedida(cuerpo) {
 
 // Las fechas salen a JSON como cadenas ISO, igual que en el GET.
 const iso = (f) => (f ? new Date(f).toISOString() : null);
+
+// Un conflicto de escritura, traducido a la respuesta de docs/api.md: 409 con lo que se esperaba y lo
+// que hay. Lo usan las dos escrituras de la rama (guardar y dar por revisado), que tienen que decir
+// lo mismo. El código lo pone repositorio/errores.js y es el mismo venga de memoria o de Mongo; se
+// mira el código y no la clase porque la ruta no tiene por qué saber qué adaptador hay debajo.
+// Devuelve null si el error no es un conflicto, para que quien llama lo relance.
+function conflictoDeEscritura(e) {
+  if (!e || e.codigo !== 'conflicto') return null;
+  return fallo(
+    409,
+    'conflicto',
+    'Alguien ha guardado este apartado desde que lo abriste. No se ha escrito nada: vuelve a cargarlo para no perder su trabajo ni el tuyo.',
+    { esperado: iso(e.esperado), actual: iso(e.actual) },
+  );
+}
 
 // Comprueba los valores contra la plantilla de esta rama. Devuelve { fallo } o {}.
 //
@@ -372,16 +498,8 @@ const PATCH = conErrores(async (peticion, parametros) => {
       { esperaUpdatedAt: espera },
     );
   } catch (e) {
-    // El código lo pone repositorio/errores.js y es el mismo venga de memoria o de Mongo. Se mira el
-    // código y no la clase porque la ruta no tiene por qué saber qué adaptador hay debajo.
-    if (e && e.codigo === 'conflicto') {
-      return fallo(
-        409,
-        'conflicto',
-        'Alguien ha guardado este apartado desde que lo abriste. No se ha escrito nada: vuelve a cargarlo para no perder su trabajo ni el tuyo.',
-        { esperado: iso(e.esperado), actual: iso(e.actual) },
-      );
-    }
+    const conflicto = conflictoDeEscritura(e);
+    if (conflicto) return conflicto;
     throw e;
   }
 
@@ -401,4 +519,69 @@ const PATCH = conErrores(async (peticion, parametros) => {
   }, { headers: { 'Cache-Control': 'no-store' } });
 });
 
-module.exports = { GET, PATCH };
+// ---------------------------------------------------------------- POST: dar la rama por revisada
+//
+// Pasa su `origen` a `revisado` y deja quién y cuándo (docs/plan.md §2.1). No toca `valores`: revisar
+// es mirar, no escribir, y un apartado revisado con su texto cambiado sería justo lo que `modificado`
+// existe para decir.
+//
+// QUIÉN PUEDE: quien puede EDITAR la rama, con la misma regla del PATCH (`puedeEditarApartado`). Dar
+// por bueno lo que no puedes escribir no tiene sentido: el docente da por revisado su módulo y no el
+// común de la jefatura, y la jefatura de estudios no revisa nada, igual que no edita nada.
+//
+// POR QUÉ PIDE `esperaUpdatedAt`: revisar un texto que alguien acaba de cambiar sería dar por bueno
+// algo que quien revisa no ha leído. Por eso lleva la misma versión que el PATCH, y si no cuadra, 409:
+// que vuelva a leer y revise lo que hay ahora.
+//
+// Y SI SE EDITA DESPUÉS, lo decide el PATCH: pone `origen: 'modificado'`. Revisar y luego editar deja
+// `modificado`, nunca `revisado` con texto que nadie ha mirado.
+const REVISAR = conErrores(async (peticion, parametros) => {
+  const abierto = await abrirApartado(peticion, parametros);
+  if (abierto.fallo) return abierto.fallo;
+  const { usuario, documento, repo, seccion, unidadId, unidad, info } = abierto;
+
+  if (!info.campos.length) {
+    return malaPeticion(`El apartado «${seccion}» no tiene campos propios: solo agrupa a los de dentro, y no hay nada que dar por revisado.`);
+  }
+
+  if (!puedeEditarApartado({ usuario, documento, unidad, seccion, edita: info.edita, contenido: true })) {
+    return SIN_PERMISO('Solo quien puede editar este apartado puede darlo por revisado. Los módulos los revisan sus docentes y la jefatura del departamento; la jefatura de estudios no revisa nada.');
+  }
+
+  const { fallo: falloCuerpo, cuerpo } = await leerJson(peticion);
+  if (falloCuerpo) return falloCuerpo;
+
+  const { fallo: falloVersion, espera } = versionPedida(cuerpo);
+  if (falloVersion) return falloVersion;
+
+  let guardado;
+  try {
+    guardado = await repo.apartados.escribir(
+      documento._id,
+      seccion,
+      unidadId,
+      { origen: 'revisado', revisadoPor: C.idDeUsuario(usuario), revisadoEn: new Date() },
+      { esperaUpdatedAt: espera },
+    );
+  } catch (e) {
+    const conflicto = conflictoDeEscritura(e);
+    if (conflicto) return conflicto;
+    throw e;
+  }
+
+  return Response.json({
+    documentoId: documento._id,
+    seccion,
+    unidadId,
+    titulo: info.seccion.titulo,
+    existe: true,
+    valores: guardado.valores,
+    origen: guardado.origen,
+    updatedAt: guardado.updatedAt,
+    revisadoPor: guardado.revisadoPor,
+    revisadoEn: guardado.revisadoEn,
+    puedeEditar: true,
+  }, { headers: { 'Cache-Control': 'no-store' } });
+});
+
+module.exports = { GET, PATCH, ANTERIOR, REVISAR };

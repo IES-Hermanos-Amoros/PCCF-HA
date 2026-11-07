@@ -55,6 +55,9 @@ const SUITES = [
 
   // --- E4: lo estructurado -----------------------------------------------
   { archivo: 'test/estructurados.js', nombre: 'situaciones de aprendizaje, ponderaciones y avisos' },
+
+  // --- E5: el curso siguiente ---------------------------------------------
+  { archivo: 'test/arrastre.js', nombre: 'arrastre entre cursos y revisión' },
 ];
 
 const AZUL = '\x1b[34m'; const ROJO = '\x1b[31m'; const VERDE = '\x1b[32m';
