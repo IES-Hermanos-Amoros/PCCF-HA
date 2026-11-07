@@ -1,16 +1,19 @@
 // Pruebas de los módulos de lógica del mockup, al estilo de las de
-// poc-pdfmake/scripts/. Se ejecutan con:
+// scripts/. Se ejecutan con:
 //
 //     node docs/mockup-v2/test.js
 //
 // Los ficheros de js/ cuelgan lo suyo de `globalThis` y no tocan el DOM salvo
 // ui.js, que por eso no se carga aquí. La prueba importante es la última: compara
-// el motor de permisos del navegador con el de poc-pdfmake/lib/permisos.js nodo a
+// el motor de permisos del navegador con el de motor/permisos.js nodo a
 // nodo, que es lo que impide que vuelvan a separarse como pasó en el v1.
 
 const assert = require('assert');
 const path = require('path');
 
+require('../../core/permisos.js');
+require('../../core/sa.js');
+require('../../core/validaciones.js');
 require('./js/util.js');
 require('./js/unidades.js');
 require('./js/plantilla.js');
@@ -552,12 +555,15 @@ prueba('las fichas importadas se leen con sus campos', () => {
 });
 
 prueba('la ficha del navegador y la del motor salen iguales, celda a celda', () => {
-  const motor = require(path.join(__dirname, '..', '..', 'poc-pdfmake', 'lib', 'ficha-sa.js'));
+  const motor = require(path.join(__dirname, '..', '..', 'motor', 'ficha-sa.js'));
   const Imp = globalThis.Importado;
   let comparadas = 0;
 
   Object.keys(Imp.UNIDADES).forEach((id) => S.listar(id).forEach((f) => {
     comparadas += 1;
+    // Desde que la logica vive en core/sa.js, esta comparacion ya no enfrenta dos
+    // implementaciones: comprueba que las dos puertas delegan en ella de verdad. Se
+    // queda porque el dia que alguien vuelva a bifurcar una de las dos, lo caza.
     assert.deepEqual(S.filas(f), motor.filasDeFicha(f), 'la ficha ' + id + ' SA' + f.num + ' no coincide');
     // y el motor puede volver a leer lo que el navegador pinta
     const vuelta = motor.fichaDeFilas(S.filas(f));
@@ -568,6 +574,8 @@ prueba('la ficha del navegador y la del motor salen iguales, celda a celda', () 
   }));
 
   assert.ok(comparadas >= 25, 'se esperaban las fichas de los tres módulos completos, hubo ' + comparadas);
+  // Igual que arriba: hoy es el mismo array por los dos lados. Es la red para que no
+  // vuelvan a ser dos.
   assert.deepEqual(S.CAMPOS.map((c) => c.id), motor.CAMPOS.map((c) => c.id), 'los campos se han separado');
   assert.deepEqual(S.CAMPOS.map((c) => c.etiqueta), motor.CAMPOS.map((c) => c.etiqueta), 'las etiquetas se han separado');
 });
@@ -696,8 +704,8 @@ prueba('todos los #id que usa ui.js existen en app.html o los genera ui.js', () 
 });
 
 // ------------------------------------------------------------------ la prueba que importa
-prueba('el motor del navegador y poc-pdfmake/lib/permisos.js coinciden en todos los nodos', () => {
-  const motor = require(path.join(__dirname, '..', '..', 'poc-pdfmake', 'lib', 'permisos.js'));
+prueba('el motor del navegador y motor/permisos.js coinciden en todos los nodos', () => {
+  const motor = require(path.join(__dirname, '..', '..', 'motor', 'permisos.js'));
 
   // Con apartados añadidos a mano por el departamento, que es donde más fácil
   // sería que los permisos de uno y otro dejaran de coincidir.

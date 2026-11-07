@@ -60,7 +60,7 @@ Curso (2025-26 | 2026-27)                    ← selector de la barra superior
   con el mismo mecanismo (`edita` por "docentes de la materia"), solo que aquí ningún docente del
   mockup las tiene asignadas.
 - Los apartados de FP salen de los `.docx` de FP que había en `../entrada_ej/` (extraídos con
-  mammoth y el importador de `poc-pdfmake/`); los de ESO y Bachillerato, de las *Propuestas
+  mammoth y el importador de `motor/`); los de ESO y Bachillerato, de las *Propuestas
   Pedagógicas* añadidas en `../entrada_ej/2026-27/`. De esos dos documentos solo se han copiado
   **títulos de apartados y de materias**: nada de texto de cuerpo ni datos del profesorado
   (información confidencial). Para 2025-26 se replica la misma estructura, porque de ese curso no
@@ -72,7 +72,7 @@ Curso (2025-26 | 2026-27)                    ← selector de la barra superior
 |---|---|
 | **Selector de curso** | 2025-26 / 2026-27: cambia los módulos y nombres reales de cada curso |
 | **Vistas** | *Navegación* (solo lectura) · *Edición* (toolbar + bloques editables + autoguardado simulado) · *Validaciones* (comprobaciones del documento). La vista *Edición* y el botón **Editar** de la cabecera solo se activan donde el rol puede editar; si no, el botón *Edición* queda **deshabilitado** y el botón *Editar* **oculto** |
-| **Rol** | Admin / Jefe de estudios / Jefe de departamento / **Docente DAW y RL** / **Docente Mixto**: recalcula los permisos al momento (candados en el árbol, botones ocultos/desactivados) — la lógica imita a `poc-pdfmake/lib/permisos.js`. *Docente DAW y RL* edita **Despliegue de aplicaciones web** (DAW) y **Redes Locales** (SMR). *Docente Mixto* edita **Lenguaje de Marcas y Sistemas de Gestión de Información** (DAW 1º), **Seguridad informática** (SMR 2º), los bloques **PIAR I** y **PIAR II** (solo sus Situaciones de aprendizaje y Desarrollo de criterios; el resto de la materia PIAR queda en solo lectura), **Digitalización (4º ESO)** y **PRSI II (2º Bach)** |
+| **Rol** | Admin / Jefe de estudios / Jefe de departamento / **Docente DAW y RL** / **Docente Mixto**: recalcula los permisos al momento (candados en el árbol, botones ocultos/desactivados) — la lógica imita a `motor/permisos.js`. *Docente DAW y RL* edita **Despliegue de aplicaciones web** (DAW) y **Redes Locales** (SMR). *Docente Mixto* edita **Lenguaje de Marcas y Sistemas de Gestión de Información** (DAW 1º), **Seguridad informática** (SMR 2º), los bloques **PIAR I** y **PIAR II** (solo sus Situaciones de aprendizaje y Desarrollo de criterios; el resto de la materia PIAR queda en solo lectura), **Digitalización (4º ESO)** y **PRSI II (2º Bach)** |
 | **Panel de permisos** | Botón **Permisos** de la barra superior, **solo visible para Admin**: tabla con un perfil por fila y, para los perfiles de docente, un **multiselector** (checkboxes agrupados por FP · SMR / FP · DAW / ESO / Bachillerato) de las unidades con permiso de edición. Los cambios se guardan en `localStorage` (`pccf-ha-perfiles`), se reflejan en el árbol al momento y hay botón *Restablecer valores por defecto*. Admin / Jefe de departamento / Jefe de estudios son filas fijas ("Todos" / "Solo lectura") |
 | **Árbol** | acordeón con transición, buscador que filtra y abre las ramas, punto de estado por nodo (relleno / avisos / vacío / solo lectura), badge `com.` en los textos compartidos |
 | **Contenido** | párrafos editables, tablas RA/CE, **ponderaciones con la suma en vivo** (verde al 100 %, rojo si no cuadra), **fichas de SA reales en ESO y Bachillerato** (tabla con criterios, pesos, temporalización y grupos tipo PROGRAMACIÓN/ROBÓTICA, más fichas numeradas; en FP siguen siendo fichas de muestra), badge de *texto compartido* con *Editar global* / *Desvincular* |
@@ -94,4 +94,4 @@ Curso (2025-26 | 2026-27)                    ← selector de la barra superior
   deben declararse identificadores con el mismo nombre (p. ej. `const PERFILES` solo puede estar en
   uno de los dos; el otro usa `D.PERFILES`).
 - La interfaz real guardará en MongoDB el JSON que ya produce el importador y usará
-  `lib/render-generico.js` para el PDF; este mockup solo define cómo se navega y se edita.
+  `motor/render-generico.js` para el PDF; este mockup solo define cómo se navega y se edita.

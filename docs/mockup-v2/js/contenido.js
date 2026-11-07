@@ -64,7 +64,7 @@
 
   // ---------------------------------------------------------------- textos compartidos
   // Mismos ids y mismo criterio que el informe del importador real
-  // (poc-pdfmake/out/importado/informe.md): se guardan una vez y las unidades
+  // (out/importado/informe.md): se guardan una vez y las unidades
   // los referencian.
   const COMPARTIDOS = {
     c001: { seccion: R('modulos', 'Propuestas de mejora del curso anterior'), comun: false, modo: 'sugerido', version: 3,
@@ -152,7 +152,7 @@
   //   - los seis apartados con texto compartido se quedan con el de muestra,
   //     porque ahí lo que se enseña es el mecanismo de compartir. En la app real
   //     el motor mira los 11 módulos y comparte los párrafos que coinciden
-  //     (lib/compartidos.js), en lugar de que los elija una lista a mano.
+  //     (motor/compartidos.js), en lugar de que los elija una lista a mano.
   const I = global.Importado || null;
   const DOC_IMPORTADO = 'pd-fp-daw';
 

@@ -1,0 +1,163 @@
+// Adaptador en memoria. Cumple el mismo contrato que mongo.js y no necesita base de datos: sirve para el desarrollo
+// y para las pruebas. Lo que lo distingue es que guarda copias y devuelve copias.
+//
+// Si devolviera referencias, quien recibiera un apartado podría cambiar lo guardado tocando solo el objeto que le han
+// dado, sin pasar por escribir. Las pruebas pasarían por casualidad y el comportamiento cambiaría al pasar a Mongo,
+// donde eso no llega a la base de datos. structuredClone conserva las fechas, que importan porque updatedAt es un Date.
+
+const { randomUUID } = require('node:crypto');
+const { ErrorConflicto, ErrorDuplicado } = require('./errores');
+
+const copia = (valor) => structuredClone(valor);
+const HIJOS = ['unidades', 'apartados', 'compartidos', 'comentarios'];
+
+// Una lista con repetidos se rechaza antes de tocar nada: si se guardara la mitad, una importación a medias
+// quedaría indistinguible de una completa.
+const hayRepetidos = (valores) => new Set(valores).size !== valores.length;
+
+function crear() {
+  const tablas = { documentos: [], unidades: [], apartados: [], compartidos: [], comentarios: [], usuarios: [] };
+
+  // Igualdad estricta: null solo casa con null. Un apartado común tiene unidadId null, y eso no es lo mismo que
+  // no filtrar por unidad, que es un campo ausente del filtro y lo decide quien llama.
+  const coincide = (filtro) => (registro) => Object.entries(filtro).every(([campo, valor]) => registro[campo] === valor);
+  const de = (tabla, filtro) => tablas[tabla].filter(coincide(filtro)).map(copia);
+  const uno = (tabla, filtro) => {
+    const registro = tablas[tabla].find(coincide(filtro));
+    return registro ? copia(registro) : null;
+  };
+  const actualizarEn = (tabla, filtro, cambios) => {
+    const registro = tablas[tabla].find(coincide(filtro));
+    if (!registro) return null;
+    Object.assign(registro, copia(cambios));
+    return copia(registro);
+  };
+
+  const documentos = {
+    crear(doc) {
+      const ahora = new Date();
+      const nuevo = { ...copia(doc), _id: randomUUID(), creado: ahora, updatedAt: new Date(ahora) };
+      tablas.documentos.push(nuevo);
+      return copia(nuevo);
+    },
+    obtener: (id) => uno('documentos', { _id: id }),
+    listar: (filtro) => de('documentos', filtro),
+    actualizar: (id, cambios) => actualizarEn('documentos', { _id: id }, { ...cambios, updatedAt: new Date() }),
+    borrar(id) {
+      const i = tablas.documentos.findIndex((d) => d._id === id);
+      if (i < 0) return false;
+      tablas.documentos.splice(i, 1);
+      // Sin esto quedarían unidades y apartados huérfanos, invisibles para cualquier listado y ocupando sitio.
+      for (const tabla of HIJOS) tablas[tabla] = tablas[tabla].filter((r) => r.documentoId !== id);
+      return true;
+    },
+  };
+
+  const unidades = {
+    crearMuchos(documentoId, lista) {
+      const existentes = tablas.unidades.filter((u) => u.documentoId === documentoId).map((u) => u.unidadId);
+      const ids = lista.map((u) => u.unidadId);
+      if (hayRepetidos(ids) || ids.some((id) => existentes.includes(id))) {
+        throw new ErrorDuplicado('ya hay una unidad con ese identificador en este documento');
+      }
+      const ahora = new Date();
+      // El orden del array es el orden de creación; listar lo respeta porque no reordena nada.
+      const nuevas = lista.map((u, orden) => ({ ...copia(u), _id: randomUUID(), documentoId, creado: new Date(ahora), orden }));
+      tablas.unidades.push(...nuevas);
+      return nuevas.map(copia);
+    },
+    listar: (documentoId) => de('unidades', { documentoId }),
+    obtener: (documentoId, unidadId) => uno('unidades', { documentoId, unidadId }),
+    actualizar: (documentoId, unidadId, cambios) => actualizarEn('unidades', { documentoId, unidadId }, cambios),
+  };
+
+  const apartados = {
+    leer: (documentoId, seccion, unidadId) => uno('apartados', { documentoId, seccion, unidadId }),
+
+    escribir({ documentoId, seccion, unidadId, cambios, porDefecto, esperado, siguienteToken }) {
+      const clave = { documentoId, seccion, unidadId };
+      const registro = tablas.apartados.find(coincide(clave));
+      const actual = registro ? registro.updatedAt : null;
+
+      // Aquí la comprobación y la escritura no tienen ningún await entre medias, así que no hay carrera posible.
+      // Es la misma regla que mongo.js resuelve con un filtro por updatedAt: si el token no es el que espera
+      // quien escribe, alguien guardó antes y no se toca nada.
+      if (esperado === null && registro) throw new ErrorConflicto({ esperado, actual: copia(actual) });
+      if (esperado instanceof Date && (!registro || actual.getTime() !== esperado.getTime())) {
+        throw new ErrorConflicto({ esperado: copia(esperado), actual: copia(actual) });
+      }
+
+      const updatedAt = siguienteToken(actual);
+      if (registro) {
+        Object.assign(registro, copia(cambios), { updatedAt });
+        return copia(registro);
+      }
+      const nuevo = { _id: randomUUID(), ...clave, ...copia(porDefecto), ...copia(cambios), updatedAt };
+      tablas.apartados.push(nuevo);
+      return copia(nuevo);
+    },
+
+    listar: (documentoId, filtro) => de('apartados', { documentoId, ...filtro }),
+
+    crearMuchos(documentoId, lista) {
+      const claves = (xs) => xs.map((a) => JSON.stringify([a.seccion, a.unidadId]));
+      const existentes = claves(tablas.apartados.filter((a) => a.documentoId === documentoId));
+      const nuevas = claves(lista);
+      if (hayRepetidos(nuevas) || nuevas.some((c) => existentes.includes(c))) {
+        throw new ErrorDuplicado('ya existe un apartado con esa sección y esa unidad');
+      }
+      const ahora = new Date();
+      const creados = lista.map((a) => ({ _id: randomUUID(), ...copia(a), documentoId, updatedAt: new Date(ahora) }));
+      tablas.apartados.push(...creados);
+      return creados.map(copia);
+    },
+  };
+
+  const compartidos = {
+    crearMuchos(documentoId, lista) {
+      const existentes = tablas.compartidos.filter((c) => c.documentoId === documentoId).map((c) => c.cid);
+      const cids = lista.map((c) => c.cid);
+      if (hayRepetidos(cids) || cids.some((c) => existentes.includes(c))) {
+        throw new ErrorDuplicado('ya existe un texto compartido con ese identificador');
+      }
+      const nuevos = lista.map((c) => ({ ...copia(c), _id: randomUUID(), documentoId }));
+      tablas.compartidos.push(...nuevos);
+      return nuevos.map(copia);
+    },
+    listar: (documentoId) => de('compartidos', { documentoId }),
+    obtener: (documentoId, cid) => uno('compartidos', { documentoId, cid }),
+    actualizar: (documentoId, cid, cambios) => actualizarEn('compartidos', { documentoId, cid }, cambios),
+  };
+
+  const comentarios = {
+    crear(comentario) {
+      const nuevo = { ...copia(comentario), _id: randomUUID(), fecha: new Date() };
+      tablas.comentarios.push(nuevo);
+      return copia(nuevo);
+    },
+    // sort es estable: los comentarios con la misma fecha en milisegundos conservan el orden en que se escribieron.
+    listar: (documentoId, filtro) => de('comentarios', { documentoId, ...filtro }).sort((x, y) => x.fecha - y.fecha),
+  };
+
+  const usuarios = {
+    crear(usuario) {
+      if (tablas.usuarios.some((u) => u.email === usuario.email)) throw new ErrorDuplicado('ya hay un usuario con ese email');
+      const nuevo = { ...copia(usuario), _id: randomUUID() };
+      tablas.usuarios.push(nuevo);
+      return copia(nuevo);
+    },
+    obtener: (id) => uno('usuarios', { _id: id }),
+    porEmail: (email) => uno('usuarios', { email }),
+    listar: (filtro) => de('usuarios', filtro),
+    actualizar(id, cambios) {
+      if (cambios.email !== undefined && tablas.usuarios.some((u) => u.email === cambios.email && u._id !== id)) {
+        throw new ErrorDuplicado('ya hay un usuario con ese email');
+      }
+      return actualizarEn('usuarios', { _id: id }, cambios);
+    },
+  };
+
+  return { documentos, unidades, apartados, compartidos, comentarios, usuarios };
+}
+
+module.exports = { crear };

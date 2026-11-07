@@ -3,10 +3,10 @@
 Propuesta de interfaz como paso intermedio entre la **importación** de un `.docx` y la **exportación** a PDF:
 
 1. el usuario importa el Word;
-2. se detecta la estructura (ya lo hace `lib/importar-docx.js`);
+2. se detecta la estructura (ya lo hace `motor/importar-docx.js`);
 3. se carga una web con las secciones de forma intuitiva para editarlas;
 4. los cambios se guardan en MongoDB (el JSON que ya produce el importador);
-5. un botón de exportación genera el PDF con los cambios (con `lib/render-generico.js`, que ya funciona);
+5. un botón de exportación genera el PDF con los cambios (con `motor/render-generico.js`, que ya funciona);
 6. la web está protegida por roles (admin, jefe de estudios, jefe de departamento, docente) con menús tipo `Programación didáctica | PCCF | Memoria` y submenús `Partes comunes → Introducción → Contextualización …` / `Módulos → Bases de datos …`.
 
 Despliegue previsto (del README raíz): Next.js en Vercel con MongoDB Atlas.
@@ -15,16 +15,16 @@ Despliegue previsto (del README raíz): Next.js en Vercel con MongoDB Atlas.
 
 ## 1. Lo que ya existe y se reutiliza
 
-La PoC contiene el motor; la interfaz solo tiene que consumirlo. **No reimplementar nada de esto en la web.**
+El motor (`motor/`) contiene la lógica; la interfaz solo tiene que consumirla. **No reimplementar nada de esto en la web.**
 
 | Activo | Archivo | Uso en la UI |
 |---|---|---|
 | Árbol de secciones (57 secciones, bloque "Módulos" con 11 instancias, 11 tipos de campo) | `out/importado/plantilla.json` | **Es el menú**: no se hardcodea "PD → Partes comunes → Introducción", se genera del árbol |
 | Datos por sección y módulo | `out/importado/datos.json` (2 MB) | Estado editable, tal cual, en Mongo (ya es JSON) |
-| Permisos por rol | `lib/permisos.js` | `puedeVer`, `puedeEditar`, `puedeEditarCompartido`, `puedeDesvincular`: única fuente de verdad, en servidor |
-| Textos compartidos con versión | `lib/compartidos.js` | Editar una vez para todos los módulos, desvincular, avisar de desactualizados |
-| Render genérico del PDF | `lib/render-generico.js` | Botón de exportar, sin cambios |
-| Importación serverless | `api/importar.js` | `POST /api/importar` ya funciona |
+| Permisos por rol | `motor/permisos.js` | `puedeVer`, `puedeEditar`, `puedeEditarCompartido`, `puedeDesvincular`: única fuente de verdad, en servidor |
+| Textos compartidos con versión | `motor/compartidos.js` | Editar una vez para todos los módulos, desvincular, avisar de desactualizados |
+| Render genérico del PDF | `motor/render-generico.js` | Botón de exportar, sin cambios |
+| Importación serverless | `motor/api/importar.js` | `POST /api/importar` ya funciona |
 | Validaciones (suma RA = 100 %, CE que suman su RA) | dentro de `render-generico.js` | **Extraerlas** a `lib/validaciones.js` para mostrarlas en la UI sin generar el PDF |
 | Pruebas de fidelidad | `scripts/test-compartidos.js` | Patrón del test de ida y vuelta (ver §3) |
 
@@ -58,23 +58,23 @@ historial     { documentoId, ruta, antes, despues, usuario, fecha }   // opciona
 
 - `plantilla` **inmutable**: solo se regenera con una reimportación versionada.
 - `datos` se guarda tal cual (EJSON); `estado` es un campo del documento (`borrador → revisión → aprobado`).
-- `usuarios.rol`: `admin`, `jefe_estudios`, `jefe_departamento`, `docente` (mismos valores que espera `lib/permisos.js`).
+- `usuarios.rol`: `admin`, `jefe_estudios`, `jefe_departamento`, `docente` (mismos valores que espera `motor/permisos.js`).
 
-### 2.2 API (route handlers de Next.js sobre `lib/`)
+### 2.2 API (route handlers de Next.js sobre `motor/`)
 
 | Endpoint | Qué hace | Reutiliza |
 |---|---|---|
-| `POST /api/documentos/importar` | `.docx` → `importarDocx` → crea documento + instancias | `api/importar.js` |
+| `POST /api/documentos/importar` | `.docx` → `importarDocx` → crea documento + instancias | `motor/api/importar.js` |
 | `GET /api/documentos/[id]/arbol` | plantilla + resumen de estado por nodo | `plantilla.json` |
 | `GET /api/documentos/[id]/ruta/<seccion>?instancia=n` | lee una rama | `datos` |
 | `PATCH /api/documentos/[id]/ruta/<seccion>?instancia=n` | guarda **solo esa rama** | `datos` |
-| `POST /api/documentos/[id]/compartidos/[cid]` | `editarCompartido` | `lib/compartidos.js` |
-| `POST /api/documentos/[id]/compartidos/[cid]/desvincular` | `desvincular` | `lib/compartidos.js` |
+| `POST /api/documentos/[id]/compartidos/[cid]` | `editarCompartido` | `motor/compartidos.js` |
+| `POST /api/documentos/[id]/compartidos/[cid]/desvincular` | `desvincular` | `motor/compartidos.js` |
 | `GET /api/documentos/[id]/validaciones` | avisos de RA/CE/SA | `lib/validaciones.js` (a extraer) |
 | `GET /api/documentos/[id]/pdf?estado=&tomo=` | PDF con cambios | `buildDocDefinition` + `resolverCompartidos` |
 
-- **Toda** comprobación de rol se hace en servidor con `lib/permisos.js`; el cliente solo lo refleja (candado, botón deshabilitado).
-- Importación: 3,7–5,7 s ⇒ asignar `maxDuration` en `vercel.json` (ya se hace para `api/pd.js`). El `.docx` de 1,3 MB cabe en el límite de 4,5 MB de Vercel.
+- **Toda** comprobación de rol se hace en servidor con `motor/permisos.js`; el cliente solo lo refleja (candado, botón deshabilitado).
+- Importación: 3,7–5,7 s ⇒ hace falta un `maxDuration` alto en la ruta (hoy estaba en `vercel.json`, que ya no existe; ver *Despliegue en Vercel* en `motor/README.md`). El `.docx` de 1,3 MB cabe en el límite de 4,5 MB de Vercel.
 - Auth: Auth.js (credentials u OAuth) con sesión; el usuario de `permisos.js` sale de la sesión (`{ id, rol, departamento }`).
 - Guardar el Word original (Vercel Blob o Mongo) para poder reimportar/comparar; `.gitignore` ya excluye `entrada/`.
 
@@ -159,7 +159,7 @@ Cada fase deja algo usable; la fase 1 es la que valida el ida y vuelta antes de 
 
 ## 5. Avisos conocidos
 
-1. **Camino redundante**: `lib/pd-docdef.js` + `data/pd.json` + `tools/word_a_json.py` es un segundo generador paralelo. Unificar todo en el genérico (`render-generico.js`), o la app tendrá dos formas de pintar la misma PD.
+1. **Camino redundante**: `motor/pd-docdef.js` + `data/pd.json` + `tools/word_a_json.py` es un segundo generador paralelo. Unificar todo en el genérico (`render-generico.js`), o la app tendrá dos formas de pintar la misma PD.
 2. **`instancias[].docentes` llega vacío** del importador ⇒ `puedeEditar` (`docentes_del_modulo`) devuelve false para todos: hay que poder asignar docentes a módulos desde la UI (lo hace el jefe de departamento) antes de que cualquiera edite un módulo.
 3. **Campos ausentes** (`presencia < nº de módulos`) no se pintan en el PDF: mostrarlos como "vacío" en la UI para que se puedan añadir.
 4. **Tamaño**: 2 MB de datos y 243 tablas; en Mongo partir por instancia (§2.1) y no mandar `datos` completo al cliente (cargar por rama bajo demanda).

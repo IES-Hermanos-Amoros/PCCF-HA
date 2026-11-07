@@ -19,3 +19,15 @@ Thumbs.db
 # originales, así que no hay motivo para meter cinco megas de binarios en el
 # historial ni para publicar los documentos del departamento, aunque estén
 # saneados. Cómo se hacen y qué se comprueba, en docs/entrada_ej/README.md.
+
+# Lo que era poc-pdfmake/.gitignore, ahora que el motor vive en motor/ y sus
+# scripts en scripts/: los Word de partida, lo que se genera y los datos
+# intermedios se quedan fuera por lo mismo que lo demás (ver arriba).
+out/
+data/
+entrada/*
+!entrada/.gitkeep
+
+# Next.js
+.next/
+next-env.d.ts

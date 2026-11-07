@@ -532,7 +532,7 @@
   // Donde está el trabajo de verdad: en la PD de DAW hay 79 fichas. El v1 solo
   // enseñaba la tabla del Word; aquí se ven, se cambian y se crean, y la ficha se
   // pinta como va a salir impresa, con las mismas filas que manda al PDF
-  // (js/sa.js es un puerto de poc-pdfmake/lib/ficha-sa.js).
+  // (js/sa.js es un puerto de motor/ficha-sa.js).
 
   // La tabla resumen SA × RA, calculada. En el Word hay que repasarla a mano cada
   // vez que se mueve una situación, y es la que se queda desfasada.

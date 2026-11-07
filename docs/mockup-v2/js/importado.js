@@ -3,7 +3,7 @@
 //     node docs/mockup-v2/herramientas/extraer-contenido.js
 //
 // Contenido real de la programación didáctica del departamento, sacado de lo
-// que produce el importador del motor (poc-pdfmake/lib/importar-docx.js) y
+// que produce el importador del motor (motor/importar-docx.js) y
 // recortado a una muestra: los apartados comunes enteros, 5 módulos completos
 // con sus RA, sus ponderaciones y sus situaciones de aprendizaje, y del resto
 // lo ligero. Lo que no esté aquí lo rellena el corpus de ejemplo de
@@ -19,7 +19,7 @@
 //   UNIDADES[idUnidad]        { titulo, grupo, completo, secciones, sa }
 //   UNIDADES[id].secciones[s] { bloques | tablas | pares | raCe | ponderaciones }
 //   UNIDADES[id].sa[]         fichas de situación de aprendizaje, ya como modelo
-//                             editable (lib/ficha-sa.js), sin la tabla importada
+//                             editable (motor/ficha-sa.js), sin la tabla importada
 //
 //   daw-0373    Lenguaje de Marcas y Sistemas de Gestión de  completo, 15 apartados, 6 SA, 68 KB
 //   daw-0483    Sistemas Informáticos                        completo, 15 apartados, 6 SA, 71 KB

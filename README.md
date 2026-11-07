@@ -16,8 +16,10 @@ Fase de pruebas de concepto.
 
 | Carpeta | Qué contiene |
 |---|---|
-| [`poc-pdfmake/`](poc-pdfmake/) | Importador de Word que deduce plantilla y datos, y generación de PD en PDF con pdfmake como función serverless |
-| [`docs/interfaz-web.md`](docs/interfaz-web.md) | Arquitectura de la aplicación: modelo de datos, API sobre el `lib/` que ya existe, editores por tipo de campo y roadmap |
+| [`motor/`](motor/) | Motor: importador de Word que deduce plantilla y datos, render de la PD en PDF con pdfmake, exportación a Word, saneado y permisos. Sus funciones HTTP están en `motor/api/` |
+| [`scripts/`](scripts/) | Órdenes de consola: importar, generar el ejemplo saneado, sanear documentos y las pruebas del motor |
+| [`docs/plan.md`](docs/plan.md) | Plan de construcción de la aplicación: cómo se pasa del motor y del prototipo a la aplicación, por evolutivos |
+| [`docs/interfaz-web.md`](docs/interfaz-web.md) | Arquitectura de la aplicación: modelo de datos, API sobre `motor/`, que ya existe, editores por tipo de campo y roadmap |
 | [`docs/mockups/`](docs/mockups/) | Primer prototipo de la interfaz: fija la forma de la pantalla y el árbol real de los documentos |
 | [`docs/mockup-v2/`](docs/mockup-v2/) | Segunda versión del prototipo: unidades con id estable, estado en la URL, editor de bloques, arrastre entre cursos, situaciones de aprendizaje y panel de coordinación |
 | [`docs/entrada_ej/`](docs/entrada_ej/) | Los documentos de entrada. No se versionan, ni los originales ni los ejemplos saneados: aquí solo está documentado cómo se sanean |
@@ -27,7 +29,7 @@ Fase de pruebas de concepto.
 El repositorio es público y **no contiene ningún documento del departamento ni dato de ninguna
 persona**: ni los Word originales, ni los ejemplos saneados que se sacan de ellos, ni nada de lo que
 produce el importador. Todo eso se queda fuera por `.gitignore` (`*.docx`, `*.doc`, `*.odt`, `*.pdf`,
-`poc-pdfmake/out/`).
+`out/`).
 
 Lo que **sí** está versionado es el contenido que enseña el prototipo, en
 [`docs/mockup-v2/js/importado.js`](docs/mockup-v2/js/importado.js): sale de una programación real del

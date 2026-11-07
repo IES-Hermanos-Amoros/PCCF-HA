@@ -28,12 +28,12 @@ prototipo, [`docs/mockup-v2/js/importado.js`](../mockup-v2/js/importado.js).
 
 ## Cómo se sanea: editando el original, no reescribiéndolo
 
-[`poc-pdfmake/scripts/sanear-docx.js`](../../poc-pdfmake/scripts/sanear-docx.js) abre el `.docx`
+[`scripts/sanear-docx.js`](../../scripts/sanear-docx.js) abre el `.docx`
 original, **copia todas sus partes tal cual** y cambia solo el texto que no puede salir. El documento
 conserva la portada, el índice, los estilos, la numeración, las imágenes, las cabeceras y los pies.
 
 Hubo antes otro camino —escribir un `.docx` nuevo desde la estructura que deduce el importador, que
-es lo que sigue haciendo [`generar-ejemplo.js`](../../poc-pdfmake/scripts/generar-ejemplo.js)— y se
+es lo que sigue haciendo [`generar-ejemplo.js`](../../scripts/generar-ejemplo.js)— y se
 cambió por un motivo concreto: **estos ejemplos existen para probar el importador contra documentos
 de verdad**, y un documento escrito por nosotros a partir de una importación no prueba nada. Es
 circular, y además perdía todo lo que el importador no modela.
@@ -82,13 +82,13 @@ alguna falla, **el documento no se escribe**.
 
 Y una más que ninguna de esas puede dar: **que Word lo abra**. Las ocho pueden estar en verde sobre un
 fichero que Word rechaza, porque los analizadores tolerantes perdonan lo que él no. Por eso está
-[`abrir-con-word.ps1`](../../poc-pdfmake/scripts/abrir-con-word.ps1), que abre cada documento con Word
+[`abrir-con-word.ps1`](../../scripts/abrir-con-word.ps1), que abre cada documento con Word
 de verdad y compara su número de párrafos, tablas e índices con el del original.
 
 ## Cómo se usa
 
 ```bash
-cd poc-pdfmake
+# desde la raíz del repositorio
 node scripts/sanear-docx.js                 # los doce, a out/saneado/
 node scripts/sanear-docx.js "ruta/doc.docx" # uno
 node scripts/sanear-docx.js --partes        # con la tabla de partes del zip completa
@@ -98,8 +98,8 @@ pwsh scripts/abrir-con-word.ps1             # ¿los abre Word?
 Y para llevar el contenido al prototipo:
 
 ```bash
-node scripts/sanear-docx.js "../docs/entrada_ej/2026-27/PD_DAW_26-27_161026.docx" --modelo
-node ../docs/mockup-v2/herramientas/extraer-contenido.js
+node scripts/sanear-docx.js "docs/entrada_ej/2026-27/PD_DAW_26-27_161026.docx" --modelo
+node docs/mockup-v2/herramientas/extraer-contenido.js
 ```
 
 Los originales van en `2025-26/` y `2026-27/`, con el nombre que tengan. Nada de eso se versiona, así
@@ -108,7 +108,7 @@ que el guion solo funciona en la máquina de quien los tenga.
 ### Lo que no tiene forma reconocible
 
 Un topónimo o una dirección no se distinguen por su forma de cualquier otra palabra con mayúscula.
-Eso va en `poc-pdfmake/out/sustituciones.local.json` —que git ignora, para que los datos reales no
+Eso va en `out/sustituciones.local.json` —que git ignora, para que los datos reales no
 acaben escritos en un fichero del repositorio— con el formato `[{ "buscar": "…", "por": "…" }]`. El
 guardia avisa cuando ve un topónimo detrás de una pista de procedencia («poblaciones cercanas de…»,
 «limítrofe con…»).
@@ -124,4 +124,4 @@ Si hacen falta más de un puñado de entradas por documento, es que falta una re
   sale literal. Hay que decidir apartado por apartado qué es del decreto y qué del departamento.
 - El **PCCF de SMR** no cambia nada: no tiene ni un CIF, ni una empresa con forma jurídica, ni un
   correo. Es coherente, pero son 92 KB y ocho tablas que nadie vigila.
-- `lib/sanear-docx.js` **no tiene pruebas propias**: no entra en `npm test`.
+- `motor/sanear-docx.js` **no tiene pruebas propias**: no entra en `npm test`.

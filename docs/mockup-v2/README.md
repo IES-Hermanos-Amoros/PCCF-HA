@@ -20,7 +20,7 @@ node docs/mockup-v2/test.js
 ```
 
 Son 50, y la que más vale es la última de permisos: compara el motor de permisos del navegador con
-`poc-pdfmake/lib/permisos.js` **nodo a nodo y usuario a usuario** en los siete documentos, con
+`motor/permisos.js` **nodo a nodo y usuario a usuario** en los siete documentos, con
 apartados añadidos a mano incluidos. En el v1 las dos implementaciones se habían separado sin que
 nadie se enterara.
 
@@ -36,7 +36,7 @@ además lleva el inventario de los ficheros tocados fuera de esta carpeta.
 | Los nodos se identificaban **por posición** (`pd/9/2/0`): insertar un apartado rompía cualquier enlace | Los nodos se identifican por **slug**, igual que los ids que ya produce el importador en `plantilla.json` |
 | Los apartados de un módulo se **duplicaban** por módulo | Una sola sección compartida por las 11 unidades, con la unidad aparte: es el par `(seccion, instancia)` del motor |
 | El selector mezclaba **rol y asignaciones** ("Docente DAW y RL" era las dos cosas a la vez) | `usuario = { rol, unidades, apartados }`. El rol sale de un desplegable y las unidades se reparten en el panel de **Asignaciones** |
-| El jefe de departamento podía editar todos los módulos en el mockup, pero `permisos.js` se lo negaba | Arreglado **en el motor**, que es donde manda: `poc-pdfmake/lib/permisos.js` y su test. El navegador es un puerto comprobado contra él |
+| El jefe de departamento podía editar todos los módulos en el mockup, pero `permisos.js` se lo negaba | Arreglado **en el motor**, que es donde manda: `motor/permisos.js` y su test. El navegador es un puerto comprobado contra él |
 | El editor era `contenteditable` sobre HTML, justo lo que advierte §2.3 de la especificación | El estado es el **array de bloques** que espera el renderer, y el texto se escribe en `<textarea>`, que solo puede devolver texto plano. Hay un panel *"ver lo que se guardaría"* para comprobarlo |
 | Barra con negrita, cursiva y enlaces que **no hacían nada**: el modelo guardaba una cadena plana | La misma barra, con los botones conectados y llegando al PDF: `text` puede ser una lista de tramos `{ text, bold, italics }`, que es lo que pdfmake acepta. **N** / *C* marcan lo seleccionado o la palabra del cursor, funcionan como interruptor, se combinan, y la barra dice sobre qué párrafo actúa. Atajos `Ctrl+B` / `Ctrl+I` y `Alt+N` / `Alt+C`; `Ctrl+N` no, que es del navegador. Enlaces siguen sin estar: el renderer no los pinta |
 | El panel de permisos era una casilla por persona y por módulo, en columna: con 31 unidades, un muro de casillas | **Matriz de unidades × personas**, agrupada por ciclo y ámbito, con filtro por texto, filtro de *solo las que no tiene nadie*, el recuento por persona y la fila marcada en rojo cuando no hay nadie, que es lo único que de verdad hay que mirar ahí |
@@ -131,7 +131,7 @@ la app real salen del importador; mientras tanto se quedan donde están.
   el editor y en el importador. Negrita y cursiva ya están.
 - El **importador aplana el formato**: un .docx con negritas se importa como texto plano, así que
   reimportar pierde lo que se haya marcado desde la web. El modelo y el generador ya lo admiten;
-  falta que `lib/importar-docx.js` lo conserve.
+  falta que `motor/importar-docx.js` lo conserve.
 - *Editar para todas las unidades* en un texto compartido solo avisa de lo que haría; no abre editor.
 - Estados del documento (`borrador → revisión → aprobado`) y marca de agua. Está la puerta de
   validación, que es la mitad del asunto.
@@ -157,14 +157,14 @@ mockup-v2/
   js/importado.js     GENERADO: contenido del documento de ejemplo saneado
   js/sa.js            situaciones de aprendizaje: modelo, resumen SA x RA y ficha impresa
   js/estructura.js    árboles de los documentos, slugs y constructor del árbol
-  js/permisos.js      puerto comprobado de poc-pdfmake/lib/permisos.js
+  js/permisos.js      puerto comprobado de motor/permisos.js
   js/contenido.js     bloques, arrastre entre cursos, compartidos, personas, comentarios
   js/validaciones.js  comprobaciones con destino navegable (lo que pide §3.4)
   js/bloques.js       modelo de bloques y sus operaciones
   js/ui.js            árbol accesible, rutas, vistas y paneles
   test.js             50 pruebas, sin dependencias
 
-  herramientas/extraer-contenido.js   genera js/importado.js desde poc-pdfmake/out/ejemplo/
+  herramientas/extraer-contenido.js   genera js/importado.js desde out/ejemplo/
 ```
 
 Solo `js/ui.js` toca el DOM. El resto se puede exigir desde node, que es lo que hace `test.js` y lo

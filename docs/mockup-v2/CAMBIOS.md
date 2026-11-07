@@ -51,7 +51,7 @@ cambia el trabajo del día a día:
    - y se puede **crear una nueva, duplicar, mover y borrar**; las demás se renumeran solas.
 
    Una SA creada en la aplicación no tiene tabla importada, así que el motor la monta a partir de
-   sus campos (`poc-pdfmake/lib/ficha-sa.js`): sale impresa igual que las que vienen del Word.
+   sus campos (`motor/ficha-sa.js`): sale impresa igual que las que vienen del Word.
 3. **Se puede cambiar la estructura del documento.** En cada apartado hay una tarjeta *Estructura*
    (la ve la jefatura de departamento) para **renombrar** el título, **añadir** un subapartado,
    **moverlo** arriba o abajo y **retirarlo**. En el v1 no había forma: la estructura solo se podía
@@ -168,44 +168,44 @@ Si preferís lo del v1, se vuelve atrás sin tocar nada más.
 
 ## Inventario técnico
 
-### En el motor (`poc-pdfmake/`)
+### En el motor (`motor/` y `scripts/`)
 
-- `lib/permisos.js`: la jefatura de departamento edita **cualquier módulo**, lo tenga asignado o no.
+- `motor/permisos.js`: la jefatura de departamento edita **cualquier módulo**, lo tenga asignado o no.
   Antes solo los asignados, que era lo que el v1 ya hacía por su cuenta sin que las dos
   implementaciones coincidieran. Arreglado en el motor, que es donde manda.
 - `scripts/test-permisos.js`: la aserción que afirmaba lo contrario, reescrita. Añadido el caso de
   un apartado de módulo sin indicar módulo.
 - Efecto colateral: `puedeDesvincular` llama a `puedeEditar`, así que la jefatura de departamento
   puede también desvincular textos compartidos en cualquier módulo.
-- `lib/compartidos.js`: admite párrafos con formato. `clave()` y `largo()` daban por hecho que
+- `motor/compartidos.js`: admite párrafos con formato. `clave()` y `largo()` daban por hecho que
   `text` era una cadena, así que con tramos todos los párrafos habrían colisionado en la misma
   clave y la longitud habría contado tramos en lugar de letras. Nueva función `plano()`.
 - `scripts/test-texto-rico.js` (nuevo, dentro de `npm test`): comprueba que la negrita y la cursiva
   sobreviven el camino completo —extraer compartidos, resolverlos y construir el documento de
   pdfmake— y que el texto sin formato sigue funcionando igual.
-- `lib/ficha-sa.js` (nuevo): la ficha de una situación de aprendizaje en los dos sentidos.
+- `motor/ficha-sa.js` (nuevo): la ficha de una situación de aprendizaje en los dos sentidos.
   `fichaDeFilas()` lee la tabla importada y saca los campos con nombre —criterios, competencias,
   objetivos, los seis tipos de actividad, materiales—, y `filasDeFicha()` monta la tabla desde el
   modelo. Lo primero es lo que permite editar una ficha; lo segundo, que una SA nueva se imprima
   igual que una importada. El documento usa dos maquetaciones distintas para las actividades y las
   dos se leen.
-- `lib/importar-docx.js`: la ficha de SA se importa entera, no solo su cabecera. Antes salían el
+- `motor/importar-docx.js`: la ficha de SA se importa entera, no solo su cabecera. Antes salían el
   número, el título, las sesiones, la evaluación y los RA, y el resto quedaba como una tabla de
   celdas sin nombre. Además los RA se reconocen escritos como «RA1 Reconoce…», sin punto, que es
   como están en uno de los módulos: ocho fichas se quedaban sin RA y por tanto fuera de la tabla
   resumen.
-- `lib/render-generico.js`: una ficha sin tabla importada —la que se acaba de crear en la
+- `motor/render-generico.js`: una ficha sin tabla importada —la que se acaba de crear en la
   aplicación— se imprime montándola desde sus campos.
 - `scripts/test-ficha-sa.js` (nuevo, dentro de `npm test`): las dos maquetaciones, la ida y vuelta
   modelo → tabla → modelo, una SA creada desde cero que llega al PDF y el resumen SA × RA
   calculado.
-- `lib/exportar-docx.js` (nuevo): el inverso del importador. Escribe un `.docx` —el zip y su XML a
+- `motor/exportar-docx.js` (nuevo): el inverso del importador. Escribe un `.docx` —el zip y su XML a
   mano, con jszip, sin dependencias nuevas— con los títulos, las listas anidadas y las tablas con
   celdas combinadas que el importador vuelve a leer. Es lo que permite generar el documento de
   ejemplo en lugar de editar el original, y de paso es el primer paso del *exportar a Word* que
   estaba pendiente. Su prueba de fondo reescribe el documento real entero y lo reimporta con las
   mismas secciones, las mismas 11 instancias y el mismo número de tablas por módulo.
-- `lib/sanear.js` (nuevo): quita lo que identifica (personas, centro, localidad, correos, teléfonos,
+- `motor/sanear.js` (nuevo): quita lo que identifica (personas, centro, localidad, correos, teléfonos,
   CIF, empresas) e inventa el material docente con un generador determinista y vocabulario propio de
   cada módulo. En las fichas limpia **por exclusión**: conserva lo que su etiqueta delata como
   normativo y reescribe todo lo demás, porque una lista de campos conocidos deja pasar en silencio la
@@ -285,7 +285,7 @@ Funcionalidad nueva:
     fuera en silencio. Hay una prueba que lo vigila.
 20. **Situaciones de aprendizaje** (`js/sa.js`): modelo editable de cada ficha, creación, duplicado,
     reordenación y borrado, resumen SA × RA calculado y comprobaciones por ficha (sin RA es error;
-    sin sesiones o sin criterios, aviso). `filas()` es un puerto de `poc-pdfmake/lib/ficha-sa.js` y
+    sin sesiones o sin criterios, aviso). `filas()` es un puerto de `motor/ficha-sa.js` y
     test.js compara los dos **celda a celda en las 25 fichas importadas**, en los dos sentidos.
 21. **Comentarios por apartado.**
 22. **Exportar a Word** además de PDF (el botón explica qué falta por decidir).
@@ -312,7 +312,7 @@ Funcionalidad nueva:
 
 En el repositorio **no hay ningún Word**: ni los originales, ni los ejemplos saneados que salen de
 ellos, ni nada de lo que produce el importador (`.gitignore`: `*.docx`, `*.doc`, `*.odt`, `*.pdf`,
-`poc-pdfmake/out/`). Los ejemplos se regeneran con un comando en la máquina de quien tenga los
+`out/`). Los ejemplos se regeneran con un comando en la máquina de quien tenga los
 originales, así que no hay motivo para meter cinco megas de binarios en el historial ni para
 publicar los documentos del departamento, aunque estén saneados.
 

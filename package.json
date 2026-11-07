@@ -1,0 +1,29 @@
+{
+  "name": "pccf-ha",
+  "version": "0.1.0",
+  "description": "Programaciones didácticas, PCCF y memoria del departamento de Informática del IES Hermanos Amorós",
+  "private": true,
+  "license": "GPL-3.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "node test/ejecutar.js",
+    "importar": "node scripts/importar.js",
+    "ejemplo": "node scripts/generar-ejemplo.js",
+    "sanear": "node scripts/sanear-docx.js",
+    "serve": "node scripts/serve.js",
+    "pdf": "node scripts/generate.js borrador",
+    "pdf:aprobado": "node scripts/generate.js aprobado"
+  },
+  "dependencies": {
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
+    "mongodb": "^7.8.0",
+    "next": "^16.4.5",
+    "node-html-parser": "^9.0.5",
+    "pdfmake": "^0.2.23",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}

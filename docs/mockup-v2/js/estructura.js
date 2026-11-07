@@ -11,10 +11,10 @@
 //  2. los apartados de una unidad (módulo o materia) NO se duplican por unidad:
 //     el id de sección es el mismo para los 11 módulos y la unidad va aparte, en
 //     `unidadId`. Es exactamente el par (seccion, instancia) del motor de
-//     poc-pdfmake/, y lo que permite que un texto compartido se defina una vez.
+//     motor/, y lo que permite que un texto compartido se defina una vez.
 //
 // `edita` usa el vocabulario del motor ('jefe_departamento' | 'docentes_del_modulo')
-// para que js/permisos.js pueda ser un puerto literal de poc-pdfmake/lib/permisos.js.
+// para que js/permisos.js pueda ser un puerto literal de motor/permisos.js.
 
 (function (global) {
   'use strict';
@@ -456,7 +456,7 @@
     return out;
   }
 
-  // La "plantilla" que espera el motor de poc-pdfmake/lib/permisos.js: secciones
+  // La "plantilla" que espera el motor de motor/permisos.js: secciones
   // anidadas con su `edita`, que es lo que en la app real sale de plantilla.json.
   //
   // No es un espejo del árbol de navegación: ahí el bloque "MÓDULOS DEL PRIMER

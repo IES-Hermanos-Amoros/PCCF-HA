@@ -5,7 +5,7 @@
 //
 // Lee lo que produce el importador del motor:
 //
-//     poc-pdfmake/out/importado/{plantilla.json,datos.json}
+//     out/importado/{plantilla.json,datos.json}
 //
 // y escribe docs/mockup-v2/js/importado.js. Ese `out/` está en .gitignore —como
 // los .docx— así que esto solo se puede ejecutar en una máquina que tenga el
@@ -54,7 +54,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const F = require('../../../poc-pdfmake/lib/ficha-sa');
+const F = require('../../../motor/ficha-sa');
 
 const RAIZ = path.join(__dirname, '..', '..', '..');
 const SALIDA = path.join(__dirname, '..', 'js', 'importado.js');
@@ -69,8 +69,8 @@ const SALIDA = path.join(__dirname, '..', 'js', 'importado.js');
 // Se prefiere el ejemplo: lo que se versiona en js/importado.js tiene que salir
 // de lo que está en el repositorio, no de un fichero que solo existe aquí.
 const CANDIDATOS = [
-  path.join(RAIZ, 'poc-pdfmake', 'out', 'ejemplo'),
-  path.join(RAIZ, 'poc-pdfmake', 'out', 'importado'),
+  path.join(RAIZ, 'out', 'ejemplo'),
+  path.join(RAIZ, 'out', 'importado'),
 ];
 const ENTRADA = CANDIDATOS.filter((d) => fs.existsSync(path.join(d, 'datos.json')))[0] || CANDIDATOS[0];
 
@@ -395,7 +395,7 @@ function escribir(extraido) {
     console.error('  ' + extraido.origen.modulos + ' instancias en el documento, de las que han casado '
       + casadas + ' con el catálogo de unidades del mockup.');
     console.error('Vuelve a generar el ejemplo de DAW antes de extraer:');
-    console.error('  cd poc-pdfmake && npm run ejemplo');
+    console.error('  npm run ejemplo');
     process.exit(3);
   }
 
@@ -419,7 +419,7 @@ function escribir(extraido) {
     '//     node docs/mockup-v2/herramientas/extraer-contenido.js',
     '//',
     '// Contenido real de la programación didáctica del departamento, sacado de lo',
-    '// que produce el importador del motor (poc-pdfmake/lib/importar-docx.js) y',
+    '// que produce el importador del motor (motor/importar-docx.js) y',
     '// recortado a una muestra: los apartados comunes enteros, ' + extraido.origen.completos.length + ' módulos completos',
     '// con sus RA, sus ponderaciones y sus situaciones de aprendizaje, y del resto',
     '// lo ligero. Lo que no esté aquí lo rellena el corpus de ejemplo de',
@@ -436,7 +436,7 @@ function escribir(extraido) {
     '//   UNIDADES[idUnidad]        { titulo, grupo, completo, secciones, sa }',
     '//   UNIDADES[id].secciones[s] { bloques | tablas | pares | raCe | ponderaciones }',
     '//   UNIDADES[id].sa[]         fichas de situación de aprendizaje, ya como modelo',
-    '//                             editable (lib/ficha-sa.js), sin la tabla importada',
+    '//                             editable (motor/ficha-sa.js), sin la tabla importada',
     '//',
   ].concat(informe.map((f) => '//   ' + String(f[0]).padEnd(11) + ' ' + String(f[1]).slice(0, 44).padEnd(45) + f[2]))
     .concat(['//']);

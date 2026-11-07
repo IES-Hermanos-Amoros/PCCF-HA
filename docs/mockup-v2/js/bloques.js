@@ -16,7 +16,7 @@
 // Sí están, y llegan al PDF de verdad: `text` puede ser una lista de tramos
 // { text, bold, italics }, que es lo que pdfmake acepta en cualquier nodo de
 // texto (la tabla de RA/CE del renderer ya lo usaba). Lo comprueba de punta a
-// punta poc-pdfmake/scripts/test-texto-rico.js.
+// punta scripts/test-texto-rico.js.
 //
 // Como el texto se escribe en un <textarea>, el formato se marca con dos
 // caracteres en lugar de con un selector de fuente:
@@ -333,7 +333,7 @@
     },
 
     // Desvincular: la referencia se sustituye por una copia propia del texto,
-    // igual que hace `desvincular()` en poc-pdfmake/lib/compartidos.js.
+    // igual que hace `desvincular()` en motor/compartidos.js.
     'desvincular': (bs, { bloque }) => {
       const c = C.COMPARTIDOS[bs[bloque].ref];
       if (!c) return bs;
