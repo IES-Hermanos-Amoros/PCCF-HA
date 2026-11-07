@@ -45,6 +45,7 @@ repo.enMemoria = true;
 globalThis[CLAVE_GLOBAL] = repo;
 
 const C = require('../core/permisos');
+const { COOKIE_SESION, abrirSesion } = require('../app/_lib/sesion');
 const Arbol = require('../core/arbol');
 const { aFilas } = require('../core/documento');
 const { buildDocDefinition } = require('../motor/render-generico');
@@ -69,11 +70,22 @@ const nota = (texto) => console.log(`     ${texto}`);
 
 // ---------------------------------------------------------------- ayudas
 
-// Una petición como la que recibe la ruta dentro de Next: la persona viaja en una cookie, que es de
-// donde la saca app/_lib/usuario.js. Sin persona, no se manda cookie.
-const pet = (camino, persona) => new Request(`http://pruebas.local${camino}`, {
-  headers: persona ? { cookie: `persona=${encodeURIComponent(persona._id)}` } : {},
-});
+// Una petición como la que recibe la ruta dentro de Next.
+//
+// Desde el E2 la persona NO viaja en una cookie con su id dentro —eso era el provisional del E1, y
+// cualquiera podía escribirla— sino en la cookie de sesión, que lleva un testigo aleatorio del que
+// solo se guarda el hash (app/_lib/sesion.js). La siembra abre una sesión por persona y guarda su
+// testigo en `S.testigos`, así que aquí se traduce la persona a su testigo. Sin persona, no se manda
+// cookie. Una cadena se manda tal cual, para probar una cookie con basura dentro.
+const cookieDe = (persona) => {
+  if (!persona) return null;
+  const testigo = typeof persona === 'string' ? persona : S.testigos[persona._id];
+  return testigo ? `${COOKIE_SESION}=${encodeURIComponent(testigo)}` : null;
+};
+const pet = (camino, persona) => {
+  const cookie = cookieDe(persona);
+  return new Request(`http://pruebas.local${camino}`, { headers: cookie ? { cookie } : {} });
+};
 
 // La misma normalización de test/ida-y-vuelta.js: `buildDocDefinition` devuelve `header` y `footer`
 // como cierres nuevos en cada llamada, y `deepStrictEqual` compara funciones por referencia. Se
@@ -309,6 +321,13 @@ async function sembrar() {
     root: await persona('Soporte', 'soporte@example.org', 'admin', 'direccion'),
   };
 
+  // Una sesión abierta por persona, que es lo que tendría cada una tras canjear su enlace de acceso.
+  // El testigo solo existe aquí: lo que queda guardado es su hash.
+  S.testigos = {};
+  for (const p of Object.values(S.u)) {
+    S.testigos[p._id] = (await abrirSesion(repo, p._id)).testigo;
+  }
+
   S.DATOS = datosDe(S.u);
   S.ENTRADA = { plantilla: PLANTILLA, datos: S.DATOS };
   S.doc = await guardar(aFilas(S.ENTRADA, OPCIONES));
@@ -346,33 +365,49 @@ const RUTAS_DEL_DOCUMENTO = [
 
 // ---------------------------------------------------------------- GET /api/personas
 
-prueba('GET /api/personas devuelve el desplegable, y es la única ruta que no exige persona', async () => {
-  const res = await Personas.GET(pet('/api/personas'));
+// En el E1 esta ruta era el desplegable con el que se elegía quién eras, y la única excepción al
+// 401. Con el E2 hay sesión de verdad y la excepción desaparece: ahora es el censo del
+// departamento, exige sesión como todas, y quien no gestiona personas no recibe el correo de nadie.
+// Lo que prueba este fichero es que sigue sirviendo para lo que la usan las vistas; el resto de su
+// comportamiento lo prueba test/sesiones.js.
+
+prueba('GET /api/personas exige sesión y devuelve el censo de quien pregunta', async () => {
+  await esError(await Personas.GET(pet('/api/personas')), 401, 'sin_identificar');
+
+  // La jefatura de estudios ve el centro entero, igual que con los documentos.
+  const res = await Personas.GET(pet('/api/personas', S.u.jefa));
   assert.equal(res.status, 200);
   const { personas } = await res.json();
 
   assert.equal(personas.length, 6);
-  // Por nombre, que es lo que se pinta en el desplegable.
+  // Por nombre, que es lo que se pinta.
   assert.deepStrictEqual(personas.map((p) => p.nombre), [
     'Ana Server', 'Elena Estudios', 'Luis Pinto', 'Marta Jefa', 'Pepe Mates', 'Soporte',
   ]);
-  const ana = personas.find((p) => p.nombre === 'Ana Server');
-  assert.deepStrictEqual(Object.keys(ana).sort(), ['_id', 'departamento', 'nombre', 'rol']);
-  // Sin identificar es sin identificar: el email del claustro no sale de una lista pública.
-  assert.ok(!('email' in ana), 'la lista de personas no debe llevar el email');
+
+  // Un docente ve solo su departamento y sin el correo de nadie: no le hace falta.
+  const deAna = await (await Personas.GET(pet('/api/personas', S.u.ana))).json();
+  assert.deepStrictEqual(deAna.personas.map((p) => p.nombre), ['Ana Server', 'Luis Pinto', 'Marta Jefa']);
+  assert.deepStrictEqual(Object.keys(deAna.personas[0]).sort(), ['_id', 'activo', 'departamento', 'nombre', 'rol']);
+  assert.equal(deAna.puedeGestionar, false);
 });
 
 // ---------------------------------------------------------------- GET /api/documentos
 
-prueba('GET /api/documentos sin cookie de persona es 401', async () => {
+prueba('GET /api/documentos sin cookie de sesión es 401', async () => {
   await esError(await Documentos.GET(pet('/api/documentos')), 401, 'sin_identificar');
 });
 
 prueba('GET /api/documentos con una cookie que no es de nadie es 401, no un 500', async () => {
-  // La cookie es texto que manda el cliente: con basura dentro, el repositorio lanza al validar el
-  // id. Tiene que acabar en «no te conozco» y no en un error del servidor.
-  const res = await Documentos.GET(pet('/api/documentos', { _id: 'no-soy-un-id' }));
-  await esError(res, 401, 'sin_identificar');
+  // La cookie es texto que manda el cliente: con basura dentro no hay sesión que buscar y el
+  // repositorio lanza al validar. Tiene que acabar en «no te conozco» y no en un error del servidor.
+  await esError(await Documentos.GET(pet('/api/documentos', 'no-soy-un-testigo')), 401, 'sin_identificar');
+  // Y la cookie `persona` del E1, que llevaba dentro el id de quien quisieras ser, ya no identifica
+  // a nadie: lo prueba a fondo test/sesiones.js.
+  const vieja = new Request('http://pruebas.local/api/documentos', {
+    headers: { cookie: `persona=${encodeURIComponent(S.u.marta._id)}` },
+  });
+  await esError(await Documentos.GET(vieja), 401, 'sin_identificar');
 });
 
 prueba('GET /api/documentos solo trae el departamento de quien pregunta, y nunca la plantilla', async () => {
@@ -439,7 +474,7 @@ prueba('un id que no existe es 404 en todas las rutas del documento', async () =
   }
 });
 
-prueba('sin cookie de persona todas las rutas del documento son 401', async () => {
+prueba('sin cookie de sesión todas las rutas del documento son 401', async () => {
   for (const ruta of RUTAS_DEL_DOCUMENTO) {
     await esError(await ruta.pedir(null, S.doc._id), 401, 'sin_identificar');
   }
@@ -962,7 +997,7 @@ function subir(persona, buffer, campos = {}) {
   return new Request('http://pruebas.local/api/documentos/importar', {
     method: 'POST',
     body: formulario,
-    headers: persona ? { cookie: `persona=${encodeURIComponent(persona._id)}` } : {},
+    headers: cookieDe(persona) ? { cookie: cookieDe(persona) } : {},
   });
 }
 const importar = (persona, buffer, campos) => Importar.POST(subir(persona, buffer, campos));

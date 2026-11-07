@@ -1,11 +1,23 @@
-// La barra de arriba, la misma en la portada y en el visor.
+// La barra de arriba, la misma en todas las pantallas.
 //
-// Es la del prototipo con las piezas que el E1 tiene: marca, el documento con el
-// que se está trabajando, el selector de persona, el botón de tema y los de
-// exportar. Lo que no está todavía —curso, vistas de cambios, validaciones y
-// coordinación— no se deja como botón apagado: un botón que no hace nada no se
-// distingue de uno estropeado, que es exactamente lo que se corrigió de la barra
-// de formato del v1.
+// Es la del prototipo con las piezas que hay: marca, el documento con el que se
+// está trabajando, quién eres, el botón de tema y los de exportar. Lo que no
+// está todavía —curso, vistas de cambios, validaciones y coordinación— no se
+// deja como botón apagado: un botón que no hace nada no se distingue de uno
+// estropeado, que es exactamente lo que se corrigió de la barra de formato del
+// v1.
+//
+// DONDE ESTABA EL DESPLEGABLE DE PERSONA AHORA ESTÁ QUIÉN ERES
+//
+// En el E1 había un `<select>` con todo el censo: se elegía con quién trabajar y
+// la elección iba en una cookie `persona` que cualquiera podía escribir. Eso se
+// ha retirado entero (`SelectorPersona.js` ya no existe) porque ya no identifica
+// a nadie: la identidad viene de la sesión, y aquí solo se refleja.
+//
+// Y el botón de salir CIERRA SESIÓN POR LA API, que revoca la sesión en el
+// servidor; no borra una cookie —que además no podría, es `HttpOnly`—. Un
+// «salir» que solo le dijera al navegador que se olvide de la llave sería
+// mentira para quien la hubiera copiado antes.
 //
 // El botón ☰ conserva el `id="btn-cajon"` del prototipo porque la hoja de
 // estilos lo esconde por ese id y solo lo enseña por debajo de 900 px. Lo mismo
@@ -14,7 +26,8 @@
 'use client';
 
 import Link from 'next/link';
-import SelectorPersona from './SelectorPersona';
+import { useState } from 'react';
+import { cerrarSesion } from './sesion-cliente';
 import { ROLES } from './etiquetas';
 
 const Logo = () => (
@@ -28,6 +41,18 @@ const Logo = () => (
 const Descarga = () => (
   <svg viewBox="0 0 24 24" className="ico" aria-hidden="true">
     <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const Cara = () => (
+  <svg viewBox="0 0 24 24" className="ico" aria-hidden="true">
+    <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 9a8 8 0 0 1 16 0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
+const Salida = () => (
+  <svg viewBox="0 0 24 24" className="ico" aria-hidden="true">
+    <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -48,8 +73,43 @@ export function BotonTema() {
   );
 }
 
+// Quién eres y cómo se sale. Sin sesión no se pinta un hueco: se dice que no
+// hay sesión y se ofrece la pantalla que explica cómo se entra, porque un
+// usuario sin sesión que ve la barra vacía no sabe si es que no ha cargado.
+function Identidad({ persona }) {
+  const [saliendo, setSaliendo] = useState(false);
+
+  if (!persona) {
+    return (
+      <Link className="btn-ghost" href="/acceso">
+        <Cara />
+        Sin sesión · cómo se entra
+      </Link>
+    );
+  }
+
+  return (
+    <div className="persona">
+      <Cara />
+      <span className="persona-nombre">{persona.nombre}</span>
+      {/* El rol va en texto, no en un color: es un dato que hay que poder leer. */}
+      <span className="etiqueta-rol">{ROLES[persona.rol] || persona.rol}</span>
+      <button
+        type="button"
+        className="salir"
+        disabled={saliendo}
+        onClick={() => { setSaliendo(true); cerrarSesion(); }}
+        title="Cerrar sesión en el servidor: la sesión se revoca y este navegador deja de valer"
+      >
+        <Salida />
+        {saliendo ? 'Saliendo…' : 'Salir'}
+      </button>
+    </div>
+  );
+}
+
 export default function BarraSuperior({
-  subtitulo, personas, personaId, onCajon, documentos, documentoId, exportar,
+  subtitulo, persona, onCajon, documentos, documentoId, exportar,
 }) {
   return (
     <header className="topbar">
@@ -86,7 +146,7 @@ export default function BarraSuperior({
       ) : null}
 
       <div className="topbar-derecha">
-        <SelectorPersona personas={personas} personaId={personaId} roles={ROLES} />
+        <Identidad persona={persona} />
         <BotonTema />
         {exportar ? (
           <>

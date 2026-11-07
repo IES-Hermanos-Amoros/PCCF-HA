@@ -21,6 +21,23 @@ function documento(repo, extra = {}) {
   });
 }
 
+// Una persona nueva con un correo propio, para que las pruebas no se pisen entre adaptadores ni
+// dependan de lo que hubiera ya en la base de datos de pruebas.
+function usuario(repo, extra = {}) {
+  return repo.usuarios.crear({
+    nombre: 'Ana', email: `ana-${randomUUID()}@ejemplo.invalid`, rol: 'docente', departamento: 'informatica', ...extra,
+  });
+}
+
+// Un hash cualquiera con la forma del de verdad: sha256 en hexadecimal. Las pruebas nunca manejan
+// testigos, porque el repositorio no acepta ninguno (app/_lib/testigos.js).
+const unHash = () => randomUUID().replace(/-/g, '').repeat(2);
+
+const invitacion = (repo, u, extra = {}) => repo.invitaciones.crear({
+  usuarioId: u._id, email: u.email, rol: u.rol, departamento: u.departamento,
+  tokenHash: unHash(), expiraEn: new Date(Date.now() + 60_000), creadaPor: null, ...extra,
+});
+
 function unidadesDe(...codigos) {
   return codigos.map((unidadId, i) => ({ unidadId, titulo: `Módulo ${unidadId}`, num: i + 1, grupo: 'DAW1', docentes: [] }));
 }
@@ -320,6 +337,134 @@ async function bateria(etiqueta, fabrica) {
     await repo.usuarios.crear({ nombre: 'A', email, rol: 'docente', departamento: 'informatica' });
     const e = await error(repo.usuarios.crear({ nombre: 'B', email, rol: 'docente', departamento: 'informatica' }));
     assert.ok(e instanceof ErrorDuplicado);
+  });
+
+  await prueba('usuarios: `activo` se puede guardar y leer, y ausente quiere decir activa', async (repo) => {
+    const u = await usuario(repo);
+    // Las personas del E1 no tienen el campo: la ausencia tiene que ser indistinguible de activa, o
+    // añadirlo dejaría fuera a todo el que ya estuviera en la base de datos.
+    assert.equal(u.activo, undefined);
+    assert.equal((await repo.usuarios.actualizar(u._id, { activo: false })).activo, false);
+    assert.equal((await repo.usuarios.obtener(u._id)).activo, false);
+    assert.equal((await repo.usuarios.actualizar(u._id, { activo: true })).activo, true);
+  });
+
+  // ---- invitaciones y sesiones (la identidad del E2) ----
+  //
+  // Lo que se guarda es el hash del testigo, nunca el testigo: estas pruebas trabajan siempre con
+  // hashes, igual que la aplicación, porque no hay ninguna operación que acepte un testigo.
+
+  await prueba('invitaciones: se crean pendientes, se buscan por hash y guardan lo que se les da', async (repo) => {
+    const u = await usuario(repo);
+    const hash = unHash();
+    const expiraEn = new Date(Date.now() + 60_000);
+    const i = await repo.invitaciones.crear({
+      usuarioId: u._id, email: u.email, rol: u.rol, departamento: u.departamento,
+      tokenHash: hash, expiraEn, creadaPor: u._id,
+    });
+    assert.equal(typeof i._id, 'string');
+    assert.equal(i.estado, 'pendiente');
+    assert.equal(i.usadaEn, null);
+    assert.equal(i.anuladaEn, null);
+    assert.ok(i.creado instanceof Date);
+    assert.equal(new Date(i.expiraEn).getTime(), expiraEn.getTime());
+    assert.equal((await repo.invitaciones.porHash(hash))._id, i._id);
+    assert.equal(await repo.invitaciones.porHash(unHash()), null);
+  });
+
+  await prueba('invitaciones: `usar` es de un solo uso, y el segundo intento devuelve null', async (repo) => {
+    const u = await usuario(repo);
+    const i = await invitacion(repo, u);
+    const usada = await repo.invitaciones.usar(i._id);
+    assert.equal(usada.estado, 'usada');
+    assert.ok(usada.usadaEn instanceof Date);
+    // Lo que hace que el enlace sea de un solo uso: el segundo canje no abre nada. Tiene que
+    // decidirlo el adaptador en una sola operación, porque dos peticiones con el mismo enlace
+    // llegan a la vez más a menudo de lo que parece.
+    assert.equal(await repo.invitaciones.usar(i._id), null);
+    assert.equal(await repo.invitaciones.usar(`${randomUUID()}`), null);
+  });
+
+  await prueba('invitaciones: `anularPendientes` deja solo la última, y no toca las ya usadas', async (repo) => {
+    const u = await usuario(repo);
+    const vieja = await invitacion(repo, u);
+    const usada = await invitacion(repo, u);
+    await repo.invitaciones.usar(usada._id);
+
+    assert.equal(await repo.invitaciones.anularPendientes(u._id), 1);
+    assert.equal((await repo.invitaciones.porHash(vieja.tokenHash)).estado, 'anulada');
+    // Una usada no se vuelve «anulada»: el registro tiene que seguir distinguiendo a quien entró de
+    // quien nunca llegó a entrar.
+    assert.equal((await repo.invitaciones.porHash(usada.tokenHash)).estado, 'usada');
+    assert.equal(await repo.invitaciones.anularPendientes(u._id), 0);
+  });
+
+  await prueba('invitaciones: se listan por persona y por estado, en orden de creación', async (repo) => {
+    const u = await usuario(repo);
+    const primera = await invitacion(repo, u);
+    await esperarMs(2);
+    const segunda = await invitacion(repo, u);
+    await repo.invitaciones.usar(primera._id);
+
+    const suyas = await repo.invitaciones.listar({ usuarioId: u._id });
+    assert.deepEqual(suyas.map((i) => i._id), [primera._id, segunda._id]);
+    const pendientes = await repo.invitaciones.listar({ usuarioId: u._id, estado: 'pendiente' });
+    assert.deepEqual(pendientes.map((i) => i._id), [segunda._id]);
+  });
+
+  await prueba('invitaciones: sin caducidad válida no se escribe nada', async (repo) => {
+    const u = await usuario(repo);
+    const base = { usuarioId: u._id, email: u.email, rol: u.rol, departamento: u.departamento, tokenHash: unHash() };
+    // `new Date(null)` es el 1 de enero de 1970, o sea una invitación nacida caducada, y
+    // `new Date(undefined)` es inválida pero Mongo la guardaría igual. Las dos tienen que parar.
+    assert.ok((await error(repo.invitaciones.crear({ ...base, expiraEn: null }))) instanceof TypeError);
+    assert.ok((await error(repo.invitaciones.crear({ ...base }))) instanceof TypeError);
+    assert.ok((await error(repo.invitaciones.crear({ ...base, expiraEn: 'el martes' }))) instanceof TypeError);
+  });
+
+  await prueba('sesiones: se crean sin revocar, se buscan por hash y se revocan una vez', async (repo) => {
+    const u = await usuario(repo);
+    const hash = unHash();
+    const s = await repo.sesiones.crear({ usuarioId: u._id, tokenHash: hash, expiraEn: new Date(Date.now() + 60_000) });
+    assert.equal(s.revocadaEn, null);
+    assert.equal((await repo.sesiones.porHash(hash))._id, s._id);
+
+    const revocada = await repo.sesiones.revocar(s._id);
+    assert.ok(revocada.revocadaEn instanceof Date);
+    // Cerrar sesión revoca, no borra: la fila se queda, y revocar dos veces no cambia la fecha.
+    assert.equal((await repo.sesiones.porHash(hash)).revocadaEn.getTime(), revocada.revocadaEn.getTime());
+    assert.equal(await repo.sesiones.revocar(s._id), null);
+  });
+
+  await prueba('sesiones: `revocarDeUsuario` revoca todas las de una persona y ninguna de otra', async (repo) => {
+    const u = await usuario(repo);
+    const otra = await usuario(repo);
+    const expiraEn = new Date(Date.now() + 60_000);
+    const suyas = [unHash(), unHash()];
+    for (const tokenHash of suyas) await repo.sesiones.crear({ usuarioId: u._id, tokenHash, expiraEn });
+    const ajena = unHash();
+    await repo.sesiones.crear({ usuarioId: otra._id, tokenHash: ajena, expiraEn });
+
+    assert.equal(await repo.sesiones.revocarDeUsuario(u._id), 2);
+    for (const h of suyas) assert.ok((await repo.sesiones.porHash(h)).revocadaEn instanceof Date);
+    assert.equal((await repo.sesiones.porHash(ajena)).revocadaEn, null);
+    assert.equal(await repo.sesiones.revocarDeUsuario(u._id), 0);
+    assert.equal((await repo.sesiones.listar({ usuarioId: u._id })).length, 2);
+  });
+
+  await prueba('identidad: el mismo hash dos veces lanza ErrorDuplicado en las dos colecciones', async (repo) => {
+    const u = await usuario(repo);
+    const expiraEn = new Date(Date.now() + 60_000);
+    const hash = unHash();
+    await repo.sesiones.crear({ usuarioId: u._id, tokenHash: hash, expiraEn });
+    // Imposible en la práctica con 32 bytes de randomBytes, pero si pasara, dos filas con el mismo
+    // hash harían que la búsqueda devolviera una cualquiera de las dos.
+    assert.ok((await error(repo.sesiones.crear({ usuarioId: u._id, tokenHash: hash, expiraEn }))) instanceof ErrorDuplicado);
+
+    const hashI = unHash();
+    const base = { usuarioId: u._id, email: u.email, rol: u.rol, departamento: u.departamento, expiraEn };
+    await repo.invitaciones.crear({ ...base, tokenHash: hashI });
+    assert.ok((await error(repo.invitaciones.crear({ ...base, tokenHash: hashI }))) instanceof ErrorDuplicado);
   });
 }
 

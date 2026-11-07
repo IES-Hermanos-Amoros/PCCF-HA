@@ -16,7 +16,10 @@ const HIJOS = ['unidades', 'apartados', 'compartidos', 'comentarios'];
 const hayRepetidos = (valores) => new Set(valores).size !== valores.length;
 
 function crear() {
-  const tablas = { documentos: [], unidades: [], apartados: [], compartidos: [], comentarios: [], usuarios: [] };
+  const tablas = {
+    documentos: [], unidades: [], apartados: [], compartidos: [], comentarios: [], usuarios: [],
+    invitaciones: [], sesiones: [],
+  };
 
   // Igualdad estricta: null solo casa con null. Un apartado común tiene unidadId null, y eso no es lo mismo que
   // no filtrar por unidad, que es un campo ausente del filtro y lo decide quien llama.
@@ -157,7 +160,86 @@ function crear() {
     },
   };
 
-  return { documentos, unidades, apartados, compartidos, comentarios, usuarios };
+  // ---------------------------------------------------------------- identidad (E2)
+  //
+  // Lo que llega es `tokenHash`, nunca el testigo: ver repositorio/index.js. Aquí se guarda tal cual
+  // y se busca por él, igual que haría Mongo con su índice único.
+
+  const invitaciones = {
+    crear(invitacion) {
+      // El hash repetido es imposible en la práctica —32 bytes de randomBytes—, pero si pasara, dos
+      // invitaciones con el mismo hash harían que `porHash` devolviera una cualquiera de las dos.
+      // Mongo lo para con un índice único y aquí también, para que el contrato sea el mismo.
+      if (tablas.invitaciones.some((i) => i.tokenHash === invitacion.tokenHash)) {
+        throw new ErrorDuplicado('ya hay una invitación con ese testigo');
+      }
+      const nueva = {
+        ...copia(invitacion),
+        _id: randomUUID(),
+        creado: new Date(),
+        estado: 'pendiente',
+        usadaEn: null,
+        anuladaEn: null,
+      };
+      tablas.invitaciones.push(nueva);
+      return copia(nueva);
+    },
+    porHash: (tokenHash) => uno('invitaciones', { tokenHash }),
+
+    // Entre encontrarla y marcarla no hay ningún await, así que no hay carrera posible: es la misma
+    // garantía que mongo.js consigue con un findOneAndUpdate condicionado a `estado: 'pendiente'`.
+    usar(id, ahora) {
+      const registro = tablas.invitaciones.find((i) => i._id === id);
+      if (!registro || registro.estado !== 'pendiente') return null;
+      Object.assign(registro, { estado: 'usada', usadaEn: new Date(ahora) });
+      return copia(registro);
+    },
+
+    anularPendientes(usuarioId, ahora) {
+      let anuladas = 0;
+      for (const registro of tablas.invitaciones) {
+        if (registro.usuarioId !== usuarioId || registro.estado !== 'pendiente') continue;
+        Object.assign(registro, { estado: 'anulada', anuladaEn: new Date(ahora) });
+        anuladas += 1;
+      }
+      return anuladas;
+    },
+
+    listar: (filtro) => de('invitaciones', filtro).sort((x, y) => x.creado - y.creado),
+  };
+
+  const sesiones = {
+    crear(sesion) {
+      if (tablas.sesiones.some((s) => s.tokenHash === sesion.tokenHash)) {
+        throw new ErrorDuplicado('ya hay una sesión con ese testigo');
+      }
+      const nueva = { ...copia(sesion), _id: randomUUID(), creado: new Date(), revocadaEn: null };
+      tablas.sesiones.push(nueva);
+      return copia(nueva);
+    },
+    porHash: (tokenHash) => uno('sesiones', { tokenHash }),
+
+    revocar(id, ahora) {
+      const registro = tablas.sesiones.find((s) => s._id === id);
+      if (!registro || registro.revocadaEn) return null;
+      registro.revocadaEn = new Date(ahora);
+      return copia(registro);
+    },
+
+    revocarDeUsuario(usuarioId, ahora) {
+      let revocadas = 0;
+      for (const registro of tablas.sesiones) {
+        if (registro.usuarioId !== usuarioId || registro.revocadaEn) continue;
+        registro.revocadaEn = new Date(ahora);
+        revocadas += 1;
+      }
+      return revocadas;
+    },
+
+    listar: (filtro) => de('sesiones', filtro).sort((x, y) => x.creado - y.creado),
+  };
+
+  return { documentos, unidades, apartados, compartidos, comentarios, usuarios, invitaciones, sesiones };
 }
 
 module.exports = { crear };

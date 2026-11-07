@@ -51,8 +51,14 @@
 
   // `donde` solo necesita llevar `departamento`: vale tanto el documento del
   // repositorio como los `datos` del importador.
+  // Ausente es ACTIVA. Si la ausencia significara «de baja», al añadir el campo se
+  // quedaría fuera todo el que ya estuviera guardado de antes, y nadie gana nada
+  // por esa interpretación: quien está de baja no consigue sesión y no llega a
+  // preguntar. Esto es la segunda cerradura, no la primera.
+  const estaActivo = (usuario) => !!usuario && usuario.activo !== false;
+
   function puedeVer(usuario, donde) {
-    if (!usuario) return false;
+    if (!usuario || !estaActivo(usuario)) return false;
     if (usuario.rol === 'admin' || usuario.rol === 'jefe_estudios') return true;
     return !!donde && !!donde.departamento && usuario.departamento === donde.departamento;
   }
@@ -70,7 +76,7 @@
   // tercer valor, el efecto de olvidarse de este fichero es que no se pueda
   // editar, no que pueda cualquiera.
   function reglaEdicion(usuario, { edita, esDocenteDeLaUnidad, tieneApartadoAsignado } = {}) {
-    if (!usuario) return false;
+    if (!usuario || !estaActivo(usuario)) return false;
     if (usuario.rol === 'admin') return true;
     if (usuario.rol === 'jefe_estudios') return false;
 
@@ -98,7 +104,7 @@
   //                          departamento (y por tanto se puede delegar)
   //   tieneApartadoAsignado  se le ha delegado a este usuario
   function reglaCompartido(usuario, { comun, editaApartadoComun, tieneApartadoAsignado } = {}) {
-    if (!usuario) return false;
+    if (!usuario || !estaActivo(usuario)) return false;
     if (usuario.rol === 'admin') return true;
     if (usuario.rol === 'jefe_estudios') return false;
     if (usuario.rol === 'jefe_departamento') return true;
@@ -110,6 +116,18 @@
   // diferencia entre los dos modos.
   function reglaDesvincular(_usuario, { modo, puedeEditarElApartado } = {}) {
     return modo === 'sugerido' && !!puedeEditarElApartado;
+  }
+
+  // Quién reparte las unidades entre el profesorado. Es la jefatura del
+  // departamento —es quien reparte la carga— y el soporte. La jefatura de
+  // estudios no: ve todos los departamentos y no toca nada, que es lo que la
+  // deja en condiciones de aprobar el documento.
+  //
+  // Vivía en la ruta que lo usa. Está aquí por lo mismo que lo demás: el día que
+  // haya una segunda pantalla que pregunte lo mismo, que no se conteste distinto.
+  function puedeRepartirUnidades(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
   }
 
   // ------------------------------------------------- búsqueda en la plantilla
@@ -176,6 +194,8 @@
     apartadoComun,
     raizSeccion,
     idDeUsuario,
+    estaActivo,
+    puedeRepartirUnidades,
   };
 
   // Vale como <script> en el mockup, como `require` en el motor y en las

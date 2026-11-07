@@ -624,3 +624,81 @@ a.marca:hover .marca-texto span { color: var(--acento); }
 /* En la portada el contenido no se centra verticalmente como en el prototipo:
    es una lista que crece. */
 .main > .tarjeta + .tarjeta { margin-top: 16px; }
+
+/* ===================================================== identidad y reparto (E2)
+   Lo que el prototipo no tenía porque allí la persona se elegía en un
+   desplegable: quién eres en la barra, el enlace de acceso que se copia, y la
+   matriz del reparto fuera de un modal. Mismos tokens y mismas reglas de arriba;
+   la matriz reutiliza `.asig-*` tal cual, que es la del panel Asignaciones.   */
+
+/* --- quién eres, donde estaba el desplegable de persona */
+.persona-nombre { font-size: 12.5px; font-weight: 600; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.persona .salir {
+  display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent;
+  color: var(--suave); font-size: 12px; padding: 2px 2px 2px 8px;
+  border-left: 1px solid var(--borde); border-radius: 0;
+}
+.persona .salir:hover { color: var(--rojo); }
+.persona .salir:disabled { opacity: .6; cursor: default; }
+
+/* --- cómo se entra, y el enlace de acceso recién generado */
+.main-estrecha { max-width: 760px; width: 100%; margin: 0 auto; }
+.pasos-acceso { margin: 10px 0 0; padding-left: 20px; line-height: 1.65; font-size: 13px; }
+.pasos-acceso li { margin-bottom: 6px; }
+.pasos-acceso li:last-child { margin-bottom: 0; }
+
+.nota-enlace { border-left-color: var(--verde); }
+.fila-enlace { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.caja-enlace {
+  flex: 1; min-width: 240px; font-family: var(--mono); font-size: 12px;
+  border: 1px solid var(--borde); border-radius: 8px; background: var(--panel);
+  color: var(--texto); padding: 7px 9px; outline: none;
+}
+.caja-enlace:focus { border-color: var(--acento); }
+
+/* --- el censo */
+.acciones-persona { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Una fila de baja se distingue además del chip «de baja», que es el que lleva
+   el dato: el color por sí solo no dice nada a quien no lo ve. */
+.fila-baja > th:first-child { box-shadow: inset 3px 0 0 var(--rojo); }
+.fila-baja th, .fila-baja td { background: var(--panel-2); }
+
+/* --- la barra de filtros del reparto: la misma de `.modal-filtros`, pero esto
+       no es un modal, es una tarjeta de la pantalla. */
+.filtros {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+  padding: 8px 10px; margin-bottom: 10px;
+  background: var(--panel-2); border: 1px solid var(--borde); border-radius: 8px;
+}
+.filtros label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--suave); }
+.filtros input[type="search"] {
+  border: 1px solid var(--borde); border-radius: 7px; background: var(--panel); color: var(--texto);
+  padding: 5px 9px; font-size: 12.5px; min-width: 200px;
+}
+
+/* La matriz fuera del modal: el marco con desplazamiento propio es lo que evita
+   que en una pantalla estrecha la página entera se desplace a lo ancho. */
+.tabla-marco .asig-tabla { min-width: 520px; }
+.asig-tabla tbody th .chip { margin-left: 6px; }
+.asig-casilla input { width: 16px; height: 16px; }
+/* Una casilla que no se puede marcar NO se desactiva —el tabulador se la
+   saltaría y no habría forma de llegar a ella para leer por qué—: se marca con
+   aria-disabled y se nota que no acepta nada. */
+.asig-casilla input[aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
+
+/* Un `.sr` —el texto que solo leen los lectores de pantalla— va con
+   `position: absolute`, así que su bloque contenedor es el primer antecesor
+   POSICIONADO. Dentro de una tabla que se desplaza a lo ancho, con el marco sin
+   posicionar, esas etiquetas invisibles se escapan del recorte y ensanchan la
+   página entera: a 390 px el censo se desplazaba 11 px a lo ancho por culpa de
+   un `<label class="sr">` dentro de una celda. Medido con el navegador. */
+.tabla-scroll, .tabla-marco { position: relative; }
+
+/* Una tecla, para cuando hay que decir «pulsa Ctrl+C». Es el único sitio donde
+   la interfaz nombra una tecla, pero el estilo del navegador no cuadra con nada
+   de esta hoja. */
+kbd {
+  font-family: var(--mono); font-size: 11px; padding: 1px 5px;
+  border: 1px solid var(--borde); border-bottom-width: 2px; border-radius: 5px;
+  background: var(--panel-2); color: var(--texto);
+}

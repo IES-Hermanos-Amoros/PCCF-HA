@@ -2,15 +2,22 @@
 // desplegable y, si se le da un Word, un documento con el que navegar.
 //
 //   node scripts/sembrar.js
+//   node scripts/sembrar.js --base https://pccf.example.org
 //   node scripts/sembrar.js --docx "entrada/PD_DAW.docx" --ciclo daw --curso 2026-27
 //   node scripts/sembrar.js --desde out/importado --ciclo daw --curso 2026-27
 //
 // POR QUÉ HACE FALTA
 //
 // Sin ninguna persona en el repositorio no hay forma de entrar: todas las rutas
-// devuelven 401 salvo `GET /api/personas`, que es la lista del desplegable, y si
-// está vacía no hay a quién elegir (docs/api.md, «Quién pregunta»). Mientras no
-// haya autenticación —llega en el E2— esto es la puerta.
+// devuelven 401. Y desde el E2 tampoco basta con que haya personas, porque ya no
+// se elige quién eres en un desplegable: se entra canjeando un enlace de acceso
+// que genera la jefatura (app/_lib/invitaciones.js). Así que la siembra crea
+// ADEMÁS un enlace por persona y los imprime: si no, la aplicación arranca con
+// un censo y sin puerta.
+//
+// Los enlaces son de un solo uso y caducan en siete días, como cualquier otro:
+// aquí no hay ninguna excepción al mecanismo de verdad, que es justo lo que hace
+// que valgan para probarlo.
 //
 // LAS PERSONAS SON INVENTADAS, Y NO POR DESCUIDO
 //
@@ -64,6 +71,60 @@ async function sembrarPersonas(repo) {
     creadas.push(await repo.usuarios.crear(persona));
   }
   return creadas;
+}
+
+// ------------------------------------------------------------- los enlaces de acceso
+
+// La dirección con la que se construyen los enlaces. En desarrollo es el servidor
+// de Next; con un dominio propio o detrás de un proxy, PCCF_URL_BASE.
+//
+// Aquí no se puede hacer lo que hace la ruta de alta —sacar el host de la propia
+// petición— porque esto se ejecuta al arrancar y no hay ninguna petición. Si Next
+// acaba en otro puerto porque el 3000 está ocupado, el enlace impreso llevará el
+// puerto equivocado: se cambia a mano, o se pasa `--base` / PCCF_URL_BASE.
+const BASE_POR_OMISION = process.env.PCCF_URL_BASE
+  || `http://localhost:${process.env.PORT || 3000}`;
+
+// Un enlace de acceso por persona de muestra, para poder entrar como cualquiera
+// de los seis y ver la aplicación con sus permisos.
+//
+// A quien ya tenga uno pendiente no se le crea otro, y no es por ahorrar: el
+// testigo solo existe en el momento de crearlo —lo guardado es su hash— así que
+// un segundo paso por aquí no podría volver a enseñar el enlace anterior, solo
+// anularlo y dar otro. Se dice y se sigue, que es lo que hay que hacer cuando no
+// se puede recuperar un secreto.
+async function sembrarInvitaciones(repo, { base = BASE_POR_OMISION } = {}) {
+  const { crearInvitacion, enlaceDe } = require('../app/_lib/invitaciones');
+
+  const deMuestra = new Set(PERSONAS.map((p) => p.email));
+  const pendientes = new Set((await repo.invitaciones.listar({ estado: 'pendiente' })).map((i) => i.usuarioId));
+  const enlaces = [];
+
+  for (const persona of await repo.usuarios.listar({})) {
+    if (!deMuestra.has(persona.email)) continue;
+    if (pendientes.has(persona._id)) {
+      enlaces.push({ persona, enlace: null, yaTenia: true });
+      continue;
+    }
+    const { invitacion, testigo } = await crearInvitacion(repo, { usuario: persona });
+    enlaces.push({ persona, enlace: enlaceDe(base, testigo), expiraEn: invitacion.expiraEn });
+  }
+  return enlaces;
+}
+
+// Lo que se imprime por consola. Es la puerta de entrada en desarrollo, así que
+// tiene que poder copiarse de un tirón.
+function imprimirEnlaces(enlaces, log = console.log) {
+  if (!enlaces.length) return;
+  log('\n[semilla] Enlaces de acceso de las personas de muestra (un solo uso, 7 días).'
+    + '\n          Pégalos en el navegador para entrar como cada una:');
+  for (const { persona, enlace, yaTenia } of enlaces) {
+    log(`\n  ${persona.nombre} · ${persona.rol} · ${persona.departamento}`);
+    log(yaTenia
+      ? '    (ya tenía un enlace pendiente: solo se guarda su hash, así que no se puede volver a enseñar)'
+      : `    ${enlace}`);
+  }
+  log('');
 }
 
 // ---------------------------------------------------------------- un documento
@@ -129,7 +190,9 @@ async function sembrarDocumento(repo, fuente, opciones) {
   return { documento, filas, sinResolver: resuelto.sinResolver };
 }
 
-module.exports = { PERSONAS, sembrarPersonas, sembrarDocumento, leerFuente };
+module.exports = {
+  PERSONAS, sembrarPersonas, sembrarInvitaciones, imprimirEnlaces, sembrarDocumento, leerFuente,
+};
 
 // ---------------------------------------------------------------- línea de órdenes
 
@@ -151,6 +214,9 @@ if (require.main === module) {
     console.log(creadas.length
       ? `Personas creadas (${creadas.length}): ${creadas.map((p) => `${p.nombre} · ${p.rol}`).join(', ')}`
       : 'Las personas ya estaban: no se ha creado ninguna.');
+
+    // La puerta: sin un enlace de acceso, un censo no sirve para entrar.
+    imprimirEnlaces(await sembrarInvitaciones(repo, { base: valor('base', BASE_POR_OMISION) }));
 
     const docx = valor('docx');
     const desde = valor('desde');

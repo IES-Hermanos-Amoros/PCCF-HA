@@ -191,7 +191,7 @@ export default function Subida({ departamentoPorOmision, rol, habilitado, alImpo
             {enviando ? 'Importando…' : 'Importar'}
           </button>
           {!habilitado ? (
-            <span className="ayuda">Elige antes arriba con quién trabajas: el servidor no acepta una subida sin saber quién la hace.</span>
+            <span className="ayuda">Hace falta haber entrado: el servidor no acepta una subida sin saber quién la hace.</span>
           ) : null}
           {habilitado && !puedeElRol ? (
             <span className="ayuda">

@@ -35,7 +35,7 @@ import BarraSuperior from './BarraSuperior';
 import Valores from './Valores';
 import { pedir } from './api';
 import { abiertosHasta, estados as calcularEstados, indexar } from './arbol-cliente';
-import { personaDeLaCookie, AVISO } from './SelectorPersona';
+import { useSesion } from './sesion-cliente';
 import {
   GLIFO, NOMBRE_ESTADO, NOMBRE_ESTADO_DOC, NOMBRE_TIPO, codigoDeUnidad, deQuienEs, motivoBloqueo,
 } from './etiquetas';
@@ -78,7 +78,6 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
   const [documento, setDocumento] = useState(null);
   const [arbol, setArbol] = useState(null);
   const [resumen, setResumen] = useState(null);
-  const [personas, setPersonas] = useState([]);
   const [documentos, setDocumentos] = useState([]);
   const [errorCarga, setErrorCarga] = useState(null);
 
@@ -90,11 +89,10 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
   const [busqueda, setBusqueda] = useState('');
   const [cajon, setCajon] = useState(false);
   const buscador = useRef(null);
-  // La cookie se lee en un efecto y no al pintar: en el servidor no hay
-  // `document`, así que leerla durante el render daría un HTML distinto del que
-  // pinta el navegador y React avisaría de que la hidratación no cuadra.
-  const [personaId, setPersonaId] = useState(null);
-  useEffect(() => { setPersonaId(personaDeLaCookie()); }, []);
+  // Quién soy lo contesta el servidor: la cookie de sesión es `HttpOnly` y el
+  // navegador no la ve (sesion-cliente.js). En el E1 aquí se leía la cookie
+  // `persona`, que ya no identifica a nadie.
+  const { persona: yo } = useSesion();
 
   // ---------------------------------------------------------------- carga inicial
 
@@ -102,9 +100,9 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
     let vivo = true;
     (async () => {
       try {
-        // En paralelo: son tres ramas distintas y ninguna depende de las otras.
-        // La lista de documentos es para el desplegable de la barra, y es la
-        // única que puede fallar sin impedir trabajar.
+        // En paralelo: son dos ramas distintas y ninguna depende de la otra. La
+        // lista de documentos va después y aparte porque es para el desplegable
+        // de la barra, y es la única que puede fallar sin impedir trabajar.
         const [doc, ar] = await Promise.all([
           pedir(`/api/documentos/${encodeURIComponent(documentoId)}`),
           pedir(`/api/documentos/${encodeURIComponent(documentoId)}/arbol`),
@@ -117,14 +115,10 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
         if (vivo) setErrorCarga(e);
       }
       try {
-        const [ps, ds] = await Promise.all([
-          pedir('/api/personas'),
-          pedir('/api/documentos').catch(() => ({ documentos: [] })),
-        ]);
+        const ds = await pedir('/api/documentos');
         if (!vivo) return;
-        setPersonas(ps.personas || []);
         setDocumentos((ds.documentos || []).map((d) => ({ ...d, corto: corto(d) })));
-      } catch (e) { /* el visor se puede usar sin el desplegable de personas */ }
+      } catch (e) { /* el visor se puede usar sin el desplegable de documentos */ }
     })();
     return () => { vivo = false; };
   }, [documentoId]);
@@ -248,7 +242,7 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
   if (errorCarga) {
     return (
       <>
-        <BarraSuperior personas={personas} personaId={personaId} />
+        <BarraSuperior persona={yo} />
         <main className="main">
           <div className="cabecera"><div><h1>No se puede abrir este documento</h1></div></div>
           <div className="nota nota-lock">
@@ -256,7 +250,11 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
             <div>
               {errorCarga.message}
               {errorCarga.codigo === 'sin_identificar' ? (
-                <p className="suave">{AVISO}</p>
+                <p className="suave">
+                  No has entrado en este navegador. No hay registro ni contraseñas: te da de alta la
+                  jefatura de tu departamento y se entra con un enlace de un solo uso.{' '}
+                  <a className="enlace" href="/acceso">Cómo se entra</a>.
+                </p>
               ) : null}
               {errorCarga.codigo === 'no_encontrado' ? (
                 <p className="suave">
@@ -275,14 +273,14 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
   if (!arbol || !documento) {
     return (
       <>
-        <BarraSuperior personas={personas} personaId={personaId} />
+        <BarraSuperior persona={yo} />
         <main className="main"><p className="suave">Abriendo el documento…</p></main>
       </>
     );
   }
 
   const est = nodo ? (estados.get(nodo.clave) || {}) : {};
-  const rol = (personas.find((p) => p._id === personaId) || {}).rol || null;
+  const rol = yo ? yo.rol : null;
   const unidadDelNodo = nodo && nodo.unidadId ? codigoDeUnidad(nodo.unidadId) : null;
   const base = `/api/documentos/${encodeURIComponent(documentoId)}`;
 
@@ -355,6 +353,14 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
           <dt>Estado</dt><dd>{NOMBRE_ESTADO_DOC[documento.estado] || documento.estado}</dd>
           {documento.origen ? <><dt>Importado de</dt><dd><code>{documento.origen}</code></dd></> : null}
         </dl>
+        {/* El reparto de unidades lo puede VER cualquiera que vea el documento:
+            un docente necesita saber quién más lleva su módulo. Cambiarlo es
+            otra cosa, y lo dice esa pantalla. */}
+        <div className="compartido-acciones">
+          <a className="mini" href={`/reparto/${encodeURIComponent(documentoId)}`}>
+            Quién lleva cada unidad
+          </a>
+        </div>
       </section>
       {listaHijos(n)}
     </>
@@ -384,6 +390,7 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
           <div className="compartido-acciones">
             <a className="mini" href={`${base}/pdf${q}`} target="_blank" rel="noopener">PDF de este módulo</a>
             <a className="mini" href={`${base}/docx${q}`} download>Word de este módulo</a>
+            <a className="mini" href={`/reparto/${encodeURIComponent(documentoId)}`}>Quién lleva este módulo</a>
           </div>
         </section>
         {listaHijos(n)}
@@ -413,6 +420,16 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
               <span className="suave">
                 En este evolutivo nadie edita todavía: el editor de bloques es el E3.
               </span>
+              {/* Si el candado es porque no se lleva el módulo, el arreglo está
+                  en el reparto: se dice dónde, en vez de dejar solo el «no». */}
+              {nodo.edita === 'docentes_del_modulo' ? (
+                <div className="ayuda">
+                  <a className="enlace" href={`/reparto/${encodeURIComponent(documentoId)}`}>
+                    Ver quién lleva esta unidad
+                  </a>
+                  {' · '}lo reparte la jefatura del departamento
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -471,8 +488,7 @@ export default function Visor({ documentoId, seccionInicial, unidadInicial }) {
     <>
       <BarraSuperior
         subtitulo={corto(documento)}
-        personas={personas}
-        personaId={personaId}
+        persona={yo}
         documentos={documentos}
         documentoId={documentoId}
         onCajon={() => setCajon((x) => !x)}

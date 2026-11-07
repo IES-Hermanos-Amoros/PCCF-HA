@@ -28,10 +28,20 @@ Ninguna ruta manda `plantilla` ni `datos` completos al navegador.
 ## Quién pregunta
 
 Toda ruta resuelve el usuario con `usuarioDeLaPeticion()` de `app/_lib/usuario.js` y comprueba los
-permisos **en el servidor** con `core/permisos.js`, aunque el usuario del E1 salga de un desplegable y
-no de una sesión. El cliente solo refleja el candado; no es quien decide.
+permisos **en el servidor** con `core/permisos.js`. El cliente solo refleja el candado; no es quien
+decide.
 
 Sin persona reconocida se devuelve 401. Nunca hay un usuario por omisión con permisos.
+
+**El profesorado no se registra: lo da de alta la jefatura.** Pide el nombre, el correo y el rol, y
+recibe un enlace de un solo uso que esa persona canjea por una sesión. No hay contraseñas que
+custodiar ni cuentas de terceros de las que depender. Los testigos se guardan **hasheados**, de modo
+que ni una copia de seguridad de la base de datos lleva dentro llaves utilizables, y la cookie de
+sesión es `HttpOnly`, para que ningún JavaScript de la página pueda leerla.
+
+De momento **no se envía el correo**: el alta devuelve el enlace para que la jefatura lo copie y lo
+mande por donde quiera. Es preferible a una pantalla que diga «te hemos enviado un correo» y no lo
+envíe.
 
 ## Errores
 
@@ -44,6 +54,7 @@ Siempre JSON, con la misma forma: `{ "error": "<codigo>", "mensaje": "<en castel
 | 403 | `sin_permiso` | la hay, pero no puede hacer eso |
 | 404 | `no_encontrado` | el documento, el apartado o la unidad no existen, **o son de otro departamento** |
 | 409 | `conflicto` | alguien ha escrito ese apartado desde que lo leíste (lleva además `esperado` y `actual`) |
+| 410 | `enlace_gastado` | un enlace de acceso ya usado, anulado o caducado (lleva `motivo`) |
 | 500 | `error_interno` | lo demás |
 
 **404 y no 403 cuando el documento es de otro departamento.** «No lo ve» es literalmente lo que dice
@@ -52,10 +63,11 @@ sin zonas grises: **404 = no lo ves** —no existe, o no es tuyo: para ti es lo 
 pero no puedes hacer eso**, que es lo que aparece con el PATCH del E3 y con aprobar en el E7. Si fuera
 403, la interfaz tendría que distinguir dos casos que para quien mira la pantalla son uno.
 
-**`GET /api/personas` es la única excepción al 401.** Es la lista del desplegable con el que se elige
-quién eres, así que exigirle la cookie que ella misma sirve para poner dejaría la aplicación sin
-puerta de entrada. Por eso tampoco devuelve el correo: una lista que se sirve sin identificar es una
-lista pública. Desaparece en el E2, cuando haya sesión de verdad.
+**410 y no 409 cuando un enlace de acceso ya no sirve.** El 409 de este contrato significa otra cosa
+—una escritura con la versión cambiada— y lleva `esperado` y `actual`. Un enlace gastado es un
+`enlace_gastado` con un `motivo` (`usado`, `anulado` o `caducado`), porque las tres cosas se arreglan
+de forma distinta y quien las lee necesita saber cuál es. Un testigo que no ha existido nunca es 404,
+para no confirmar cuáles existieron.
 
 **Un apartado de la plantilla que nadie ha escrito todavía responde 200**, con `existe: false` y
 `valores: {}`. Es parte del documento y sale en el árbol, así que hay que poder abrirlo. El 404 queda
@@ -69,7 +81,12 @@ título. Omitirlo significa «apartado común del documento».
 | Ruta | Qué hace | Evolutivo |
 |---|---|---|
 | `GET /api/salud` | con qué adaptador está arrancada y si responde | E0 |
-| `GET /api/personas` | las personas entre las que se elige, mientras no haya sesión | E1 |
+| `POST /api/invitaciones` | alta: `{ nombre, email, rol }` → la persona y **el enlace** de acceso. La jefatura, en su departamento | E2 |
+| `GET /api/acceso?t=` · `POST /api/acceso` | canjea el enlace y abre la sesión | E2 |
+| `GET /api/sesion` · `DELETE /api/sesion` | quién soy · cerrar sesión (revoca, no solo borra la cookie) | E2 |
+| `GET /api/personas` | el censo del departamento. Con correo y invitación pendiente solo para quien gestiona personas | E1·E2 |
+| `PATCH /api/personas/[id]` | `{ rol?, activo? }`. Nadie se sube de rango ni se da de baja a sí mismo | E2 |
+| `POST /api/personas/[id]/invitacion` | otro enlace para quien perdió el suyo; anula el anterior | E2 |
 | `GET /api/documentos` | lista, sin `plantilla` | E1 |
 | `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `ciclo`, `curso`, `departamento`, y `forzar` opcional. Importa, concilia unidades y guarda. La importan `admin` y `jefe_departamento`, y solo en su departamento | E1 |
 | `GET /api/documentos/[id]` | el documento sin `plantilla` | E1 |
@@ -77,6 +94,8 @@ título. Omitirlo significa «apartado común del documento».
 | `GET /api/documentos/[id]/apartado?seccion=&unidad=` | una rama: `valores`, `origen`, `updatedAt`, si quien pregunta puede editarla, y además `campos` y `compartidos` (ver abajo) | E1 |
 | `GET /api/documentos/[id]/pdf?estado=&unidad=` | el PDF. Sin `unidad`, el tomo completo | E1 |
 | `GET /api/documentos/[id]/docx?estado=&unidad=` | lo mismo en Word | E1 |
+| `GET /api/documentos/[id]/unidades` | el reparto: las unidades con sus docentes, las personas que pueden llevarlas y **cuántas unidades no tiene nadie** | E2 |
+| `PUT /api/documentos/[id]/unidades/[unidad]/docentes` | cambia quién lleva esa unidad. Cuerpo: `{ docentes: [id] }`, la lista completa | E2 |
 | `PATCH /api/documentos/[id]/apartado?seccion=&unidad=` | guarda esa rama. Cuerpo: `{ valores, esperaUpdatedAt }`. Devuelve 409 si no cuadra la versión | E3 |
 | `GET /api/documentos/[id]/validaciones` | los avisos, agrupados por unidad | E4 |
 
@@ -91,6 +110,22 @@ obligar al navegador a descargarse las 57 secciones para leer una.
 
 Y lleva los **textos compartidos a los que apunta ese apartado**, porque un bloque `{ ref: 'c001' }`
 sin el texto al que apunta es un hueco en la pantalla. Solo los suyos, no los del documento.
+
+## Por qué el reparto se manda entero y no «añade a este»
+
+`PUT .../docentes` recibe **la lista completa** de quién lleva esa unidad, no una operación
+incremental. Con «añadir» y «quitar», dos jefaturas repartiendo a la vez acaban con un reparto que no
+quiso ninguna de las dos y que nadie ve raro al mirarlo. Mandando la lista entera, la última en
+guardar impone un reparto que alguien eligió de principio a fin.
+
+Y se valida antes de escribir: cada persona de la lista tiene que existir, estar activa, ser del
+departamento del documento y dar clase. Si una sola no vale, **no se guarda ninguna** —ni las buenas—
+y la respuesta dice cuáles fallan. Un docente fantasma en la lista es una unidad que parece repartida
+y no lo está, que es peor que una vacía: la vacía se ve en el recuento.
+
+El recuento de **unidades que no tiene nadie** viaja ya hecho, porque es la única pregunta que de
+verdad se le hace a esa pantalla. «Qué lleva Pau» se ve mirando; «qué módulo no puede tocar nadie»,
+no.
 
 ## Qué pasa si la importación no reconoce un módulo
 

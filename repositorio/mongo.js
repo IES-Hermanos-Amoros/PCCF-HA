@@ -39,6 +39,18 @@ async function crearIndices(bd) {
   await bd.collection('compartidos').createIndex({ documentoId: 1, cid: 1 }, { unique: true });
   await bd.collection('comentarios').createIndex({ documentoId: 1, seccion: 1, unidadId: 1 });
   await bd.collection('usuarios').createIndex({ email: 1 }, { unique: true });
+  // Identidad (E2). El índice por `tokenHash` es único porque es la llave por la que se entra: dos
+  // filas con el mismo hash harían que una búsqueda devolviera una cualquiera de las dos.
+  await bd.collection('invitaciones').createIndex({ tokenHash: 1 }, { unique: true });
+  await bd.collection('invitaciones').createIndex({ usuarioId: 1 });
+  await bd.collection('sesiones').createIndex({ tokenHash: 1 }, { unique: true });
+  await bd.collection('sesiones').createIndex({ usuarioId: 1 });
+  // Las sesiones caducadas se borran solas. No es lo que las invalida —eso lo decide el código, que
+  // compara `expiraEn` en cada petición, porque el recolector de TTL de Mongo pasa cada minuto—,
+  // sino limpieza: una colección que solo crece acabaría llena de sesiones muertas de hace cursos.
+  // Las invitaciones NO llevan TTL a propósito: su fila es el registro de a quién se dio de alta y
+  // si llegó a entrar, y eso interesa después de que el enlace caduque.
+  await bd.collection('sesiones').createIndex({ expiraEn: 1 }, { expireAfterSeconds: 0 });
   return bd;
 }
 
@@ -306,7 +318,104 @@ function crear({ uri, nombreBd }) {
     },
   };
 
-  return { documentos, unidades, apartados, compartidos, comentarios, usuarios };
+  // ---------------------------------------------------------------- identidad (E2)
+  //
+  // Lo que se guarda es `tokenHash`, nunca el testigo: ver repositorio/index.js. El índice único por
+  // tokenHash hace que la búsqueda sea una sola lectura indexada.
+
+  const invitaciones = {
+    async crear(invitacion) {
+      const doc = {
+        ...invitacion,
+        _id: new ObjectId(),
+        creado: new Date(),
+        estado: 'pendiente',
+        usadaEn: null,
+        anuladaEn: null,
+      };
+      try {
+        await (await coleccion('invitaciones')).insertOne(doc);
+      } catch (e) {
+        if (esDuplicado(e)) throw new ErrorDuplicado('ya hay una invitación con ese testigo');
+        throw e;
+      }
+      return salida(doc);
+    },
+    async porHash(tokenHash) {
+      return salida(await (await coleccion('invitaciones')).findOne({ tokenHash }));
+    },
+
+    // Una sola operación atómica con el estado en el filtro: si dos peticiones llegan con el mismo
+    // enlace, solo una encuentra la invitación pendiente y la otra recibe null. Es lo que hace que
+    // el uso único lo sea de verdad y no «casi siempre».
+    async usar(id, ahora) {
+      const oid = aId(id);
+      if (!oid) return null;
+      const doc = await (await coleccion('invitaciones')).findOneAndUpdate(
+        { _id: oid, estado: 'pendiente' },
+        { $set: { estado: 'usada', usadaEn: ahora } },
+        { returnDocument: 'after' },
+      );
+      return salida(doc);
+    },
+
+    async anularPendientes(usuarioId, ahora) {
+      const r = await (await coleccion('invitaciones')).updateMany(
+        { usuarioId, estado: 'pendiente' },
+        { $set: { estado: 'anulada', anuladaEn: ahora } },
+      );
+      return r.modifiedCount;
+    },
+
+    async listar(filtro) {
+      const docs = await (await coleccion('invitaciones')).find(filtro).sort({ creado: 1, _id: 1 }).toArray();
+      return salidaMuchos(docs);
+    },
+  };
+
+  const sesiones = {
+    async crear(sesion) {
+      const doc = { ...sesion, _id: new ObjectId(), creado: new Date(), revocadaEn: null };
+      try {
+        await (await coleccion('sesiones')).insertOne(doc);
+      } catch (e) {
+        if (esDuplicado(e)) throw new ErrorDuplicado('ya hay una sesión con ese testigo');
+        throw e;
+      }
+      return salida(doc);
+    },
+    async porHash(tokenHash) {
+      return salida(await (await coleccion('sesiones')).findOne({ tokenHash }));
+    },
+
+    // Condicionado a que no estuviera ya revocada, para que la fecha sea la de la primera revocación
+    // y para que el llamador sepa si ha revocado algo o si no había nada que revocar.
+    async revocar(id, ahora) {
+      const oid = aId(id);
+      if (!oid) return null;
+      const doc = await (await coleccion('sesiones')).findOneAndUpdate(
+        { _id: oid, revocadaEn: null },
+        { $set: { revocadaEn: ahora } },
+        { returnDocument: 'after' },
+      );
+      return salida(doc);
+    },
+
+    async revocarDeUsuario(usuarioId, ahora) {
+      const r = await (await coleccion('sesiones')).updateMany(
+        { usuarioId, revocadaEn: null },
+        { $set: { revocadaEn: ahora } },
+      );
+      return r.modifiedCount;
+    },
+
+    async listar(filtro) {
+      const docs = await (await coleccion('sesiones')).find(filtro).sort({ creado: 1, _id: 1 }).toArray();
+      return salidaMuchos(docs);
+    },
+  };
+
+  return { documentos, unidades, apartados, compartidos, comentarios, usuarios, invitaciones, sesiones };
 }
 
 module.exports = { crear };

@@ -1,87 +1,62 @@
 // De dónde sale el usuario de una petición. Un solo sitio, a propósito.
 //
-// El E1 va sin autenticación: la persona se elige en un desplegable, como en el
-// mockup, y viaja en una cookie. El E2 traerá sesiones de verdad y entonces lo
-// único que cambia es el cuerpo de `usuarioDeLaPeticion`; ninguna ruta de la API
-// ni ninguna comprobación de permisos se entera. Si cada ruta leyera la cookie
-// por su cuenta, meter la sesión obligaría a tocarlas todas y sería justo el
-// momento en que se cuela una que se queda sin comprobar.
+// En el E1 esto leía una cookie `persona` con un id dentro, puesta por un desplegable: cualquiera
+// podía escribir esa cookie y ser quien quisiera, y eso era toda la autenticación que había. Estaba
+// escrito con una sola función precisamente para que sustituirlo no obligase a tocar ninguna ruta,
+// y es lo que ha pasado: el E2 cambia el cuerpo de `usuarioDeLaPeticion` y ni la API ni las
+// comprobaciones de permisos se enteran. Si cada ruta leyera la cookie por su cuenta, meter la
+// sesión habría obligado a tocarlas todas y habría sido justo el momento en que se cuela una que se
+// queda sin comprobar.
 //
-// Dos reglas que no se negocian ni mientras no haya autenticación:
+// LA COOKIE `persona` DEL E1 YA NO IDENTIFICA A NADIE
 //
-//  1. **Se cierra, no se abre.** Sin persona reconocida el usuario es `null`, y
-//     quien recibe `null` deniega. Nunca hay un usuario por omisión con permisos.
-//  2. **Los permisos se comprueban en el servidor**, con core/permisos.js, desde
-//     el primer endpoint. Que el usuario sea de mentira no quiere decir que la
-//     comprobación pueda esperar: si se deja para el E2, para entonces hay
-//     media aplicación escrita que confía en que el cliente esconda el botón.
+// No se lee en ningún sitio. Ahora la persona sale de la cookie de sesión, que lleva un testigo
+// aleatorio del que solo se guarda el hash (app/_lib/sesion.js, app/_lib/testigos.js), y una sesión
+// solo se abre canjeando un enlace de acceso que ha generado la jefatura
+// (app/_lib/invitaciones.js). Las respuestas que abren o cierran sesión borran además la cookie
+// vieja del navegador, para no dejar rodando algo que parece una credencial y no lo es.
+// test/sesiones.js lo comprueba con una prueba explícita, porque si quedara un solo camino por el
+// que esa cookie siguiera valiendo, todo lo demás no serviría de nada.
 //
-// La cookie se lee de la cabecera en lugar de con `cookies()` de next/headers
-// para que esto se pueda probar desde node con un `Request` normal, sin levantar
-// Next. Las pruebas de la API dependen de ello.
+// Dos reglas que no se negocian:
+//
+//  1. **Se cierra, no se abre.** Sin persona reconocida el usuario es `null`, y quien recibe `null`
+//     deniega. Nunca hay un usuario por omisión con permisos.
+//  2. **Los permisos se comprueban en el servidor**, con core/permisos.js, que no cambia: esto es
+//     *quién eres*, no *qué puedes*. El cliente solo refleja el candado.
 
 'use strict';
 
-const { obtenerRepositorio } = require('./repositorio');
+const { sesionDeLaPeticion } = require('./sesion');
 
-const COOKIE_PERSONA = 'persona';
-
-function leerCookie(peticion, nombre) {
-  const cabecera = peticion && peticion.headers && peticion.headers.get
-    ? peticion.headers.get('cookie')
-    : null;
-  if (!cabecera) return null;
-  for (const trozo of cabecera.split(';')) {
-    const i = trozo.indexOf('=');
-    if (i === -1) continue;
-    if (trozo.slice(0, i).trim() === nombre) {
-      return decodeURIComponent(trozo.slice(i + 1).trim()) || null;
-    }
-  }
-  return null;
-}
-
-// Devuelve { _id, nombre, email, rol, departamento } o null.
-// El rol es uno de los cuatro que entiende core/permisos.js; si en la base de
-// datos hubiera otro valor, el usuario no vale y se devuelve null, porque un rol
-// que el motor de permisos no conoce no cae en ninguna rama y acabaría dando
-// acceso por descuido.
+// Devuelve { _id, nombre, email, rol, departamento, activo } o null.
 async function usuarioDeLaPeticion(peticion) {
-  const id = leerCookie(peticion, COOKIE_PERSONA);
-  if (!id) return null;
-
-  // El repositorio exige que los identificadores sean cadenas no vacías y lanza
-  // si no lo son. Esto viene de una cookie, que es texto que manda el cliente:
-  // una cookie con basura dentro tiene que acabar en «no te conozco» (401) y no
-  // en un error del servidor (500).
-  let u = null;
+  // Con el adaptador de memoria no hay nadie en la base de datos hasta que alguien la siembra, y
+  // sembrar al pintar una página deja a las rutas de la API sirviendo vacío si se las llama antes de
+  // abrir ninguna. Así que la siembra se asegura aquí, que es por donde pasan todas. Es idempotente,
+  // no hace nada cuando hay base de datos de verdad —allí siembra `npm run sembrar`— y no hace nada
+  // con el repositorio que inyectan las pruebas.
+  //
+  // Va antes de mirar la cookie y no después: la semilla crea las invitaciones con las que se entra
+  // (app/_lib/semilla.js), y quien llega sin sesión es precisamente quien las necesita.
   try {
-    // Con el adaptador de memoria no hay nadie en la base de datos hasta que
-    // alguien la siembra, y sembrar al pintar una página deja a las rutas de la
-    // API sirviendo vacío si se las llama antes de abrir ninguna. Así que la
-    // siembra se asegura aquí, que es por donde pasan todas. Es idempotente y no
-    // hace nada cuando hay base de datos de verdad: allí siembra `npm run sembrar`.
     await require('./semilla').asegurarSemilla();
-    u = await obtenerRepositorio().usuarios.obtener(id);
   } catch (e) {
-    return null;
+    // Una semilla que falla no puede dejar la aplicación sin reconocer a quien ya tiene sesión.
   }
-  if (!u) return null;
 
-  const ROLES = ['admin', 'jefe_estudios', 'jefe_departamento', 'docente'];
-  if (!ROLES.includes(u.rol)) return null;
-
-  return u;
+  const abierta = await sesionDeLaPeticion(peticion);
+  return abierta ? abierta.usuario : null;
 }
 
 const SIN_IDENTIFICAR = () => Response.json(
-  { error: 'sin_identificar', mensaje: 'No hay ninguna persona seleccionada.' },
-  { status: 401 },
+  { error: 'sin_identificar', mensaje: 'No has entrado: pide a la jefatura de tu departamento un enlace de acceso.' },
+  { status: 401, headers: { 'Cache-Control': 'no-store' } },
 );
 
 const SIN_PERMISO = (mensaje) => Response.json(
   { error: 'sin_permiso', mensaje: mensaje || 'No tienes permiso para esto.' },
-  { status: 403 },
+  { status: 403, headers: { 'Cache-Control': 'no-store' } },
 );
 
-module.exports = { usuarioDeLaPeticion, COOKIE_PERSONA, SIN_IDENTIFICAR, SIN_PERMISO };
+module.exports = { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO };

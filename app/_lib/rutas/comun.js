@@ -15,7 +15,8 @@
 const C = require('../../../core/permisos');
 const { aMotor } = require('../../../core/documento');
 const { obtenerRepositorio } = require('../repositorio');
-const { usuarioDeLaPeticion, SIN_IDENTIFICAR } = require('../usuario');
+const { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO } = require('../usuario');
+const { RANGO, PUEDEN_INVITAR } = require('../invitaciones');
 
 // ---------------------------------------------------------------- errores
 
@@ -40,6 +41,31 @@ const conErrores = (fn) => async (...args) => {
   } catch (e) {
     return errorInterno(e);
   }
+};
+
+// El cuerpo de una petición que manda JSON. Devuelve { cuerpo } o { fallo }: un cuerpo que no es
+// JSON, o que es `null` o una lista, es un 400 y no un 500, porque lo manda el cliente. Se exige un
+// objeto porque todas las rutas que escriben esperan campos con nombre.
+async function leerJson(peticion) {
+  let cuerpo;
+  try {
+    cuerpo = await peticion.json();
+  } catch (e) {
+    return { fallo: malaPeticion('El cuerpo de la petición tiene que ser JSON.') };
+  }
+  if (!cuerpo || typeof cuerpo !== 'object' || Array.isArray(cuerpo)) {
+    return { fallo: malaPeticion('El cuerpo de la petición tiene que ser un objeto JSON.') };
+  }
+  return { cuerpo };
+}
+
+// Un campo de texto del cuerpo, recortado. Devuelve null si no es una cadena con contenido: así una
+// ruta distingue «no lo has mandado» de «lo has mandado vacío» sin repetir la comprobación.
+const texto = (cuerpo, campo) => {
+  const valor = cuerpo ? cuerpo[campo] : undefined;
+  if (typeof valor !== 'string') return null;
+  const limpio = valor.trim();
+  return limpio === '' ? null : limpio;
 };
 
 // ---------------------------------------------------------------- el usuario y el documento
@@ -78,6 +104,50 @@ async function abrirDocumento(peticion, parametros) {
     return { fallo: noEncontrado('No existe ese documento, o no es de tu departamento.') };
   }
   return { usuario, documento, repo };
+}
+
+// ---------------------------------------------------------------- la persona que se gestiona
+
+// Lo mismo que `abrirDocumento`, pero para las rutas que gestionan a una persona: cambiarle el rol,
+// darla de baja, mandarle otro enlace. La secuencia «resuelve quién pregunta → carga la persona →
+// comprueba que la puede gestionar» es una sola función por el mismo motivo: una ruta que se olvide
+// de comprobar el departamento no se distingue leyendo el código, se distingue el día que una
+// jefatura cambia el rol de alguien de otro departamento.
+//
+// EL REPARTO DE ERRORES
+//
+//   404  no la ves: no existe, o es de otro departamento y tú no eres admin (docs/api.md)
+//   403  la ves pero no puedes: tiene más rango que tú, o eres tú mismo, o no gestionas a nadie
+//
+// Devuelve { fallo } o { usuario, persona, repo }.
+async function abrirPersona(peticion, parametros) {
+  const usuario = await usuarioDeLaPeticion(peticion);
+  if (!usuario) return { fallo: SIN_IDENTIFICAR() };
+
+  if (!PUEDEN_INVITAR.includes(usuario.rol)) {
+    return { fallo: SIN_PERMISO('Solo la jefatura de tu departamento gestiona a las personas que entran.') };
+  }
+
+  const repo = obtenerRepositorio();
+  let persona = null;
+  try {
+    persona = await repo.usuarios.obtener(parametros && parametros.id);
+  } catch (e) {
+    persona = null;
+  }
+
+  // El admin es coordinación técnica del centro y ve a todo el mundo; la jefatura de departamento,
+  // solo a los suyos, y para ella alguien de otro departamento simplemente no está.
+  const visible = persona && (usuario.rol === 'admin' || persona.departamento === usuario.departamento);
+  if (!visible) return { fallo: noEncontrado('No existe esa persona, o no es de tu departamento.') };
+
+  // Nadie gestiona a alguien de más rango que él: si no, una jefatura de departamento podría dar de
+  // baja al admin o cambiarle el rol, que es la misma puerta de atrás que invitar hacia arriba.
+  if ((RANGO[persona.rol] || 0) > (RANGO[usuario.rol] || 0)) {
+    return { fallo: SIN_PERMISO('Esa persona tiene más rango que tú: no puedes cambiar sus datos.') };
+  }
+
+  return { usuario, persona, repo };
 }
 
 // El documento tal como sale al cliente: sin `plantilla`. La plantilla de la PD real son 57
@@ -250,7 +320,10 @@ module.exports = {
   noEncontrado,
   errorInterno,
   conErrores,
+  leerJson,
+  texto,
   abrirDocumento,
+  abrirPersona,
   sinPlantilla,
   puedeEditarApartado,
   buscarSeccion,
@@ -261,7 +334,8 @@ module.exports = {
   unidadPedida,
   SUBTITULO,
   SIN_IDENTIFICAR,
-  // `SIN_PERMISO` (el 403) no se reexporta porque ninguna ruta de este evolutivo lo usa: todas son
-  // de lectura, y «no puedes verlo» es un 404. El primer 403 lo escribirá el PATCH del E3, y lo
-  // pedirá a app/_lib/usuario.js, que es donde está.
+  // El 403 ya lo usan las rutas de identidad del E2 (dar de alta, cambiar un rol), así que se
+  // reexporta desde aquí para que una ruta no tenga que pedir cosas a dos sitios. Sigue viviendo en
+  // app/_lib/usuario.js, que es donde está el resto de «quién eres».
+  SIN_PERMISO,
 };

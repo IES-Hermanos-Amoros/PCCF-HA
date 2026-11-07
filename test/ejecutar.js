@@ -45,6 +45,10 @@ const SUITES = [
 
   // --- de aquí para abajo, lo que añada cada evolutivo --------------------
   { archivo: 'test/api.js', nombre: 'API (rutas de Next sobre el repositorio)' },
+
+  // --- E2: quién eres y qué llevas ----------------------------------------
+  { archivo: 'test/sesiones.js', nombre: 'identidad: invitación, acceso y sesión' },
+  { archivo: 'test/asignacion.js', nombre: 'reparto de unidades al profesorado' },
 ];
 
 const AZUL = '\x1b[34m'; const ROJO = '\x1b[31m'; const VERDE = '\x1b[32m';

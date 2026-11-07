@@ -244,9 +244,10 @@ para que no se queden en la conversación en que aparecieron.
 - **La importación tiene que hacerse en una sola tanda.** `unidades.crearMuchos` fija el orden de las
   unidades por el de creación, y el orden del tomo del PDF es ese. Si la importación se parte en dos
   llamadas, la segunda reinicia el contador y los módulos salen desordenados.
-- **El adaptador de Mongo no se ha ejecutado nunca contra una base de datos real.** Está escrito con
-  cuidado y la batería de pruebas está lista para ejecutarse contra él (`MONGODB_URI=… node
-  test/repositorio.js`), pero hasta que eso pase no cuenta como probado. Es el primer riesgo del E1.
+- ~~**El adaptador de Mongo no se ha ejecutado nunca contra una base de datos real.**~~ **Cerrado.**
+  Hay un `docker-compose.yml` que levanta MongoDB en local y la batería entera pasa contra él
+  (`MONGODB_URI=mongodb://localhost:27017 npm test` → 359 pruebas). La integración continua lo
+  ejecuta en cada empujón, con el adaptador de memoria y contra Mongo. Ver `docs/infraestructura.md`.
 - **`documentos.origen`** se rellena por omisión con `plantilla.origen`, el nombre del `.docx` de
   procedencia. Conviene confirmar que es lo que se quiere guardar ahí.
 - **`motor/api/`** son las dos funciones serverless de la prueba de concepto. Vercel busca las
@@ -293,6 +294,10 @@ para que no se queden en la conversación en que aparecieron.
   la PD de DAW pesa 1,3 MB y cabe de sobra, pero no se ha verificado en un despliegue de verdad, y un
   documento más gordo —o un PCCF con imágenes— podría no entrar. Si pasa, la salida es subir el
   fichero a Vercel Blob y que la función lo lea de allí.
+- **El despliegue tiene sus propios pasos y sus propias trampas**, y están en
+  `docs/infraestructura.md`: qué montar, en qué orden, qué cuesta y qué no hace falta. Dos que
+  conviene mirar pronto: el plan gratuito de Vercel es **solo para uso no comercial** con una
+  definición amplia, y el plan gratuito de Atlas **no hace copias de seguridad**.
 - **Hay dos formas de escribir el identificador de un usuario** y confundirlas niega permisos en
   silencio: el repositorio devuelve `_id`, y el motor y el mockup usan `id`. Se lee siempre con
   `core/permisos.js` → `idDeUsuario`, nunca con `usuario.id` a pelo. El fallo no daba ningún error:
@@ -319,7 +324,15 @@ para que no se queden en la conversación en que aparecieron.
 
 Está recogido en [`mockup-v2/CAMBIOS.md`](mockup-v2/CAMBIOS.md) y no bloquea nada hasta su evolutivo:
 
-- **quién reparte las unidades** (hoy el panel es solo para soporte): se decide al empezar el E2;
+- ~~**quién reparte las unidades**~~ **decidido en el E2**: la jefatura del departamento, que es quien
+  reparte la carga, y el soporte. La jefatura de estudios no, por lo mismo que no edita nada: es
+  quien aprueba. La regla está en `core/permisos.js` → `puedeRepartirUnidades`, con las demás;
+- ~~**cómo entra el profesorado**~~ **decidido en el E2**: no se registra nadie. La jefatura da de
+  alta con nombre, correo y rol, y la aplicación genera un enlace de un solo uso que se canjea por una
+  sesión. Sin contraseñas que custodiar y sin depender de Google ni del directorio de la Conselleria.
+  **Queda pendiente enviar el enlace por correo**: hoy el alta lo devuelve para que la jefatura lo
+  copie, lo que hace falta es servicio de correo, remitente del centro y qué hacer cuando un envío
+  falla;
 - **si hace falta un modo de solo lectura** por apartado, para no tocar nada sin querer;
 - **dónde se configuran las validaciones**: la propuesta es una tabla de reglas `{ activa, severidad }`
   por documento y curso que mantenga la jefatura de estudios. Es el E7, y es una decisión de quién

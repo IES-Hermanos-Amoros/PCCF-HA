@@ -19,15 +19,17 @@
 // una aplicación que crea usuarios sola en una base de datos de verdad es una
 // sorpresa desagradable.
 //
-// Las vistas la llaman antes de pintar (`await asegurarSemilla()`), que es el
-// único sitio por el que se pasa seguro antes de que el navegador pida
-// `/api/personas`. Las rutas de la API no la llaman: no tienen por qué saber de
-// esto, y para cuando el navegador pide algo la portada ya ha pasado por aquí.
+// Las vistas la llaman antes de pintar (`await asegurarSemilla()`), y desde el E2
+// la aseguran también `usuarioDeLaPeticion` y el canje del enlace de acceso: son
+// los dos sitios por los que pasa quien llega sin sesión, que es justo quien
+// necesita que los enlaces ya existan.
 
 'use strict';
 
 const { obtenerRepositorio } = require('./repositorio');
-const { PERSONAS, sembrarPersonas, sembrarDocumento, leerFuente } = require('../../scripts/sembrar');
+const {
+  PERSONAS, sembrarPersonas, sembrarInvitaciones, imprimirEnlaces, sembrarDocumento, leerFuente,
+} = require('../../scripts/sembrar');
 
 // La promesa se guarda en `globalThis` por lo mismo que el repositorio: Next
 // recarga los módulos en caliente y hay varias peticiones en vuelo a la vez. Sin
@@ -43,6 +45,14 @@ async function sembrar() {
   if (!repo.autoSemilla) return { sembrado: false, motivo: 'el repositorio lo ha puesto otro' };
 
   const creadas = await sembrarPersonas(repo);
+
+  // Y la puerta. Desde el E2 no se elige quién eres en un desplegable: se entra
+  // canjeando un enlace de acceso. Un censo sin ningún enlace deja la aplicación
+  // devolviendo 401 a todo, que es exactamente quedarse fuera de casa con las
+  // llaves dentro. Los enlaces salen por la consola porque es donde está mirando
+  // quien acaba de ejecutar `npm run dev`, y porque la aplicación todavía no sabe
+  // mandar correos (app/_lib/invitaciones.js).
+  const enlaces = await sembrarInvitaciones(repo);
 
   // Un documento con el que navegar, solo si se le dice de dónde sacarlo. No se
   // inventa ninguno: un documento de muestra en la lista se confunde con uno del
@@ -73,9 +83,12 @@ async function sembrar() {
   }
 
   if (creadas.length) {
-    console.log(`[semilla] ${creadas.length} personas de muestra creadas en el repositorio en memoria.`);
+    console.log(`[semilla] ${creadas.length} personas de muestra creadas en el repositorio en memoria.`
+      + ' Son inventadas: el profesorado real no está en este repositorio.');
   }
-  return { sembrado: true, personas: PERSONAS.length, documento };
+  imprimirEnlaces(enlaces);
+
+  return { sembrado: true, personas: PERSONAS.length, invitaciones: enlaces.length, documento };
 }
 
 function asegurarSemilla() {

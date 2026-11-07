@@ -500,6 +500,44 @@ prueba('conciliar: no modifica el catálogo y pide el curso', () => {
   assert.throws(() => C.conciliar([{ titulo: 'Base de datos' }], {}), /curso/);
 });
 
+// ------------------------------------------------- dada de baja y reparto
+
+prueba('quien está de baja no ve ni edita nada, sea del rango que sea', () => {
+  // Es la segunda cerradura: la primera es que alguien de baja no consigue sesión
+  // y no llega ni a preguntar. Esta está aquí para que, si esa falla algún día,
+  // el fallo no se convierta además en acceso.
+  for (const rol of ROLES) {
+    const baja = usuario(rol, { activo: false });
+    assert.strictEqual(P.puedeVer(baja, { departamento: DEP }), false, rol + ' ve');
+    assert.strictEqual(P.reglaEdicion(baja, { edita: 'jefe_departamento' }), false, rol + ' edita');
+    assert.strictEqual(P.reglaCompartido(baja, { comun: true, editaApartadoComun: true, tieneApartadoAsignado: true }), false, rol + ' compartido');
+    assert.strictEqual(P.puedeRepartirUnidades(baja, { departamento: DEP }), false, rol + ' reparte');
+  }
+});
+
+prueba('ausente es activa: nadie se queda fuera por no tener el campo', () => {
+  // Si la ausencia significara «de baja», añadir el campo habría dejado fuera a
+  // todo el que ya estuviera guardado antes del E2.
+  const sinCampo = usuario('docente');
+  assert.strictEqual('activo' in sinCampo, false, 'la prueba no vale si el campo está');
+  assert.strictEqual(P.estaActivo(sinCampo), true);
+  assert.strictEqual(P.puedeVer(sinCampo, { departamento: DEP }), true);
+  assert.strictEqual(P.estaActivo(usuario('docente', { activo: true })), true, 'y true también, claro');
+});
+
+prueba('reparte las unidades la jefatura del departamento, y el soporte', () => {
+  const donde = { departamento: DEP };
+  assert.strictEqual(P.puedeRepartirUnidades(usuario('jefe_departamento'), donde), true, 'jefatura de departamento');
+  assert.strictEqual(P.puedeRepartirUnidades(usuario('admin'), donde), true, 'soporte');
+  assert.strictEqual(P.puedeRepartirUnidades(usuario('docente'), donde), false, 'docente no');
+  // La que ve todos los departamentos y no toca nada: es lo que la deja en
+  // condiciones de aprobar el documento.
+  assert.strictEqual(P.puedeRepartirUnidades(usuario('jefe_estudios'), donde), false, 'jefatura de estudios no');
+  // Y nadie reparte en un departamento que no ve.
+  assert.strictEqual(P.puedeRepartirUnidades(usuario('jefe_departamento'), { departamento: 'matematicas' }), false, 'ni en el de al lado');
+  assert.strictEqual(P.puedeRepartirUnidades(null, donde), false, 'ni sin usuario');
+});
+
 // ----------------------------------------------------------------- resumen
 
 console.log(fallos ? `\n${fallos} prueba(s) con fallos` : '\nTodas las pruebas correctas');

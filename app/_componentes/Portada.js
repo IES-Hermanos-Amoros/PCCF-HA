@@ -1,4 +1,5 @@
-// La portada: qué documentos hay y cómo se sube uno nuevo.
+// La portada: qué documentos hay, cómo se sube uno nuevo y, si no has entrado,
+// cómo se entra.
 //
 // Referencia: docs/mockup-v2/index.html. El prototipo enseña los departamentos
 // del centro porque es lo que tenía a mano; aquí se enseñan los documentos del
@@ -10,14 +11,24 @@
 // Agrupados por tipo —programación didáctica, PCCF, memoria— y dentro por curso
 // del más reciente al más antiguo, porque la pregunta que se le hace a esta
 // pantalla en septiembre es «dónde está la PD de este curso».
+//
+// SIN SESIÓN NO SALTA UN 401 EN CRUDO
+//
+// Desde el E2 todas las rutas exigen sesión, así que quien abre la aplicación sin
+// haber entrado recibe un 401 en la lista de documentos. Eso no es un error que
+// haya que enseñar: es el estado normal de quien llega por primera vez, y lo que
+// necesita es que se le diga cómo se entra (ComoSeEntra.js). En el E1 aquí había
+// un aviso que decía «elige arriba con quién vas a trabajar», que es justo lo que
+// ya no existe.
 
 'use client';
 
 import { useEffect, useState } from 'react';
 import BarraSuperior from './BarraSuperior';
+import ComoSeEntra from './ComoSeEntra';
 import Subida from './Subida';
 import { pedir } from './api';
-import { personaDeLaCookie, AVISO } from './SelectorPersona';
+import { useSesion } from './sesion-cliente';
 import { NOMBRE_ESTADO_DOC, NOMBRE_TIPO } from './etiquetas';
 
 // El orden en que se enseñan los tipos: la programación didáctica primero
@@ -46,14 +57,15 @@ const porTipo = (documentos) => {
 };
 
 export default function Portada() {
-  const [personas, setPersonas] = useState([]);
+  // Quién soy lo contesta el servidor: la cookie de sesión es `HttpOnly` y el
+  // navegador no la puede leer (sesion-cliente.js).
+  const { persona, cargando: cargandoSesion, error: errorSesion } = useSesion();
+
   const [documentos, setDocumentos] = useState(null);
   const [error, setError] = useState(null);
-  // La cookie se lee en un efecto y no al pintar: en el servidor no hay
-  // `document`, así que leerla durante el render daría un HTML distinto del que
-  // pinta el navegador y React avisaría de que la hidratación no cuadra.
-  const [personaId, setPersonaId] = useState(null);
-  useEffect(() => { setPersonaId(personaDeLaCookie()); }, []);
+  // `puedeGestionar` lo manda `GET /api/personas` y sirve solo para ofrecer el
+  // enlace al censo: quien decide es cada ruta.
+  const [puedeGestionar, setPuedeGestionar] = useState(false);
 
   const cargarDocumentos = () => pedir('/api/documentos')
     .then((r) => { setDocumentos(r.documentos || []); setError(null); })
@@ -61,20 +73,21 @@ export default function Portada() {
 
   useEffect(() => {
     let vivo = true;
-    pedir('/api/personas')
-      .then((r) => { if (vivo) setPersonas(r.personas || []); })
-      .catch((e) => { if (vivo) setError(e); });
     cargarDocumentos();
+    pedir('/api/personas')
+      .then((r) => { if (vivo) setPuedeGestionar(!!r.puedeGestionar); })
+      // Sin sesión esto es un 401, que ya explica la tarjeta de «cómo se entra».
+      .catch(() => { if (vivo) setPuedeGestionar(false); });
     return () => { vivo = false; };
   }, []);
 
-  const persona = personas.find((p) => p._id === personaId) || null;
-  const sinIdentificar = error && error.codigo === 'sin_identificar';
+  const sinIdentificar = (error && error.codigo === 'sin_identificar')
+    || (!cargandoSesion && !persona);
   const grupos = documentos ? porTipo(documentos) : [];
 
   return (
     <>
-      <BarraSuperior personas={personas} personaId={personaId} />
+      <BarraSuperior persona={persona} />
 
       <main className="main">
         <div className="cabecera">
@@ -85,26 +98,33 @@ export default function Portada() {
               memoria, y desde aquí se exportan a PDF y a Word.
             </p>
           </div>
+          {puedeGestionar ? (
+            <div className="cabecera-derecha">
+              <a className="btn-ghost" href="/personas">Personas del departamento</a>
+            </div>
+          ) : null}
         </div>
 
-        {/* Mientras no haya autenticación hay que elegir con quién se trabaja, y
-            tiene que quedar claro que eso no es identificarse. Sin persona la
-            API devuelve 401 en todo menos en la lista de personas, así que esta
-            nota es además la explicación del error. */}
-        {!personaId || sinIdentificar ? (
-          <div className="nota">
-            <div>
-              <strong>Elige arriba con quién vas a trabajar.</strong>
-              <p className="suave" style={{ margin: '4px 0 0' }}>{AVISO}</p>
-            </div>
-          </div>
+        {/* Lo primero que se ve sin sesión, y no un error: no hay registro, da de
+            alta la jefatura y se entra con un enlace. */}
+        {sinIdentificar ? (
+          <ComoSeEntra titulo="Para ver los documentos hay que entrar">
+            <p>
+              Todavía no has entrado en este navegador, así que no hay nada que enseñarte: los
+              documentos son del departamento y el servidor no los manda sin saber quién pregunta.
+            </p>
+          </ComoSeEntra>
+        ) : null}
+
+        {errorSesion ? (
+          <div className="nota nota-lock" role="alert"><div>{errorSesion.message}</div></div>
         ) : null}
 
         {error && !sinIdentificar ? (
-          <div className="nota nota-lock"><div>{error.message}</div></div>
+          <div className="nota nota-lock" role="alert"><div>{error.message}</div></div>
         ) : null}
 
-        {documentos === null ? <p className="suave">Buscando documentos…</p> : null}
+        {documentos === null && !sinIdentificar ? <p className="suave">Buscando documentos…</p> : null}
 
         {documentos && documentos.length === 0 && !sinIdentificar ? (
           <section className="tarjeta">
@@ -142,6 +162,14 @@ export default function Portada() {
                         {d.curso ? ' · ' + d.curso : ''}
                       </a>
                       {d.origen ? <div className="ayuda">importado de {d.origen}</div> : null}
+                      {/* El reparto lo puede VER cualquiera que vea el documento:
+                          un docente necesita saber quién más lleva su módulo.
+                          Cambiarlo es otra cosa, y lo dice esa pantalla. */}
+                      <div>
+                        <a className="enlace ayuda" href={`/reparto/${encodeURIComponent(d._id)}`}>
+                          quién lleva cada unidad
+                        </a>
+                      </div>
                     </td>
                     <td>{d.ciclo ? String(d.ciclo).toUpperCase() : <span className="suave">—</span>}</td>
                     <td>{d.curso || <span className="suave">—</span>}</td>
@@ -158,12 +186,16 @@ export default function Portada() {
           </section>
         ))}
 
-        <Subida
-          departamentoPorOmision={persona ? persona.departamento : 'informatica'}
-          rol={persona ? persona.rol : null}
-          habilitado={!!personaId}
-          alImportar={cargarDocumentos}
-        />
+        {/* Sin sesión no se ofrece el formulario de subida: no hay a quién
+            atribuir la importación y el servidor la rechazaría con un 401. */}
+        {persona ? (
+          <Subida
+            departamentoPorOmision={persona.departamento || 'informatica'}
+            rol={persona.rol}
+            habilitado
+            alImportar={cargarDocumentos}
+          />
+        ) : null}
       </main>
     </>
   );
