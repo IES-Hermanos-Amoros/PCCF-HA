@@ -29,8 +29,23 @@ Fase de pruebas de concepto.
 
 ## Cómo se levanta
 
-`npm install` y `npm run dev`. Sin `MONGODB_URI` arranca con el repositorio en memoria, así que
-funciona recién clonado y lo que se escriba se pierde al reiniciar.
+Lo más corto, con la programación de verdad dentro y sin instalar nada más:
+
+```bash
+npm install
+npm run importar "ruta/a/la/programación.docx"          # deja plantilla y datos en out/importado/
+PCCF_SEMILLA_DESDE=out/importado PCCF_SEMILLA_CICLO=daw npm run dev
+```
+
+Al arrancar imprime por consola **un enlace de acceso para cada persona de muestra**: se pega en el
+navegador y se entra. Son de un solo uso y las personas son inventadas.
+
+Para que lo escrito sobreviva al reinicio, `docker compose up -d` levanta un MongoDB en local y se
+apunta con `MONGODB_URI=mongodb://localhost:27017` en `.env.local`. Todo lo demás —Atlas, Vercel,
+copias de seguridad— está en [`docs/infraestructura.md`](docs/infraestructura.md).
+
+`npm install` y `npm run dev` a secas también valen. Sin `MONGODB_URI` arranca con el repositorio en
+memoria, así que funciona recién clonado y lo que se escriba se pierde al reiniciar.
 
 - `npm run sembrar` crea las personas de muestra con las que se entra mientras no haya autenticación
   (los cuatro roles, inventadas); con `--desde out/importado --ciclo daw --curso 2026-27`, o con
