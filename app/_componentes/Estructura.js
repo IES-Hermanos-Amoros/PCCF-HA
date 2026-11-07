@@ -1,0 +1,513 @@
+// La tarjeta *Estructura*: renombrar un apartado, añadir uno, moverlo y
+// retirarlo, desde el apartado que se está mirando.
+//
+// Referencia: el punto 3 de docs/mockup-v2/CAMBIOS.md y `barraEstructura` /
+// `tarjetaRetirados` de docs/mockup-v2/js/ui.js. Es la especificación aprobada
+// por el departamento y no se rediseña. Las direcciones y el porqué del modelo
+// están en `estructura-cliente.js`; las reglas, en `app/_lib/rutas/estructura.js`
+// y `core/plantilla.js`, que son quienes mandan.
+//
+// POR QUÉ ESTO ES EL EVOLUTIVO ENTERO
+//
+// Hasta ahora la estructura del documento solo se podía cambiar reimportando un
+// Word, así que **el Word seguía mandando**: si la inspección pedía un apartado
+// nuevo, había que volver allí, cambiarlo y volver a importar. Con esta tarjeta
+// la programación vive en la herramienta.
+//
+// LAS CUATRO COSAS QUE ESTA PANTALLA TIENE QUE DECIR EN VOZ ALTA
+//
+//  1. **Retirar no borra.** El contenido se conserva y el apartado se recupera
+//     desde la portada del documento. Si pareciera un borrado nadie lo usaría, y
+//     la estructura se quedaría llena de apartados que no van en el documento.
+//     Se dice tres veces y en los tres momentos en que hace falta: en la tarjeta
+//     antes de pulsar, en la confirmación, y en el aviso de después —que incluye
+//     cuántos apartados se han ido, porque un apartado se lleva lo que tenga
+//     dentro—.
+//  2. **En un apartado de módulo se está cambiando la plantilla**, así que el
+//     cambio sale en los once módulos a la vez. Se advierte ANTES, arriba de la
+//     tarjeta, porque desde dentro de un módulo no se ve: la pantalla dice
+//     «Evaluación y calificación» de «Lenguajes de marcas» y parece que se está
+//     tocando solo ese. Quien lo dice es el servidor (`deUnidades` de la lectura
+//     y `afectaUnidades` de cada respuesta): aquí no se deduce de ningún id.
+//  3. **El id se enseña a la vista**, para que se note que el título es solo la
+//     etiqueta y que renombrar no rompe los enlaces que alguien tenga guardados.
+//     Es contraintuitivo, y por eso se enseña en lugar de explicarse.
+//  4. **El número se pinta si el servidor lo manda, y si no, no.** La numeración
+//     la pone el documento por la posición del apartado (core/arbol.js, igual
+//     que el PDF), así que un apartado puede llegar sin número; cuando llega sin
+//     número se dice así y no se inventa uno, que es lo que haría parecer que
+//     algo ha fallado.
+//
+// QUIÉN LA VE
+//
+// Quien puede cambiar la estructura, que lo dice el servidor en `puedeCambiar`:
+// la jefatura del departamento y el soporte. Quien no, no la ve, igual que en el
+// prototipo. No es un botón que se le niegue: es una decisión que no es suya, y
+// la pantalla no gana nada enseñándole cuatro controles apagados en cada
+// apartado. El servidor lo comprueba en cada cambio, y si aquí nos equivocamos,
+// su 403 sale con su mensaje.
+
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import {
+  cambiarEstructura, hermanosDe, todasLasUnidades, unidadDelCamino,
+} from './estructura-cliente';
+
+// El mensaje del servidor se enseña tal cual: ya está redactado y en castellano
+// (docs/api.md, «Errores»). Lo único que se le añade delante es que no se ha
+// cambiado nada, que es lo primero que hay que saber… salvo cuando el propio
+// mensaje ya lo dice, y entonces no se repite: un aviso que dice dos veces lo
+// mismo se lee peor que uno que lo dice una.
+const mensajeDeError = (error) => (error ? error.message : null);
+const yaDiceQueNoHaCambiado = (error) => /no se ha (cambiado|escrito|guardado)/i.test(
+  (error && error.message) || '',
+);
+
+// «3 apartados» / «1 apartado», que es lo que hay que decir al retirar: un
+// apartado se lleva por delante lo que tenga dentro.
+const cuantos = (n) => (n === 1 ? '1 apartado' : `${n} apartados`);
+
+// ---------------------------------------------------------------- la tarjeta
+
+export default function Estructura({
+  documentoId, nodo, camino, fila, plantillaVersion, unidades, onCambiado, onIr,
+}) {
+  const [titulo, setTitulo] = useState(nodo && nodo.titulo ? nodo.titulo : '');
+  const [nuevo, setNuevo] = useState('');
+  const [enviando, setEnviando] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [error, setError] = useState(null);
+  const [confirmaRetirar, setConfirmaRetirar] = useState(false);
+  const [anadido, setAnadido] = useState(null);
+
+  const refSubir = useRef(null);
+  const refBajar = useRef(null);
+  const refConfirmar = useRef(null);
+  // Qué botón de mover se pulsó y en qué posición estaba el apartado: hace falta
+  // para devolverle el foco cuando el árbol vuelva ya reordenado.
+  const esperaFoco = useRef(null);
+
+  const { i, total } = hermanosDe(camino, nodo);
+  const { unidad, etiqueta, cuantas } = unidadDelCamino(camino);
+
+  // EL FOCO NO SE PIERDE AL MOVER UN APARTADO.
+  //
+  // Mover repinta la tarjeta con el apartado ya en su sitio nuevo, y el botón que
+  // se acaba de pulsar puede quedarse desactivado (el apartado ha llegado al
+  // primero o al último). Si no se hace nada, el foco se va al principio de la
+  // página y quien se maneja con el teclado tiene que volver a bajar hasta aquí
+  // para dar el segundo paso. Se espera a que la posición cambie de verdad
+  // —hasta entonces el árbol todavía no ha vuelto— y se pone el foco en el botón
+  // pulsado, o en el otro si ese ya no se puede pulsar.
+  useEffect(() => {
+    const espera = esperaFoco.current;
+    if (!espera || espera.desde === i) return;
+    esperaFoco.current = null;
+    const pulsado = espera.boton === 'subir' ? refSubir.current : refBajar.current;
+    const otro = espera.boton === 'subir' ? refBajar.current : refSubir.current;
+    const destino = pulsado && !pulsado.disabled ? pulsado : otro;
+    if (destino) destino.focus();
+  });
+
+  // El botón de confirmar la retirada aparece donde estaba el de retirar, así que
+  // se le lleva el foco: si no, quien va con el teclado pulsa «retirar», no pasa
+  // nada visible para él y el foco se queda en un botón que ya no está.
+  useEffect(() => {
+    if (confirmaRetirar && refConfirmar.current) refConfirmar.current.focus();
+  }, [confirmaRetirar]);
+
+  if (!nodo || !nodo.seccion) return null;
+
+  // Qué se le puede hacer a este apartado lo dice el servidor, apartado por
+  // apartado, en la lectura de la estructura: `puedeSubir` y `puedeBajar` cuentan
+  // solo los hermanos VISIBLES —un botón que no hace nada porque el hermano de
+  // arriba está retirado no se distingue de uno estropeado— y `admiteHijos` es
+  // que no, dentro de una lista de fichas no van apartados. Si la lectura no ha
+  // llegado, se usa el puesto que se ve en el árbol, que no lleva retirados.
+  const puedeSubir = fila ? fila.puedeSubir : i > 0;
+  const puedeBajar = fila ? fila.puedeBajar : (i >= 0 && i < total - 1);
+  const admiteHijos = fila ? fila.admiteHijos : true;
+  const deUnidades = fila ? !!fila.deUnidades : !!unidad;
+  const esBloqueDeUnidades = fila ? !!fila.instancias : nodo.tipo === 'bloque';
+  const cuantasUnidades = unidades || cuantas;
+  // Cómo se llaman: «módulo» en una PD de FP, «materia» en ESO. Sale del bloque
+  // que las agrupa —el del camino si estamos dentro de una unidad, o este mismo
+  // nodo si lo que se está mirando es el bloque— y nunca de un id escrito aquí.
+  const comoSeLlaman = etiqueta || nodo.etiqueta || null;
+  const enTodas = (deUnidades || esBloqueDeUnidades) && cuantasUnidades > 1
+    ? todasLasUnidades(cuantasUnidades, comoSeLlaman)
+    : null;
+
+  const ocupado = !!enviando;
+
+  // Toda acción pasa por aquí: manda el cambio con la versión de la plantilla que
+  // tenía el navegador, y al volver avisa a quien nos pintó para que recargue el
+  // árbol y la estructura. Sin eso la barra lateral se quedaría con el título
+  // viejo, o con el apartado que acaba de dejar de existir.
+  const mandar = async (accion, { seccion, cuerpo }, alSalirBien) => {
+    setEnviando(accion);
+    setError(null);
+    setAviso(null);
+    // El enlace al apartado que se acaba de añadir es de ESE cambio: si se queda
+    // puesto, después de mover o renombrar la pantalla sigue ofreciendo abrir un
+    // apartado que no tiene nada que ver con lo que se acaba de hacer.
+    setAnadido(null);
+    try {
+      const r = await cambiarEstructura(documentoId, accion, {
+        seccion,
+        // La versión de la plantilla con la que se leyó: si alguien la ha
+        // cambiado por medio, el servidor contesta 409 y no escribe nada. Es
+        // opcional en el contrato y se manda siempre: lo que se quiere evitar es
+        // justo deshacer el cambio de otra jefatura sin enterarse.
+        cuerpo: { ...cuerpo, esperaPlantillaVersion: plantillaVersion },
+      });
+      if (alSalirBien) alSalirBien(r || {});
+      if (onCambiado) onCambiado(accion, r || {});
+    } catch (e) {
+      setError(e);
+    } finally {
+      setEnviando(null);
+    }
+  };
+
+  // Lo que se añade a cualquier aviso cuando el cambio ha salido en todas las
+  // unidades. Lo dice la respuesta (`afectaUnidades`), no esta pantalla.
+  const yEnTodas = (r) => (r && r.afectaUnidades && r.unidades > 1
+    ? ` El cambio ha salido en ${todasLasUnidades(r.unidades, comoSeLlaman)}.`
+    : '');
+
+  const renombrar = (ev) => {
+    ev.preventDefault();
+    const limpio = titulo.trim();
+    if (!limpio || ocupado) return;
+    mandar('renombrar', { seccion: nodo.seccion, cuerpo: { titulo: limpio } }, (r) => {
+      setAviso(`Apartado renombrado. El identificador sigue siendo ${nodo.seccion}, así que el`
+        + ' contenido y los enlaces que alguien tenga guardados siguen apuntando aquí.' + yEnTodas(r));
+    });
+  };
+
+  const anadir = (ev) => {
+    ev.preventDefault();
+    const limpio = nuevo.trim();
+    if (!limpio || ocupado) return;
+    mandar('anadir', { cuerpo: { titulo: limpio, padre: nodo.seccion } }, (r) => {
+      setNuevo('');
+      // El id lo ha generado el servidor: se dice cuál es, que es la mitad de lo
+      // que esta tarjeta enseña, y se ofrece abrirlo para escribir en él.
+      setAnadido(r.seccion ? { seccion: r.seccion, titulo: r.titulo || limpio } : null);
+      setAviso((r.seccion
+        ? `Apartado «${r.titulo || limpio}» añadido con el identificador ${r.seccion}.`
+        : `Apartado «${limpio}» añadido.`) + yEnTodas(r));
+    });
+  };
+
+  const mover = (boton) => {
+    if (ocupado) return;
+    esperaFoco.current = { boton, desde: i };
+    mandar('mover', { seccion: nodo.seccion, cuerpo: { delta: boton === 'subir' ? -1 : 1 } }, (r) => {
+      setAviso((boton === 'subir'
+        ? 'Apartado subido un puesto entre sus hermanos.'
+        : 'Apartado bajado un puesto entre sus hermanos.') + yEnTodas(r));
+    });
+  };
+
+  const retirar = () => {
+    if (ocupado) return;
+    setConfirmaRetirar(false);
+    mandar('retirar', { seccion: nodo.seccion, cuerpo: {} }, () => {
+      // El aviso de después lo da el visor, que es quien se mueve al padre: este
+      // apartado ya no existe en el árbol y esta tarjeta se va con él.
+    });
+  };
+
+  // Cuántos apartados se lleva por delante: él y lo que tenga dentro. Lo dice el
+  // servidor en la lectura (`hijos` son los de primer nivel), y si no ha llegado,
+  // el árbol.
+  const dentro = fila ? fila.hijos : (nodo.hijos || []).length;
+
+  return (
+    <section className="tarjeta estructura" aria-busy={ocupado ? 'true' : 'false'}>
+      <header className="tarjeta-cab">
+        <h2>Estructura</h2>
+        {/* EL ID, A LA VISTA. Es lo que hace entender que renombrar no rompe
+            nada: el título es la etiqueta, el identificador es lo que apunta. */}
+        <span
+          className="distintivo distintivo-cod"
+          title="Identificador interno del apartado: no cambia al renombrar"
+        >
+          {nodo.seccion}
+        </span>
+        {/* El número, si lo hay. Lo pone el documento por la posición del
+            apartado, igual que el PDF; un apartado sin numerar no es un fallo. */}
+        {nodo.num
+          ? <span className="chip chip-cod">{nodo.num}</span>
+          : <span className="chip chip-vacio">sin numerar</span>}
+      </header>
+
+      {!nodo.num ? (
+        <p className="ayuda">
+          Este apartado sale sin número, y no es un fallo: la numeración la pone el documento por la
+          posición del apartado al imprimirse —el «3.2.4» de la barra lateral es el del PDF— y hay
+          apartados que no se numeran, como las fichas de una situación de aprendizaje. Aquí se
+          enseña el número que mande el servidor, y si no manda ninguno, ninguno.
+        </p>
+      ) : null}
+
+      {/* LA ADVERTENCIA DE LOS ONCE MÓDULOS, ANTES DE TOCAR NADA */}
+      {enTodas ? (
+        <div className="nota nota-lock">
+          <div>
+            <strong>Esto es la plantilla de {enTodas}.</strong>{' '}
+            {deUnidades ? (
+              <>
+                Este apartado no es solo de
+                {unidad ? ` «${unidad.titulo}»` : ' esta unidad'}: es una sección que {enTodas}{' '}
+                repiten con su propio contenido. Lo que cambies aquí —el título, el orden, lo que
+                añadas o lo que retires— sale en {enTodas} a la vez, y no hay forma de cambiarlo en
+                uno solo.
+              </>
+            ) : (
+              <>
+                Lo que añadas aquí nace en {enTodas} a la vez, porque los apartados de este bloque
+                son la plantilla que cada unidad repite con su propio contenido.
+              </>
+            )}
+            <div className="ayuda">
+              El contenido no se toca: cada {comoSeLlaman || 'unidad'} conserva el suyo.
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <form className="linea-estructura" onSubmit={renombrar}>
+        <label htmlFor="estructura-titulo">Título del apartado</label>
+        <input
+          id="estructura-titulo"
+          value={titulo}
+          onChange={(ev) => setTitulo(ev.target.value)}
+          autoComplete="off"
+          disabled={ocupado}
+        />
+        <button
+          className="btn-ghost"
+          type="submit"
+          disabled={ocupado || !titulo.trim() || titulo.trim() === nodo.titulo}
+        >
+          {enviando === 'renombrar' ? 'Renombrando…' : 'Renombrar'}
+        </button>
+      </form>
+
+      {admiteHijos ? (
+        <form className="linea-estructura" onSubmit={anadir}>
+          <label htmlFor="estructura-nuevo">Añadir un subapartado</label>
+          <input
+            id="estructura-nuevo"
+            value={nuevo}
+            onChange={(ev) => setNuevo(ev.target.value)}
+            placeholder="Título del apartado nuevo"
+            autoComplete="off"
+            disabled={ocupado}
+          />
+          <button className="btn-ghost" type="submit" disabled={ocupado || !nuevo.trim()}>
+            {enviando === 'anadir' ? 'Añadiendo…' : 'Añadir'}
+          </button>
+          <span className="ayuda">
+            Nace dentro de este apartado, vacío, al final y con un campo de texto para escribir. El
+            identificador lo pone el servidor a partir del título, una sola vez: si luego se
+            renombra, el identificador se queda.
+          </span>
+        </form>
+      ) : (
+        <p className="ayuda">
+          Aquí dentro no van apartados: esto es una lista de fichas, y lo que tiene dentro son los
+          campos de cada ficha. Las fichas se crean en el panel de situaciones de aprendizaje.
+        </p>
+      )}
+
+      <div className="linea-estructura">
+        <span className="suave">Orden y retirada</span>
+        <button
+          className="mini"
+          type="button"
+          ref={refSubir}
+          onClick={() => mover('subir')}
+          disabled={!puedeSubir}
+        >
+          ↑ subir
+        </button>
+        <button
+          className="mini"
+          type="button"
+          ref={refBajar}
+          onClick={() => mover('bajar')}
+          disabled={!puedeBajar}
+        >
+          ↓ bajar
+        </button>
+        {confirmaRetirar ? (
+          <>
+            <button className="mini" type="button" ref={refConfirmar} onClick={retirar}>
+              sí, retirarlo{enTodas ? ` de ${enTodas}` : ''}
+            </button>
+            <button className="mini" type="button" onClick={() => setConfirmaRetirar(false)}>
+              cancelar
+            </button>
+          </>
+        ) : (
+          <button
+            className="mini"
+            type="button"
+            onClick={() => setConfirmaRetirar(true)}
+            disabled={ocupado}
+          >
+            {enviando === 'retirar' ? 'Retirando…' : 'retirar del documento'}
+          </button>
+        )}
+        {/* Dónde está el apartado, en texto: es lo único que le llega a quien no
+            ve la pantalla, y lo que explica por qué un botón está apagado. */}
+        <span className="ayuda">
+          {i === -1
+            ? 'No se encuentra entre sus hermanos: no se puede mover desde aquí.'
+            : `Es el ${i + 1}.º de ${total} ${total === 1 ? 'apartado' : 'apartados'} de este nivel.`}
+        </span>
+      </div>
+
+      {/* Lo que se va a llevar por delante la retirada, dicho en el momento de
+          decidirlo: un apartado se va con lo que tenga dentro. */}
+      {confirmaRetirar ? (
+        <p className="suave">
+          Deja de salir en el documento y en el PDF
+          {dentro ? `, y con él ${cuantos(dentro)} que tiene dentro` : ''}
+          . <strong>No se borra nada</strong>: lo escrito se conserva entero y vuelve al restaurarlo.
+        </p>
+      ) : null}
+
+      {/* QUE RETIRAR NO BORRA SE DICE AQUÍ, NO EN UN AVISO QUE SALGA DESPUÉS */}
+      <p className="suave">
+        Renombrar <strong>no cambia el identificador</strong> (<code>{nodo.seccion}</code>): el
+        contenido, los comentarios y los enlaces que alguien tenga guardados siguen apuntando aquí.
+        Y <strong>retirar no borra nada</strong>: el apartado deja de salir en el documento y en el
+        PDF, su contenido se queda guardado, y se recupera desde{' '}
+        <button className="enlace" type="button" onClick={() => onIr && onIr(null, null)}>
+          la portada del documento
+        </button>
+        , donde salen los apartados retirados.
+      </p>
+
+      {/* El resultado, en una región que los lectores de pantalla anuncian: en el
+          prototipo esto era un `toast`, que es exactamente lo que no se oye.
+          Siempre montada —si apareciera y desapareciera no se anunciaría—, y
+          fuera de la vista mientras no haya nada que decir. */}
+      <p className={aviso || anadido ? 'bien' : 'sr'} role="status">
+        {aviso || ''}
+        {anadido ? (
+          <>
+            {' '}
+            <button
+              className="enlace"
+              type="button"
+              onClick={() => onIr && onIr(anadido.seccion, nodo.unidadId)}
+            >
+              Abrir «{anadido.titulo}» para escribir en él
+            </button>
+          </>
+        ) : null}
+      </p>
+
+      {error ? (
+        <div className="nota nota-error" role="alert">
+          <div>
+            {yaDiceQueNoHaCambiado(error) ? null : <strong>No se ha cambiado nada. </strong>}
+            {mensajeDeError(error)}
+            {error.estado === 409 ? (
+              <p className="suave">
+                Vuelve a cargar la página para ver la estructura como está ahora y repite el cambio
+                si sigue haciendo falta. La plantilla viaja con su versión por lo mismo que un
+                apartado viaja con la suya: dos jefaturas cambiándola a la vez perderían el trabajo
+                de una de las dos sin enterarse.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- los retirados
+//
+// Van en la portada del documento y no en el apartado, porque un apartado
+// retirado ya no se puede abrir: no sale en el árbol. La portada es la única
+// pantalla que se está mirando el documento entero, y es donde la tarjeta
+// *Estructura* promete que se recuperan.
+//
+// La lista llega ya leída (`GET .../estructura`), que es la misma lectura que
+// alimenta la tarjeta: la portada no pide nada por su cuenta.
+
+export function ApartadosRetirados({
+  documentoId, retirados, plantillaVersion, onCambiado,
+}) {
+  const [enviando, setEnviando] = useState(null);
+  const [error, setError] = useState(null);
+
+  const lista = Array.isArray(retirados) ? retirados : [];
+  if (!lista.length) return null;
+
+  const restaurar = async (seccion) => {
+    setEnviando(seccion);
+    setError(null);
+    try {
+      const r = await cambiarEstructura(documentoId, 'restaurar', {
+        seccion,
+        cuerpo: { esperaPlantillaVersion: plantillaVersion },
+      });
+      if (onCambiado) onCambiado('restaurar', r || {});
+    } catch (e) {
+      setError(e);
+    } finally {
+      setEnviando(null);
+    }
+  };
+
+  return (
+    <section className="tarjeta estructura">
+      <header className="tarjeta-cab">
+        <h2>Apartados retirados</h2>
+        <span className="suave">{lista.length}</span>
+      </header>
+      <p className="suave">
+        <strong>No se han borrado.</strong> Su contenido sigue guardado tal como estaba; lo único que
+        pasa es que no salen en el documento ni en el PDF. Al restaurarlos vuelven con su texto.
+      </p>
+      <ul className="lista-retirados">
+        {lista.map((x) => (
+          <li key={x.seccion}>
+            <span>{x.titulo || <span className="suave">sin título</span>}</span>
+            <code>{x.seccion}</code>
+            {/* Lo que se lleva dentro y si es de la plantilla de las unidades:
+                restaurar un apartado de módulo lo devuelve a los once. */}
+            {x.conHijos ? <span className="suave">con {cuantos(x.conHijos)} dentro</span> : null}
+            {x.deUnidades ? <span className="chip chip-vacio">de los módulos</span> : null}
+            <button
+              className="mini"
+              type="button"
+              onClick={() => restaurar(x.seccion)}
+              disabled={!!enviando}
+            >
+              {enviando === x.seccion ? 'restaurando…' : 'restaurar'}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {error ? (
+        <div className="nota nota-error" role="alert">
+          <div>
+            {yaDiceQueNoHaCambiado(error) ? null : <strong>No se ha restaurado nada. </strong>}
+            {mensajeDeError(error)}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}

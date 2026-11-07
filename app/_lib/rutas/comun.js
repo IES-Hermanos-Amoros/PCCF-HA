@@ -13,6 +13,7 @@
 'use strict';
 
 const C = require('../../../core/permisos');
+const Plantilla = require('../../../core/plantilla');
 const { aMotor } = require('../../../core/documento');
 const { obtenerRepositorio } = require('../repositorio');
 const { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO } = require('../usuario');
@@ -103,7 +104,24 @@ async function abrirDocumento(peticion, parametros) {
   if (!documento || !C.puedeVer(usuario, documento)) {
     return { fallo: noEncontrado('No existe ese documento, o no es de tu departamento.') };
   }
-  return { usuario, documento, repo };
+
+  // LA ESTRUCTURA RETIRADA SE PODA AQUÍ, UNA VEZ.
+  //
+  // Un apartado retirado se queda dentro de `plantilla` para poder recuperarlo con su
+  // contenido (core/plantilla.js), así que entre lo que el documento guarda y lo que el
+  // documento ES hay un paso. Se da en el único sitio por el que pasan todas las rutas: así el
+  // árbol, el apartado, el PDF, el Word y el panel de comprobaciones dicen lo mismo sin que
+  // ninguna tenga que acordarse. Si cada una lo resolviera por su cuenta, la que se olvidara
+  // seguiría imprimiendo un apartado que la pantalla ya no enseña, y eso no se nota hasta que
+  // alguien exporta.
+  //
+  // `plantillaCompleta` es la de verdad, con los retirados dentro: la necesitan las rutas de
+  // estructura, que son las únicas que tienen algo que hacer con ellos.
+  const plantillaCompleta = documento.plantilla;
+  const vigente = Plantilla.vigente(plantillaCompleta);
+  if (vigente !== plantillaCompleta) documento.plantilla = vigente;
+
+  return { usuario, documento, repo, plantillaCompleta };
 }
 
 // ---------------------------------------------------------------- la persona que se gestiona
@@ -149,6 +167,12 @@ async function abrirPersona(peticion, parametros) {
 
   return { usuario, persona, repo };
 }
+
+// La plantilla de un documento que NO ha pasado por `abrirDocumento`, sin los apartados
+// retirados. Hoy solo hay uno así: el del curso anterior, que se lee para comparar
+// (app/_lib/rutas/apartado.js). Está aquí y no escrito allí para que el día que haya un segundo
+// no se resuelva de otra manera.
+const plantillaVigente = (documento) => Plantilla.vigente(documento && documento.plantilla);
 
 // El documento tal como sale al cliente: sin `plantilla`. La plantilla de la PD real son 57
 // secciones con sus campos y no la necesita ninguna vista: el árbol ya viene masticado en
@@ -406,6 +430,7 @@ module.exports = {
   abrirDocumento,
   abrirPersona,
   sinPlantilla,
+  plantillaVigente,
   puedeEditarApartado,
   buscarSeccion,
   seccionesConCampo,

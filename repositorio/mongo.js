@@ -28,7 +28,8 @@ const esDuplicado = (error) => error?.code === CODIGO_DUPLICADO;
 // convierte ese «no casa» en el conflicto con el valor que hay ahora, para que la API pueda informar de él.
 async function conflictoDe(coleccion, clave, esperado) {
   const actual = await coleccion.findOne(clave);
-  return new ErrorConflicto({ esperado, actual: actual ? actual.updatedAt : null });
+  const que = coleccion.collectionName === 'documentos' ? 'el documento' : 'el apartado';
+  return new ErrorConflicto({ esperado, actual: actual ? actual.updatedAt : null, que });
 }
 
 // createIndex es idempotente cuando la especificación coincide, así que repetirlo al arrancar no daña nada.
@@ -110,9 +111,47 @@ function crear({ uri, nombreBd }) {
     async listar(filtro) {
       return salidaMuchos(await (await coleccion('documentos')).find(filtro).toArray());
     },
-    async actualizar(id, cambios) {
+    // Mismo contrato que apartados.escribir. Con `esperado`, la condición va en el filtro de UNA operación: si la
+    // versión no es la esperada no casa, no se escribe nada, y conflictoDe informa de la que hay. Sin `esperado` no
+    // hay versión que proteger, pero el token tiene que avanzar igual: se lee, se condiciona el $set a lo leído, y
+    // si entre medias cambió se reintenta, como en apartados.escribir.
+    async actualizar(id, cambios, { esperado, siguienteToken } = {}) {
+      // Un id que no es ObjectId no existe: con una versión esperada, eso es un conflicto como en memoria; sin ella, null.
       const oid = aId(id);
-      return oid ? actualizarUno('documentos', { _id: oid }, { ...cambios, updatedAt: new Date() }) : null;
+      if (!oid) {
+        if (esperado instanceof Date) throw new ErrorConflicto({ esperado, actual: null, que: 'el documento' });
+        return null;
+      }
+      const c = await coleccion('documentos');
+      const clave = { _id: oid };
+
+      if (esperado === null) {
+        const actual = await c.findOne(clave);
+        if (!actual) return null;
+        throw new ErrorConflicto({ esperado, actual: actual.updatedAt, que: 'el documento' });
+      }
+
+      if (esperado instanceof Date) {
+        const doc = await c.findOneAndUpdate(
+          { ...clave, updatedAt: esperado },
+          { $set: { ...cambios, updatedAt: siguienteToken(esperado) } },
+          { returnDocument: 'after' },
+        );
+        if (doc) return salida(doc);
+        throw await conflictoDe(c, clave, esperado);
+      }
+
+      for (let intento = 0; intento < REINTENTOS; intento += 1) {
+        const actual = await c.findOne(clave);
+        if (!actual) return null;
+        const doc = await c.findOneAndUpdate(
+          { _id: oid, updatedAt: actual.updatedAt },
+          { $set: { ...cambios, updatedAt: siguienteToken(actual.updatedAt) } },
+          { returnDocument: 'after' },
+        );
+        if (doc) return salida(doc);
+      }
+      throw new Error(`actualizar: el documento ${id} cambió demasiadas veces seguidas`);
     },
     async borrar(id) {
       const oid = aId(id);

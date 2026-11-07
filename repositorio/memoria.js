@@ -45,7 +45,19 @@ function crear() {
     },
     obtener: (id) => uno('documentos', { _id: id }),
     listar: (filtro) => de('documentos', filtro),
-    actualizar: (id, cambios) => actualizarEn('documentos', { _id: id }, { ...cambios, updatedAt: new Date() }),
+    // Misma regla que apartados.escribir, y sin ningún await entre la comprobación y la escritura. Con `esperado`,
+    // una versión que no cuadra no escribe nada. El token nuevo sale de `siguienteToken`, que avanza siempre.
+    actualizar(id, cambios, { esperado, siguienteToken } = {}) {
+      const registro = tablas.documentos.find((d) => d._id === id);
+      const actual = registro ? registro.updatedAt : null;
+      if (esperado === null && registro) throw new ErrorConflicto({ esperado, actual: copia(actual), que: 'el documento' });
+      if (esperado instanceof Date && (!registro || actual.getTime() !== esperado.getTime())) {
+        throw new ErrorConflicto({ esperado: copia(esperado), actual: copia(actual), que: 'el documento' });
+      }
+      if (!registro) return null;
+      Object.assign(registro, copia(cambios), { updatedAt: siguienteToken(actual) });
+      return copia(registro);
+    },
     borrar(id) {
       const i = tablas.documentos.findIndex((d) => d._id === id);
       if (i < 0) return false;

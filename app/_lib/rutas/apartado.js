@@ -109,7 +109,7 @@ const Estructurados = require('../../../core/estructurados');
 const { listasDeTexto } = require('../../../motor/compartidos');
 const {
   conErrores, abrirDocumento, puedeEditarApartado, buscarSeccion, leerJson, raDelModulo,
-  fallo, malaPeticion, noEncontrado, SIN_PERMISO,
+  fallo, malaPeticion, noEncontrado, plantillaVigente, SIN_PERMISO,
 } = require('./comun');
 
 // Los ids de los textos compartidos a los que apunta este apartado. `listasDeTexto` recorre las
@@ -289,7 +289,9 @@ const ANTERIOR = conErrores(async (peticion, parametros) => {
   const cursoAnt = anterior.curso ? `el curso ${anterior.curso}` : 'el curso anterior';
   const datosAnt = { documentoId: anterior._id, anteriorId: anterior._id, curso: anterior.curso || null };
 
-  const infoAnt = buscarSeccion(anterior.plantilla, seccion);
+  // Sin los apartados retirados allí: un apartado que el curso pasado se retiró no es lo que
+  // ese documento dice hoy, y enseñarlo en la comparación sería comparar con algo que ya no está.
+  const infoAnt = buscarSeccion(plantillaVigente(anterior), seccion);
   if (!infoAnt) {
     return sinDato('seccion_nueva', `Este apartado no existía en ${cursoAnt}: es nuevo en este curso.`,
       { infoQueMuestra: info, ...datosAnt });

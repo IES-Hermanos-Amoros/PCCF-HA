@@ -130,6 +130,23 @@
     return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
   }
 
+  // Quién cambia la ESTRUCTURA del documento: renombrar un apartado, añadir
+  // uno, moverlo o retirarlo (core/plantilla.js). La jefatura del departamento
+  // —que es quien responde de qué apartados tiene la programación— y el
+  // soporte. El docente escribe lo suyo pero no decide qué apartados hay, y la
+  // jefatura de estudios no toca nada, que es lo que la deja en condiciones de
+  // aprobar el documento.
+  //
+  // Hoy contesta lo mismo que `puedeRepartirUnidades`, y aun así es otra
+  // función: son dos preguntas distintas —quién reparte la carga y quién decide
+  // la estructura— y el día que una de las dos cambie, la otra no tiene por qué
+  // enterarse. Lo que no se puede duplicar es la REGLA, y la regla es esta
+  // línea, no el parecido.
+  function puedeCambiarEstructura(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
+  }
+
   // ------------------------------------------------- búsqueda en la plantilla
 
   // Los ids de sección son rutas con '/', igual que los que produce el
@@ -196,6 +213,7 @@
     idDeUsuario,
     estaActivo,
     puedeRepartirUnidades,
+    puedeCambiarEstructura,
   };
 
   // Vale como <script> en el mockup, como `require` en el motor y en las

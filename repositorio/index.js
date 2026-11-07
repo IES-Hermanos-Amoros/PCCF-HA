@@ -134,7 +134,14 @@ function crearRepositorio({ adaptador }) {
       crear: async (doc) => a.documentos.crear(elegir(doc, CAMPOS.documento)),
       obtener: async (id) => a.documentos.obtener(cadena(id, 'id')),
       listar: async (filtro = {}) => a.documentos.listar(filtrar(filtro, FILTROS.documentos)),
-      actualizar: async (id, cambios) => a.documentos.actualizar(cadena(id, 'id'), elegir(cambios, CAMPOS.documento)),
+      // `opciones.esperaUpdatedAt` es la misma condición que en `apartados.escribir`: sin ella se escribe como
+      // siempre; con ella, si la versión guardada no es la que se pide, no se escribe nada y sale ErrorConflicto.
+      // La ruta de estructura la usa para que dos jefaturas no se pisen la plantilla (app/_lib/rutas/estructura.js).
+      actualizar: async (id, cambios, opciones = {}) => a.documentos.actualizar(
+        cadena(id, 'id'),
+        elegir(cambios, CAMPOS.documento),
+        { esperado: normalizarEsperado(opciones?.esperaUpdatedAt), siguienteToken },
+      ),
       borrar: async (id) => a.documentos.borrar(cadena(id, 'id')),
     },
 

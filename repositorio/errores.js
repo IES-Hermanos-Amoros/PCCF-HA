@@ -5,8 +5,10 @@ class ErrorConflicto extends Error {
   // esperado: el updatedAt con el que la persona leyó el apartado (null si esperaba que no existiera).
   // actual: el updatedAt que hay guardado ahora (null si ya no existe). Con los dos, la API puede decir cuándo
   // guardó otra persona en lugar de devolver un error genérico.
-  constructor({ esperado, actual }) {
-    super('el apartado ha cambiado desde que se leyó');
+  // `que` nombra lo que ha cambiado («el apartado», «el documento»). Lo condicionado por versión
+  // ya no es solo un apartado: desde el E6 también lo es el documento, cuando cambia su estructura.
+  constructor({ esperado, actual, que = 'el apartado' }) {
+    super(que + ' ha cambiado desde que se leyó');
     this.name = 'ErrorConflicto';
     this.codigo = 'conflicto';
     this.esperado = esperado;

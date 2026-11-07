@@ -53,6 +53,25 @@
 // lo manda el servidor en `revision`; aquí solo se le aplican las correcciones de
 // lo que se ha hecho en esta sesión.
 //
+// UN CAMBIO DE ESTRUCTURA CAMBIA EL ÁRBOL
+//
+// La tarjeta *Estructura* del E6 renombra un apartado, añade uno, lo mueve y lo
+// retira, y cualquiera de las cuatro cosas mueve el árbol: los títulos de la
+// barra lateral, la numeración —que se calcula por posición, igual que la del
+// PDF— y, en un apartado de módulo, los once módulos a la vez, porque lo que se
+// está cambiando es la plantilla. Así que al volver de un cambio se vuelven a
+// pedir `/arbol` y `/estructura` en lugar de retocar lo que hay en memoria:
+// ninguna de las dos lleva contenido, y una copia de ese cálculo aquí se
+// separaría del documento impreso el día que cambie. Si lo retirado era el
+// apartado abierto, además se sube al padre: ese nodo ya no existe.
+//
+// `/estructura` se pide al abrir, con el documento y el árbol, porque es quien
+// dice tres cosas que no están en el árbol: si quien mira puede cambiar la
+// estructura (`puedeCambiar`, que es lo que decide si la tarjeta se pinta), qué
+// se le puede hacer a cada apartado, y cuáles están retirados —que por
+// definición ya no salen en el árbol y solo se pueden recuperar desde la
+// portada—.
+//
 // DOS PETICIONES, NUNCA EL DOCUMENTO ENTERO
 //
 // Al abrirse: el documento y su árbol. Al pinchar un apartado: ese apartado. Una
@@ -68,6 +87,7 @@ import Arbol from './Arbol';
 import BarraSuperior from './BarraSuperior';
 import Cambios, { BotonValidar } from './Cambios';
 import CursoSiguiente from './CursoSiguiente';
+import Estructura, { ApartadosRetirados } from './Estructura';
 import Ponderaciones from './Ponderaciones';
 import Situaciones from './Situaciones';
 import Validaciones from './Validaciones';
@@ -76,6 +96,7 @@ import { pedir } from './api';
 import {
   abiertosHasta, correccionDeRevision, estados as calcularEstados, indexar,
 } from './arbol-cliente';
+import { leerEstructura, puedeCambiarEstructura } from './estructura-cliente';
 import { TIPO_FICHA, TIPO_PONDERACION, TIPO_RESUMEN } from './sa-cliente';
 import { useSesion } from './sesion-cliente';
 import {
@@ -140,6 +161,11 @@ export default function Visor({
   const [revision, setRevision] = useState(null);
   const [documentos, setDocumentos] = useState([]);
   const [errorCarga, setErrorCarga] = useState(null);
+  // La estructura del documento tal como se puede cambiar (E6): `puedeCambiar`,
+  // una fila por apartado con qué se le puede hacer, y los retirados. Null
+  // mientras no llega o si la lectura falla: entonces la tarjeta se resuelve con
+  // la regla de core/permisos.js y con lo que se ve en el árbol.
+  const [estructura, setEstructura] = useState(null);
 
   const [apartado, setApartado] = useState(null);
   const [cargandoApartado, setCargandoApartado] = useState(false);
@@ -147,6 +173,11 @@ export default function Visor({
   // Se pide otra vez el apartado abierto, sin cambiar de apartado: es lo que hace
   // falta tras un 409 al validar («vuelve a cargarlo»).
   const [recargas, setRecargas] = useState(0);
+  // Lo que acaba de pasar con la estructura, para decirlo donde se aterriza. Al
+  // retirar un apartado la pantalla se va a su padre, y sin esto el apartado
+  // desaparecería del árbol sin que nadie dijera que su contenido sigue ahí, que
+  // es justo lo que haría parecer que retirar es borrar.
+  const [avisoEstructura, setAvisoEstructura] = useState(null);
 
   // Lo que ha cambiado en esta sesión, por apartado: `clave -> { relleno, origen }`.
   // Los dos los calculó el servidor al mandar el árbol, así que sin esto el icono
@@ -191,6 +222,13 @@ export default function Visor({
         if (!vivo) return;
         setDocumentos((ds.documentos || []).map((d) => ({ ...d, corto: corto(d) })));
       } catch (e) { /* el visor se puede usar sin el desplegable de documentos */ }
+      try {
+        // La estructura va aparte y después, como la lista de documentos: el
+        // documento se lee y se escribe igual aunque esto falle, y lo único que
+        // se pierde es la tarjeta de estructura.
+        const es = await leerEstructura(documentoId);
+        if (vivo) setEstructura(es);
+      } catch (e) { /* sin esto no hay tarjeta de estructura, pero sí documento */ }
     })();
     return () => { vivo = false; };
   }, [documentoId]);
@@ -205,6 +243,11 @@ export default function Visor({
     () => (arbol ? calcularEstados(arbol, locales) : new Map()),
     [arbol, locales],
   );
+  // Las filas de la estructura, por id de apartado: la tarjeta necesita la del
+  // apartado abierto y buscarla en una lista de 245 en cada repintado no.
+  const filasEstructura = useMemo(() => new Map(
+    ((estructura && estructura.apartados) || []).map((f) => [f.seccion, f]),
+  ), [estructura]);
 
   const activa = clave(unidadId, seccion, documentoId);
   const entrada = indice.get(activa) || indice.get(documentoId) || null;
@@ -264,6 +307,10 @@ export default function Visor({
     setSeccion(e.nodo.seccion);
     setUnidadId(e.nodo.unidadId);
     setVista('contenido');
+    // Lo que se dijo de un cambio de estructura vale para el apartado donde se
+    // dijo: al cambiar de apartado se borra. Quien retira uno y luego navega no
+    // tiene que ir arrastrando el aviso por el documento.
+    setAvisoEstructura(null);
     setAbiertos((previos) => {
       const siguiente = new Set(previos);
       for (const c of abiertosHasta(indice, k)) siguiente.add(c);
@@ -356,6 +403,58 @@ export default function Visor({
   }, [anotar, nodo]);
 
   const recargarApartado = useCallback(() => setRecargas((n) => n + 1), []);
+
+  // ---------------------------------------------------------------- la estructura (E6)
+
+  // Volver a pedir el árbol. Es la petición que NO lleva contenido —títulos,
+  // numeración y estados de 250 apartados— así que pedirlo otra vez tras un
+  // cambio de estructura es barato, y es la única forma de que la barra lateral y
+  // la numeración digan lo que dice el documento: las calcula el servidor con la
+  // plantilla delante (core/arbol.js), igual que el PDF.
+  const recargarArbol = useCallback(async () => {
+    const [ar, es] = await Promise.all([
+      pedir(`/api/documentos/${encodeURIComponent(documentoId)}/arbol`),
+      leerEstructura(documentoId),
+    ]);
+    setArbol(ar.arbol);
+    setResumen(ar.resumen);
+    setRevision(ar.revision || null);
+    setEstructura(es);
+  }, [documentoId]);
+
+  // Lo llama la tarjeta *Estructura* cuando el servidor ha aceptado un cambio.
+  const alCambiarEstructura = useCallback(async (accion, r) => {
+    // El apartado retirado deja de estar en el árbol, así que la pantalla no
+    // puede quedarse en él: se sube al padre. El `ir` limpia el aviso, y por eso
+    // el aviso se pone DESPUÉS: es el mensaje de este cambio, no del anterior.
+    const padre = accion === 'retirar' && entrada && entrada.camino.length > 1
+      ? entrada.camino[entrada.camino.length - 2]
+      : null;
+    if (padre) {
+      ir(padre.clave);
+      // Cuántos apartados se ha llevado y si ha salido en todas las unidades lo
+      // dice la respuesta: un apartado se va con lo que tenga dentro, y uno de
+      // módulo se va de los once a la vez.
+      const cuantos = r && r.apartadosAfectados > 1
+        ? ` Se han retirado ${r.apartadosAfectados} apartados: ese y los que tenía dentro.`
+        : '';
+      const todas = r && r.afectaUnidades && r.unidades > 1
+        ? ` Ha salido de ${r.unidades} módulos a la vez, porque era de su plantilla.`
+        : '';
+      setAvisoEstructura('El apartado se ha retirado del documento.' + cuantos + todas
+        + ' No se ha borrado: su contenido sigue guardado y vuelve con su texto al restaurarlo'
+        + ' desde la portada del documento.');
+    }
+
+    try {
+      await recargarArbol();
+    } catch (e) {
+      // El cambio se hizo: lo que ha fallado es volver a leer el árbol. Se dice,
+      // porque la barra lateral se queda enseñando la estructura de antes.
+      setAvisoEstructura('El cambio se ha guardado, pero no se ha podido volver a leer el árbol:'
+        + ` ${e.message} Recarga la página para verlo como está ahora.`);
+    }
+  }, [entrada, ir, recargarArbol]);
 
   // Los dos recuentos de la barra lateral, con las correcciones de esta sesión:
   // el servidor los calculó con el árbol de entonces.
@@ -484,8 +583,32 @@ export default function Visor({
 
   const est = nodo ? (estados.get(nodo.clave) || {}) : {};
   const rol = yo ? yo.rol : null;
+  // Quién cambia la estructura lo dice el servidor en `puedeCambiar`; mientras
+  // esa lectura no vuelve, la misma regla de core/permisos.js (ver
+  // estructura-cliente.js). Quien no puede no ve la tarjeta, igual que en el
+  // prototipo: no es un botón que se le niegue, es una decisión que no es suya.
+  const puedeEstructura = puedeCambiarEstructura(estructura, yo, documento);
   const unidadDelNodo = nodo && nodo.unidadId ? codigoDeUnidad(nodo.unidadId) : null;
   const base = `/api/documentos/${encodeURIComponent(documentoId)}`;
+
+  // EL CONTENIDO QUE HAY TIENE QUE SER EL DEL APARTADO ABIERTO
+  //
+  // `nodo` cambia en cuanto se pincha en el árbol, y `apartado` llega una
+  // petición después: entre medias, lo que hay en `apartado` es el del apartado
+  // ANTERIOR. Pintarlo sería enseñar el texto de otro apartado bajo este título,
+  // y es peor que feo: el editor se monta con él y **escribiría en el otro**,
+  // porque la dirección del PATCH sale del apartado que le dan (`urlApartado` de
+  // autoguardado.js) y su estado se fija al montarse.
+  //
+  // `cargandoApartado` ya tapa el caso normal; esto es el cinturón: se comprueba
+  // que el contenido es el de este nodo —sección y unidad— y, mientras no lo sea,
+  // se trata como si siguiera cargando. Se añadió al encontrar que escribir en un
+  // apartado recién abierto guardaba en el anterior; aquella era otra causa (dos
+  // hermanos con la misma `key`, ver `tarjetaEstructura`), pero la comprobación
+  // se queda: el editor no debe poder recibir nunca el apartado de al lado.
+  const esDelNodo = (a) => !!a && !!nodo && a.seccion === nodo.seccion
+    && (a.unidadId || null) === (nodo.unidadId || null);
+  const apartadoDelNodo = esDelNodo(apartado) ? apartado : null;
 
   // La procedencia del apartado abierto. Se mira primero lo que haya pasado en
   // esta sesión, luego la respuesta del apartado y por último el nodo del árbol:
@@ -493,12 +616,12 @@ export default function Visor({
   // espera a que llegue el contenido.
   const localDelNodo = nodo ? locales.get(nodo.clave) : null;
   const origenDelNodo = (localDelNodo && localDelNodo.origen !== undefined ? localDelNodo.origen : null)
-    || (apartado ? apartado.origen : null)
+    || (apartadoDelNodo ? apartadoDelNodo.origen : null)
     || (nodo ? nodo.origen : null);
 
   // El apartado tal como lo ve el botón de validar: con la procedencia corregida,
   // para que no se pueda ofrecer dos veces lo mismo.
-  const apartadoAhora = apartado ? { ...apartado, origen: origenDelNodo } : null;
+  const apartadoAhora = apartadoDelNodo ? { ...apartadoDelNodo, origen: origenDelNodo } : null;
 
   // ---------------------------------------------------------------- las piezas de la pantalla
 
@@ -520,6 +643,35 @@ export default function Visor({
       </nav>
     );
   };
+
+  // La tarjeta *Estructura*, debajo de lo que se esté mirando: cambiar la
+  // estructura es una decisión sobre ESTE apartado, igual que en el prototipo.
+  // No sale en una unidad —un módulo no es un apartado de la plantilla, y su
+  // orden es el del documento, que hoy no se puede reordenar por la API del
+  // repositorio (docs/plan.md, «Para el E6»)— ni en la portada, que no es una
+  // sección. El `key` es el nodo: al cambiar de apartado se monta otra tarjeta,
+  // y así el campo del título no se queda con el del apartado anterior.
+  //
+  // CON SU PREFIJO, Y NO SOLO LA CLAVE DEL NODO. Esta tarjeta se pinta al lado
+  // del apartado, que también lleva `key={nodo.clave}`: dos hermanos con la
+  // MISMA clave dejan a React sin saber cuál es cuál, y lo que se ve es que al
+  // cambiar de apartado el editor del anterior se queda en la pantalla —con su
+  // contenido y con su dirección—, así que lo que se escribe acaba guardado en
+  // el apartado de antes. Se encontró recorriéndolo a mano: añadir un apartado,
+  // abrirlo y escribir dentro escribía en su padre.
+  const tarjetaEstructura = () => (puedeEstructura && nodo && nodo.seccion && nodo.tipo !== 'unidad' ? (
+    <Estructura
+      key={`estructura-${nodo.clave}`}
+      documentoId={documentoId}
+      nodo={nodo}
+      camino={entrada ? entrada.camino : []}
+      fila={filasEstructura.get(nodo.seccion) || null}
+      plantillaVersion={estructura ? estructura.plantillaVersion : documento.plantillaVersion}
+      unidades={estructura ? estructura.unidades : 0}
+      onCambiado={alCambiarEstructura}
+      onIr={irAApartado}
+    />
+  ) : null);
 
   // La tabla de hijos de un nodo de paso: es como se entra en un módulo o en un
   // bloque sin tener que desplegar el árbol.
@@ -622,6 +774,19 @@ export default function Visor({
         />
       ) : null}
 
+      {/* Los apartados retirados se recuperan desde aquí, y es lo que promete la
+          tarjeta *Estructura* al retirar uno: es la única pantalla desde la que
+          se puede, porque un apartado retirado ya no sale en el árbol y no se
+          puede abrir. Si no hay ninguno, no se pinta nada. */}
+      {n.tipo === 'raiz' && puedeEstructura && estructura ? (
+        <ApartadosRetirados
+          documentoId={documentoId}
+          retirados={estructura.retirados}
+          plantillaVersion={estructura.plantillaVersion}
+          onCambiado={alCambiarEstructura}
+        />
+      ) : null}
+
       {listaHijos(n)}
     </>
   );
@@ -659,7 +824,12 @@ export default function Visor({
   };
 
   const vistaApartado = () => {
-    if (cargandoApartado) return <p className="suave">Cargando el apartado…</p>;
+    // Mientras el contenido que hay no sea el de ESTE apartado, está cargando: lo
+    // que hay es el del apartado anterior y pintarlo sería dárselo al editor, que
+    // escribiría allí (ver `esDelNodo`). A partir de aquí, `apartado` es el suyo.
+    if (cargandoApartado || (apartado && !esDelNodo(apartado))) {
+      return <p className="suave">Cargando el apartado…</p>;
+    }
     if (errorApartado) {
       return (
         <div className="nota nota-lock">
@@ -770,10 +940,15 @@ export default function Visor({
         />
       );
     }
-    if (nodo.tipo === 'raiz' || nodo.tipo === 'bloque') return vistaResumen(nodo);
+    // La tarjeta *Estructura* va debajo de todo lo que sea una sección de la
+    // plantilla: un bloque, un apartado con contenido y uno que solo agrupa.
+    // Como en el prototipo, no sale en la portada (no es una sección) ni en una
+    // unidad (que no es un apartado).
+    if (nodo.tipo === 'raiz') return vistaResumen(nodo);
+    if (nodo.tipo === 'bloque') return <>{vistaResumen(nodo)}{tarjetaEstructura()}</>;
     if (nodo.tipo === 'unidad') return vistaUnidad(nodo);
-    if (!nodo.contenido) return listaHijos(nodo);
-    return vistaApartado();
+    if (!nodo.contenido) return <>{listaHijos(nodo)}{tarjetaEstructura()}</>;
+    return <>{vistaApartado()}{tarjetaEstructura()}</>;
   };
 
   const chips = () => {
@@ -961,7 +1136,18 @@ export default function Visor({
           {/* Sin `.rejilla`: la rejilla de dos columnas del prototipo reserva
               310 px para el panel de comprobaciones y comentarios, que son el E4
               y el E7. Con una sola columna el apartado ocupa el ancho entero. */}
-          <section className="contenido">{contenido()}</section>
+          <section className="contenido">
+            {/* Lo que acaba de pasar con la estructura, dicho donde se aterriza:
+                al retirar un apartado la pantalla se va a su padre, y el aviso
+                tiene que viajar con ella. `role="status"` para que también se
+                oiga. */}
+            {avisoEstructura ? (
+              <div className="nota" role="status">
+                <div>{avisoEstructura}</div>
+              </div>
+            ) : null}
+            {contenido()}
+          </section>
 
           {/* Anterior y siguiente recorren el documento en el orden en que se
               imprime, que es como se revisa: apartado por apartado y módulo por

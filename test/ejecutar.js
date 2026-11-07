@@ -58,6 +58,9 @@ const SUITES = [
 
   // --- E5: el curso siguiente ---------------------------------------------
   { archivo: 'test/arrastre.js', nombre: 'arrastre entre cursos y revisión' },
+
+  // --- E6: cambiar la estructura del documento ----------------------------
+  { archivo: 'test/estructura.js', nombre: 'estructura editable y versiones de la plantilla' },
 ];
 
 const AZUL = '\x1b[34m'; const ROJO = '\x1b[31m'; const VERDE = '\x1b[32m';

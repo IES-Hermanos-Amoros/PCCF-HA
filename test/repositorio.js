@@ -281,6 +281,89 @@ async function bateria(etiqueta, fabrica) {
     assert.equal(segunda.updatedAt.getTime(), escrito.updatedAt.getTime());
   });
 
+  // ---- documentos.actualizar con esperaUpdatedAt: los mismos casos que apartados.escribir ----
+
+  await prueba('documentos.actualizar sin esperaUpdatedAt escribe como antes, y el token avanza aunque sea el mismo milisegundo', async (repo) => {
+    const d = await documento(repo);
+    let previo = d;
+    for (let i = 0; i < 5; i += 1) {
+      const u = await repo.documentos.actualizar(d._id, { estado: i % 2 ? 'revision' : 'borrador' });
+      assert.equal(u.estado, i % 2 ? 'revision' : 'borrador');
+      assert.ok(u.updatedAt.getTime() > previo.updatedAt.getTime(), `el token no avanza en la vuelta ${i}`);
+      previo = u;
+    }
+  });
+
+  await prueba('documentos.actualizar con esperaUpdatedAt que coincide escribe y devuelve un updatedAt nuevo (también como cadena ISO)', async (repo) => {
+    const d = await documento(repo);
+    const a = await repo.documentos.actualizar(d._id, { estado: 'revision' }, { esperaUpdatedAt: d.updatedAt });
+    const b = await repo.documentos.actualizar(d._id, { estado: 'aprobado' }, { esperaUpdatedAt: a.updatedAt.toISOString() });
+    assert.equal(b.estado, 'aprobado');
+    assert.ok(b.updatedAt.getTime() > a.updatedAt.getTime());
+    assert.equal((await repo.documentos.obtener(d._id)).estado, 'aprobado');
+  });
+
+  await prueba('documentos.actualizar con esperaUpdatedAt que no coincide: conflicto, y no se escribe nada', async (repo) => {
+    const d = await documento(repo);
+    const a = await repo.documentos.actualizar(d._id, { estado: 'revision' });
+    const b = await repo.documentos.actualizar(d._id, { estado: 'aprobado' }, { esperaUpdatedAt: a.updatedAt });
+    const e = await error(repo.documentos.actualizar(d._id, { estado: 'borrador', plantillaVersion: 9 }, { esperaUpdatedAt: a.updatedAt }));
+    assert.ok(e instanceof ErrorConflicto);
+    assert.equal(e.codigo, 'conflicto');
+    assert.equal(e.esperado.getTime(), a.updatedAt.getTime());
+    assert.equal(e.actual.getTime(), b.updatedAt.getTime());
+    const leido = await repo.documentos.obtener(d._id);
+    assert.equal(leido.estado, 'aprobado');
+    assert.equal(leido.plantillaVersion, 1);
+    assert.equal(leido.updatedAt.getTime(), b.updatedAt.getTime());
+  });
+
+  await prueba('documentos.actualizar con esperaUpdatedAt en un documento que no existe: conflicto, y no hace nada', async (repo) => {
+    const e = await error(repo.documentos.actualizar(randomUUID(), { estado: 'aprobado' }, { esperaUpdatedAt: new Date() }));
+    assert.ok(e instanceof ErrorConflicto);
+    assert.equal(e.actual, null);
+  });
+
+  await prueba('documentos.actualizar con esperaUpdatedAt null: si el documento existe es conflicto; si no existe, devuelve null', async (repo) => {
+    const d = await documento(repo);
+    const e = await error(repo.documentos.actualizar(d._id, { estado: 'aprobado' }, { esperaUpdatedAt: null }));
+    assert.ok(e instanceof ErrorConflicto);
+    assert.equal(e.actual.getTime(), d.updatedAt.getTime());
+    assert.equal((await repo.documentos.obtener(d._id)).estado, 'borrador');
+    assert.equal(await repo.documentos.actualizar(randomUUID(), { estado: 'aprobado' }, { esperaUpdatedAt: null }), null);
+  });
+
+  await prueba('documentos.actualizar: dos escrituras con la misma versión de partida: gana una y la otra recibe conflicto', async (repo) => {
+    const d = await documento(repo);
+    const resultados = await Promise.allSettled([
+      repo.documentos.actualizar(d._id, { estado: 'revision' }, { esperaUpdatedAt: d.updatedAt }),
+      repo.documentos.actualizar(d._id, { estado: 'aprobado' }, { esperaUpdatedAt: d.updatedAt }),
+    ]);
+    const ganadoras = resultados.filter((r) => r.status === 'fulfilled');
+    const perdedoras = resultados.filter((r) => r.status === 'rejected');
+    assert.equal(ganadoras.length, 1);
+    assert.equal(perdedoras.length, 1);
+    assert.ok(perdedoras[0].reason instanceof ErrorConflicto);
+    assert.equal((await repo.documentos.obtener(d._id)).estado, ganadoras[0].value.estado);
+  });
+
+  await prueba('documentos.actualizar con esperaUpdatedAt que no es una fecha: TypeError, y no se escribe nada', async (repo) => {
+    const d = await documento(repo);
+    const e = await error(repo.documentos.actualizar(d._id, { estado: 'aprobado' }, { esperaUpdatedAt: 'no es una fecha' }));
+    assert.ok(e instanceof TypeError);
+    assert.equal((await repo.documentos.obtener(d._id)).estado, 'borrador');
+  });
+
+  await prueba('lo que devuelve documentos.actualizar no comparte memoria con lo guardado', async (repo) => {
+    const d = await documento(repo);
+    const plantilla = { secciones: [{ id: 'a', titulo: 'A' }] };
+    const escrito = await repo.documentos.actualizar(d._id, { plantilla }, { esperaUpdatedAt: d.updatedAt });
+    plantilla.secciones.push({ id: 'b' });
+    escrito.plantilla.secciones.push({ id: 'c' });
+    const leido = await repo.documentos.obtener(d._id);
+    assert.deepEqual(leido.plantilla, { secciones: [{ id: 'a', titulo: 'A' }] });
+  });
+
   // ---- compartidos ----
 
   await prueba('compartidos: crearMuchos, listar, obtener y actualizar; un cid repetido se rechaza', async (repo) => {
@@ -472,7 +555,9 @@ async function bateria(etiqueta, fabrica) {
   await bateria('memoria', () => memoria.crear());
 
   if (process.env.MONGODB_URI) {
-    const nombreBd = process.env.MONGODB_BD || 'pccf-ha-pruebas';
+    // MONGODB_DB, igual que la aplicación y que el flujo de integración continua: con dos
+    // nombres distintos, el comando que uno documenta apunta a una base y las pruebas a otra.
+    const nombreBd = process.env.MONGODB_DB || 'pccf-ha-pruebas';
     await bateria('mongo', () => mongo.crear({ uri: process.env.MONGODB_URI, nombreBd }));
   } else {
     console.log('omitida la batería contra MongoDB: no hay MONGODB_URI en el entorno, así que no hay base de datos que probar');

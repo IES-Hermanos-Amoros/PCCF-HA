@@ -1,0 +1,317 @@
+// La ESTRUCTURA del documento: renombrar un apartado, añadir uno, moverlo entre sus hermanos y
+// retirarlo (más restaurar lo retirado, que es la otra mitad de retirar).
+//
+//   GET    /api/documentos/[id]/estructura                              la estructura y lo retirado
+//   POST   /api/documentos/[id]/estructura/apartado                     añadir
+//   PATCH  /api/documentos/[id]/estructura/apartado?seccion=            renombrar
+//   POST   /api/documentos/[id]/estructura/apartado/mover?seccion=      mover
+//   POST   /api/documentos/[id]/estructura/apartado/retirar?seccion=    retirar (no borra)
+//   POST   /api/documentos/[id]/estructura/apartado/restaurar?seccion=  restaurar
+//
+// Es la mitad de servidor del E6 (docs/plan.md §5), y su criterio de aceptación tiene dos mitades:
+//
+//   «Añadir un apartado, escribir en él y exportar; y que un documento del curso anterior siga
+//    abriéndose con su plantilla antigua.»
+//
+// ================================================================ LA PLANTILLA ES DE CADA DOCUMENTO
+//
+// La segunda mitad es la que decide el diseño. `documentos.plantilla` ya es de cada documento desde
+// el E0 y el arrastre entre cursos ya la copia entera (app/_lib/rutas/arrastre.js), así que el
+// cambio se guarda donde ya estaba la estructura: se escribe la plantilla del documento, con
+// `plantillaVersion` subida en uno.
+//
+// La alternativa era guardar una CAPA de cambios sobre la plantilla importada, como hace el
+// prototipo (docs/mockup-v2/js/plantilla.js, que la deja en `localStorage`). Se ha descartado por
+// tres cosas, en este orden:
+//
+//   1. UNA CAPA HAY QUE APLICARLA EN TODAS PARTES. La plantilla la leen el árbol, el apartado, el
+//      PDF, el Word, el panel de comprobaciones y `raDelModulo`. Con una capa, cada una tendría que
+//      acordarse de resolverla; la que se olvidara seguiría imprimiendo la estructura vieja y eso no
+//      se nota hasta que alguien exporta en junio. Con la plantilla ya resuelta no hay nada que
+//      recordar, salvo los apartados retirados, que se podan en un solo sitio (`abrirDocumento`).
+//   2. NO HAY DÓNDE GUARDARLA. La lista blanca de `repositorio/index.js` acepta `plantilla` y
+//      `plantillaVersion` y nada más, y `repositorio/` no es de este evolutivo. Una capa necesitaría
+//      un campo nuevo o una colección nueva.
+//   3. LA MIGRACIÓN DE LOS DATOS SALE SOLA. El contenido se guarda por el par (seccion, unidadId) y
+//      el id de un apartado no cambia nunca (core/plantilla.js), así que renombrar, mover y añadir
+//      no mueven ni una fila, y retirar las conserva todas. No hay datos que migrar: eso era el
+//      riesgo de que el id fuera el slug del título, y es justo lo que la regla del id evita.
+//
+// Y el curso pasado no se entera, porque su documento es otra fila con su propia plantilla: cambiar
+// la estructura del curso que se prepara no toca la del que ya está aprobado y entregado. Al
+// arrastrar un curso, el documento nuevo nace con la estructura que el viejo tenía EN ESE MOMENTO
+// —la copia es de la plantilla entera, incluido su registro de cambios— y desde entonces los dos
+// van por su cuenta.
+//
+// QUÉ SE GUARDA DE CADA CAMBIO
+//
+// El cambio se apunta dentro de la plantilla (`plantilla.cambios`), con la versión que deja, quién
+// lo hizo y cuándo. Dentro y no en una colección aparte por el punto 2 de arriba, y es además lo
+// que hace que la historia viaje con la estructura cuando se arrastra el curso.
+//
+// LA ESCRITURA ES CONDICIONADA, Y ES LA QUE DECIDE
+//
+// `esperaPlantillaVersion` es el aviso temprano: si no cuadra con la versión leída, 409 antes de
+// calcular nada. Pero la decisión de verdad es la escritura, y es atómica: `documentos.actualizar`
+// lleva `esperaUpdatedAt` con el `updatedAt` que se leyó (`guardarPlantilla`), y cualquier cambio del
+// documento —y todo cambio de la plantilla pasa por ahí— mueve ese token. Así que entre la lectura y
+// la escritura no puede colarse otra estructura sin que la escritura falle con 409. Esto va también
+// para el cliente que no manda `esperaPlantillaVersion`: no cambia nada salvo en la carrera, donde
+// antes se perdía el cambio de otra persona sin avisar.
+//
+// QUIÉN PUEDE
+//
+// La jefatura del departamento y el soporte (`core/permisos.js` → `puedeCambiarEstructura`). El
+// docente escribe lo suyo pero no decide qué apartados tiene la programación, y la jefatura de
+// estudios no toca nada: es quien aprueba. Se comprueba en el servidor, como todo (docs/api.md).
+//
+// Es CommonJS y no sabe que está dentro de Next (docs/api.md, primera regla de forma).
+
+'use strict';
+
+const C = require('../../../core/permisos');
+const Plantilla = require('../../../core/plantilla');
+const {
+  conErrores, abrirDocumento, leerJson, fallo, malaPeticion, noEncontrado, SIN_PERMISO,
+} = require('./comun');
+
+// ---------------------------------------------------------------- lo que todas comparten
+
+// La secuencia de los cinco cambios, en una sola función: quién pregunta (401), si ve el documento
+// (404), si puede cambiar la estructura (403), el cuerpo (400), la versión que esperaba (409), el
+// cambio en seco (400 con el motivo) y la escritura. Está junta para que las cinco rutas no puedan
+// separarse: lo que se guarda y en qué orden se comprueba es idéntico en todas, y lo único que
+// cambia es qué se le pide a core/plantilla.js.
+//
+// `pedir(cuerpo, url)` devuelve la petición de cambio para `Plantilla.aplicar`, o { fallo }.
+function cambio(tipo, pedir, { estado = 200 } = {}) {
+  return conErrores(async (peticion, parametros) => {
+    const abierto = await abrirDocumento(peticion, parametros);
+    if (abierto.fallo) return abierto.fallo;
+    const { usuario, documento, repo, plantillaCompleta } = abierto;
+
+    if (!C.puedeCambiarEstructura(usuario, documento)) {
+      return SIN_PERMISO('Solo la jefatura de tu departamento cambia la estructura del documento. Quien escribe un apartado no decide qué apartados hay, y la jefatura de estudios no edita nada.');
+    }
+
+    const { fallo: falloCuerpo, cuerpo } = await leerJson(peticion);
+    if (falloCuerpo) return falloCuerpo;
+
+    const actual = Number(documento.plantillaVersion) || 1;
+    const falloVersion = versionPedida(cuerpo, actual);
+    if (falloVersion) return falloVersion;
+
+    const url = new URL(peticion.url);
+    const pedida = pedir(cuerpo, url);
+    if (pedida.fallo) return pedida.fallo;
+
+    // UN APARTADO QUE NO ESTÁ ES UN 404, no un 400: es lo que devuelve /apartado para una sección
+    // que no es de este documento y lo que dice docs/api.md («404 = no lo ves»). El id llega de la
+    // URL o del cuerpo, así que puede ser cualquier cosa. core/plantilla.js también lo niega, pero
+    // con el código de «no se puede»; aquí lo que ocurre es que no existe.
+    for (const id of [pedida.seccion, pedida.padre]) {
+      if (id && !Plantilla.buscar(plantillaCompleta, id)) {
+        return noEncontrado(`Este documento no tiene ningún apartado «${id}».`);
+      }
+    }
+
+    // Un documento sin plantilla no tiene estructura que cambiar. No debería existir —la crean la
+    // importación y el arrastre, y las dos la ponen—, pero el aviso vale más que el 500 que saldría
+    // de intentar recorrerla.
+    if (!plantillaCompleta || !Array.isArray(plantillaCompleta.secciones)) {
+      return malaPeticion('Este documento no tiene plantilla: no hay estructura que cambiar.');
+    }
+
+    // El cambio se calcula en seco sobre la plantilla ENTERA —con los apartados retirados dentro,
+    // que son los que se pueden restaurar— y no sobre la podada que ve el resto de la aplicación.
+    const hecho = Plantilla.aplicar(plantillaCompleta, { tipo, ...pedida });
+    if (hecho.motivo) {
+      return fallo(400, 'peticion', `${hecho.motivo} No se ha cambiado nada.`, { motivo: hecho.motivo });
+    }
+
+    const version = Plantilla.siguienteVersion(actual);
+    const apuntado = Plantilla.registrar(hecho.plantilla, {
+      ...hecho.cambio,
+      version,
+      usuario: C.idDeUsuario(usuario),
+      fecha: new Date().toISOString(),
+    });
+
+    // La plantilla y su versión en la misma escritura: una plantilla cambiada con la versión de
+    // antes no se distinguiría de la de antes, y la versión es lo único que permitirá migrar.
+    const conflicto = await guardarPlantilla(repo, documento, { plantilla: apuntado, plantillaVersion: version });
+    if (conflicto) return conflicto;
+
+    // Cuántas unidades repiten este apartado. Se cuentan solo si hace falta: un apartado común no
+    // tiene nada que ver con las unidades y pedirlas sería una lectura por gusto.
+    const unidades = hecho.cambio.deUnidades ? (await repo.unidades.listar(documento._id)).length : 0;
+    return Response.json(
+      {
+        documentoId: documento._id,
+        plantillaVersion: version,
+        seccion: hecho.cambio.seccion,
+        titulo: hecho.cambio.titulo,
+        cambio: apuntado.cambios[apuntado.cambios.length - 1],
+        // LA ADVERTENCIA DE LOS ONCE MÓDULOS. Un apartado que cuelga del bloque de unidades es de
+        // la plantilla, así que el cambio sale en todas las unidades a la vez. No es un fallo, es
+        // lo que es: la respuesta lo dice para que la interfaz lo pueda advertir.
+        afectaUnidades: !!hecho.cambio.deUnidades,
+        unidades,
+        // Cuántos apartados toca el cambio: el de la petición y su subárbol. En «retirar» es de lo
+        // que hay que avisar antes de pulsar, y el contenido de todos ellos se conserva.
+        apartadosAfectados: Plantilla.rama(apuntado, hecho.cambio.seccion).length,
+        retirados: Plantilla.retirados(apuntado).length,
+      },
+      { status: estado, headers: { 'Cache-Control': 'no-store' } },
+    );
+  });
+}
+
+// La escritura de la plantilla, condicionada al `updatedAt` con que se leyó el documento. Si otra
+// escritura ha movido ese token en medio, no se escribe nada y se devuelve el 409; si no, null.
+// Es lo que hace atómica la comprobación de la versión: `plantillaVersion` solo cambia con
+// `documentos.actualizar`, y cada una de esas escrituras mueve `updatedAt`.
+async function guardarPlantilla(repo, documento, cambios) {
+  try {
+    await repo.documentos.actualizar(documento._id, cambios, { esperaUpdatedAt: documento.updatedAt });
+    return null;
+  } catch (e) {
+    if (!e || e.codigo !== 'conflicto') throw e;
+    const ahora = await repo.documentos.obtener(documento._id);
+    return fallo(
+      409, 'conflicto',
+      'Alguien ha cambiado este documento mientras cambiabas su estructura. No se ha cambiado nada: vuelve a cargarla para no deshacer su cambio.',
+      { esperado: Number(documento.plantillaVersion) || 1, actual: ahora ? Number(ahora.plantillaVersion) || 1 : null },
+    );
+  }
+}
+
+// La versión de la plantilla con la que el cliente leyó la estructura. Opcional (ver la cabecera);
+// si viene, tiene que cuadrar. Devuelve el `Response` del 409, o null si todo está en orden.
+function versionPedida(cuerpo, actual) {
+  const espera = cuerpo.esperaPlantillaVersion;
+  if (espera === undefined || espera === null) return null;
+  if (typeof espera !== 'number' || !Number.isInteger(espera)) {
+    return malaPeticion('«esperaPlantillaVersion» tiene que ser la versión de la plantilla que devolvió la lectura, un número entero.');
+  }
+  if (espera !== actual) {
+    return fallo(
+      409, 'conflicto',
+      'Alguien ha cambiado la estructura de este documento desde que la leíste. No se ha cambiado nada: vuelve a cargarla para no deshacer su cambio.',
+      { esperado: espera, actual },
+    );
+  }
+  return null;
+}
+
+// La sección sobre la que se actúa viene en la URL, igual que en /apartado: es el apartado al que
+// apunta la tarjeta *Estructura*, y así el enlace de la petición dice sobre qué va.
+function seccionDeLaUrl(url) {
+  const seccion = url.searchParams.get('seccion');
+  if (!seccion) return { fallo: malaPeticion('Falta el parámetro «seccion»: el apartado que se cambia.') };
+  return { seccion };
+}
+
+// ---------------------------------------------------------------- GET: la estructura
+
+// Lo que necesita la tarjeta *Estructura* y la lista de restauración de la portada, sin tener que
+// deducirlo del árbol: una fila por apartado con qué se le puede hacer, los retirados —que en el
+// árbol ya no están, porque no son parte del documento hasta que alguien los restaure— y la versión
+// de la plantilla, que es la que se devuelve en `esperaPlantillaVersion` al cambiar algo.
+//
+// La ve quien ve el documento, y `puedeCambiar` dice si los botones van habilitados. Es lo mismo que
+// hace /unidades con `puedeRepartir`: el cliente refleja el candado, no lo decide.
+const GET = conErrores(async (peticion, parametros) => {
+  const abierto = await abrirDocumento(peticion, parametros);
+  if (abierto.fallo) return abierto.fallo;
+  const { usuario, documento, repo, plantillaCompleta } = abierto;
+
+  const unidades = await repo.unidades.listar(documento._id);
+  const cambios = Array.isArray(plantillaCompleta && plantillaCompleta.cambios) ? plantillaCompleta.cambios : [];
+
+  return Response.json(
+    {
+      documentoId: documento._id,
+      plantillaVersion: Number(documento.plantillaVersion) || 1,
+      puedeCambiar: C.puedeCambiarEstructura(usuario, documento),
+      unidades: unidades.length,
+      apartados: Plantilla.estructura(plantillaCompleta),
+      retirados: Plantilla.retirados(plantillaCompleta),
+      // La historia de la estructura de ESTE documento, del primer cambio al último. Es lo que se
+      // enseña («la estructura se cambió por última vez el…») y lo que hace falta para saber de qué
+      // versión viene un documento arrastrado.
+      cambios,
+    },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
+});
+
+// ---------------------------------------------------------------- los cuatro cambios, y el quinto
+
+// AÑADIR. `padre` vacío o ausente es «al final del documento»; con padre, al final de sus hijos.
+// 201, porque crea un apartado que antes no existía.
+//
+// El apartado nace con un campo de texto y, si no hereda de nadie quién lo edita, con la jefatura
+// del departamento: sin eso no lo podría escribir nadie y el criterio de aceptación («añadir un
+// apartado, ESCRIBIR EN ÉL y exportar») no se cumpliría. Lo decide core/plantilla.js.
+const ANADIR = cambio('anadir', (cuerpo) => {
+  if (cuerpo.titulo !== undefined && typeof cuerpo.titulo !== 'string') {
+    return { fallo: malaPeticion('El título del apartado nuevo tiene que ser un texto.') };
+  }
+  if (cuerpo.padre !== undefined && cuerpo.padre !== null && typeof cuerpo.padre !== 'string') {
+    return { fallo: malaPeticion('«padre» es el id del apartado que lo contiene, o nada para que vaya al final del documento.') };
+  }
+  return { titulo: cuerpo.titulo, padre: cuerpo.padre || '' };
+}, { estado: 201 });
+
+// RENOMBRAR. Es un PATCH porque cambia un campo del apartado y deja el resto como estaba, y
+// EL ID NO SE TOCA: si el id fuera el slug del título, renombrar dejaría huérfanos el contenido, los
+// comentarios y los enlaces guardados (core/plantilla.js, la cabecera).
+const RENOMBRAR = cambio('renombrar', (cuerpo, url) => {
+  const { fallo: falloSeccion, seccion } = seccionDeLaUrl(url);
+  if (falloSeccion) return { fallo: falloSeccion };
+  if (cuerpo.titulo !== undefined && typeof cuerpo.titulo !== 'string') {
+    return { fallo: malaPeticion('El título tiene que ser un texto.') };
+  }
+  return { seccion, titulo: cuerpo.titulo };
+});
+
+// MOVER entre sus hermanos: `{ delta: -1 }` lo sube un sitio, `{ delta: 1 }` lo baja.
+//
+// Se manda el desplazamiento y no la posición final porque es lo que hace la interfaz —dos botones,
+// arriba y abajo— y porque una posición absoluta calculada sobre una lista que ha cambiado por medio
+// mueve el apartado a otro sitio sin que nadie lo note. Mover el primero hacia arriba es un 400 que
+// lo dice, no un 200 que no hace nada: un botón que calla no se distingue de uno estropeado.
+const MOVER = cambio('mover', (cuerpo, url) => {
+  const { fallo: falloSeccion, seccion } = seccionDeLaUrl(url);
+  if (falloSeccion) return { fallo: falloSeccion };
+  if (cuerpo.delta !== undefined && typeof cuerpo.delta !== 'number') {
+    return { fallo: malaPeticion('«delta» es cuántos sitios se mueve: -1 para subirlo, 1 para bajarlo.') };
+  }
+  return { seccion, delta: cuerpo.delta };
+});
+
+// RETIRAR. NO BORRA: el apartado se queda en la plantilla marcado como retirado, deja de pintarse y
+// de imprimirse, y su contenido sigue en `apartados` tal cual. Por eso no es un DELETE: un DELETE
+// que no borra es una promesa que el contrato no quiere hacer, y lo que de verdad pasa aquí es que
+// el apartado sale del documento y se puede volver a meter.
+//
+// Se va con su subárbol, igual que en el prototipo: si se quedaran los hijos sin su padre, el PDF
+// los imprimiría colgando del apartado de más arriba. La respuesta dice cuántos apartados se han
+// ido, para que la interfaz lo advierta.
+const RETIRAR = cambio('retirar', (cuerpo, url) => {
+  const { fallo: falloSeccion, seccion } = seccionDeLaUrl(url);
+  if (falloSeccion) return { fallo: falloSeccion };
+  return { seccion };
+});
+
+// RESTAURAR: lo devuelve a su sitio con todo lo que tenía escrito. Es la otra mitad de retirar, y
+// está porque sin ella «retirar no borra» no significaría nada: quien se equivoca tiene que poder
+// deshacerlo.
+const RESTAURAR = cambio('restaurar', (cuerpo, url) => {
+  const { fallo: falloSeccion, seccion } = seccionDeLaUrl(url);
+  if (falloSeccion) return { fallo: falloSeccion };
+  return { seccion };
+});
+
+module.exports = { GET, ANADIR, RENOMBRAR, MOVER, RETIRAR, RESTAURAR };
