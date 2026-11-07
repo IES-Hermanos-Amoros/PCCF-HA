@@ -978,6 +978,58 @@ const DATOS_PD_DOCX = {
 const docxMemoria = () => exportarDocx({ plantilla: PLANTILLA_MEMORIA, datos: DATOS_MEMORIA, titulo: 'Memoria del departamento · 2026-27' });
 const docxPd = () => exportarDocx({ plantilla: PLANTILLA_PD_DOCX, datos: DATOS_PD_DOCX, titulo: 'Programación didáctica · DAW · 2026-27' });
 
+// Un PCCF con la forma de los dos del departamento, y por eso NO lo escribe el exportador: sus
+// apartados numerados están escritos con estilos propios (`Estilo1`, `Estilo3`) que no declaran nivel
+// de esquema —ni Word los considera títulos—, y la estructura solo está en la tabla de contenidos que
+// el documento lleva dentro. Es el camino que abre el respaldo del índice de motor/importar-docx.js,
+// y lo que esta prueba comprueba es que ese documento llega hasta el PDF y hasta el Word.
+//
+// `conIndice = false` da el mismo documento sin índice: entonces no hay estructura por ningún lado,
+// que es el caso que esta ruta tiene que seguir rechazando.
+const APARTADOS_PCCF = [
+  ['Estilo1', '0. Introducción', 'El proyecto curricular del ciclo formativo de DAW.'],
+  ['Estilo1', '1. Acuerdos generales', 'Lo que acordó el equipo docente del ciclo.'],
+  ['Estilo3', '1.1. Enfoques didácticos y metodológicos', 'Trabajo por proyectos y aula taller.'],
+  ['Estilo3', '1.2. Base de datos de empresas', 'Las empresas que colaboran con el ciclo.'],
+  ['Estilo1', '2. Atención a la diversidad', 'Medidas de refuerzo y de ampliación.'],
+];
+async function docxPccf({ conIndice = true } = {}) {
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const estilo = (id, nombre) => `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${esc(nombre)}"/></w:style>`;
+  const p = (e, t) => `<w:p><w:pPr><w:pStyle w:val="${e}"/></w:pPr><w:r><w:t xml:space="preserve">${esc(t)}</w:t></w:r></w:p>`;
+  // el índice, con el número de página pegado al título como lo escribe Word
+  const indice = APARTADOS_PCCF.map(([e, t], i) => p(e === 'Estilo1' ? 'IDC1' : 'IDC2', `${t}${i + 3}`));
+  const cuerpo = APARTADOS_PCCF.flatMap(([e, t, texto]) => [p(e, `${t} `), p('Normal', texto)]);
+
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    + '<Default Extension="xml" ContentType="application/xml"/>'
+    + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+    + '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+    + '</Types>');
+  zip.file('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+    + '</Relationships>');
+  zip.file('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+    + '</Relationships>');
+  zip.file('word/styles.xml', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>'
+    // el styleId localizado y el nombre interno de Word, como en los documentos del departamento
+    + estilo('IDC1', 'toc 1') + estilo('IDC2', 'toc 2') + estilo('Estilo1', 'Estilo1') + estilo('Estilo3', 'Estilo3')
+    + '</w:styles>');
+  zip.file('word/document.xml', '<?xml version="1.0" encoding="UTF-8"?>'
+    + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+    + (conIndice ? indice.join('') : '') + cuerpo.join('')
+    + '</w:body></w:document>');
+  return zip.generateAsync({ type: 'nodebuffer' });
+}
+
 // Un formulario de importación. Un campo a `null` se omite (para probar que falta).
 function subir(persona, buffer, campos = {}) {
   const formulario = new FormData();
@@ -1072,17 +1124,57 @@ prueba('la memoria no exige ciclo —es del departamento entero— y la PD sí',
   assert.ok(cuerpo.mensaje.includes('ciclo'), cuerpo.mensaje);
 });
 
-prueba('el PCCF se niega, y el 400 dice qué hay que arreglar en el Word', async () => {
-  // NO ENTRA, Y NO POR OLVIDO. En los dos PCCF del departamento los títulos de los apartados están
-  // escritos con estilos propios del documento (`Estilo1`, `Estilo3`, `Estilo4`) que no llevan nivel
-  // de esquema, así que ni Word los considera títulos: el importador no encuentra estructura y entra
-  // el 36 % del documento en el de DAW y el 0 % en el de SMR. Se arregla en Word aplicando Título
-  // 1/2/3, y entonces entra por aquí sin tocar código. Mientras no se arregle, negarse es mejor que
-  // guardar un documento que luego se exporta vacío.
+prueba('el PCCF se importa aunque sus apartados no sean títulos: la estructura sale de su índice', async () => {
+  // HASTA EL E7 ESTE DOCUMENTO SE NEGABA, y no por olvido: en los dos PCCF del departamento los
+  // títulos de los apartados están escritos con estilos propios (`Estilo1`, `Estilo3`, `Estilo4`) que
+  // no llevan nivel de esquema, así que ni Word los considera títulos y el importador no encontraba
+  // estructura —9 apartados en el de DAW, 0 en el de SMR—. Ahora el importador lee la tabla de
+  // contenidos que el documento lleva dentro y de ahí saca qué estilos son títulos y a qué nivel, así
+  // que el documento entra entero y llega hasta el PDF y hasta el Word.
+  const { repo, u } = await escenarioLimpio();
+  const res = await subir(u.jefa, await docxPccf(), { tipo: 'pccf', ciclo: 'DAW' });
+  assert.equal(res.status, 201, `el PCCF tendría que importarse: ${res.status}`);
+  const { documento, resumen } = await res.json();
+
+  assert.equal(documento.tipo, 'pccf');
+  assert.equal(documento.ciclo, 'daw', 'el PCCF es de un ciclo, y el ciclo lo pide el formulario');
+  assert.equal(documento.estado, 'borrador');
+  assert.equal(resumen.unidades, 0, 'un PCCF no lleva módulos: es el proyecto del ciclo');
+  assert.equal(resumen.secciones, 5, 'los tres apartados y los dos subapartados del PCCF de prueba');
+  assert.equal(resumen.apartados, 5);
+  // y el aviso dice de dónde ha salido la estructura, que es lo que hay que revisar en el Word
+  assert.ok(resumen.avisos.some((a) => /ÍNDICE/.test(a)), `tiene que avisar de que la estructura sale del índice: ${resumen.avisos.join(' · ')}`);
+
+  const id = documento._id;
+
+  // El árbol: los cinco apartados con su anidamiento, ninguna unidad.
+  const arbol = Arbol.aplanar((await (await arbolDe(u.jefa, id)).json()).arbol);
+  assert.equal(arbol.filter((n) => n.tipo === 'unidad').length, 0);
+  const titulos = arbol.filter((n) => n.tipo === 'apartado').map((n) => n.titulo);
+  assert.deepStrictEqual(titulos, ['Introducción', 'Acuerdos generales', 'Enfoques didácticos y metodológicos', 'Base de datos de empresas', 'Atención a la diversidad'], titulos.join(' · '));
+
+  // El PDF, con el título del tomo que le toca a un PCCF y con su contenido dentro.
+  const impreso = JSON.stringify(await definicionDe(u.jefa, id));
+  assert.ok(impreso.includes('Proyecto curricular'), 'la portada no dice que es un PCCF');
+  assert.ok(impreso.includes('Trabajo por proyectos y aula taller.'), 'el contenido no llega al PDF');
+
+  // Y el Word.
+  const xml = await wordDe(u.jefa, id);
+  assert.ok(xml.includes('Base de datos de empresas'), 'el subapartado no llega al Word');
+  assert.ok(xml.includes('Las empresas que colaboran con el ciclo.'), 'el contenido no llega al Word');
+
+  assert.equal((await repo.documentos.obtener(id)).tipo, 'pccf');
+});
+
+prueba('un Word del que no sale ni un apartado se niega, y el 400 dice qué arreglar', async () => {
+  // La otra cara del respaldo del índice: el mismo PCCF SIN índice no tiene estructura por ningún
+  // lado. Guardarlo dejaría un documento que sale en la lista, no se puede navegar y cuyo PDF son dos
+  // páginas de portada, así que se niega antes de escribir nada. Esto es lo que hay que arreglar en
+  // el Word —aplicar Título 1/2/3 o poner el índice al día—, y el mensaje lo dice.
   const { repo, u } = await escenarioLimpio();
   const antes = (await repo.documentos.listar({})).length;
 
-  const cuerpo = await esError(await subir(u.jefa, await docxMemoria(), { tipo: 'pccf', ciclo: 'DAW' }), 400, 'peticion');
+  const cuerpo = await esError(await subir(u.jefa, await docxPccf({ conIndice: false }), { tipo: 'pccf', ciclo: 'DAW' }), 400, 'peticion');
   assert.ok(/estilos de t/i.test(cuerpo.mensaje), `el 400 tiene que decir qué arreglar: ${cuerpo.mensaje}`);
   assert.ok(/T[íi]tulo 1/.test(cuerpo.mensaje), `el 400 tiene que decir cómo arreglarlo: ${cuerpo.mensaje}`);
   assert.equal((await repo.documentos.listar({})).length, antes, 'un 400 no puede dejar nada escrito');
@@ -1091,6 +1183,7 @@ prueba('el PCCF se niega, y el 400 dice qué hay que arreglar en el Word', async
   const otro = await esError(await subir(u.jefa, await docxMemoria(), { tipo: 'acta' }), 400, 'peticion');
   assert.ok(otro.mensaje.includes('programacion_didactica'), otro.mensaje);
   assert.ok(otro.mensaje.includes('memoria'), otro.mensaje);
+  assert.ok(otro.mensaje.includes('pccf'), otro.mensaje);
 });
 
 prueba('una programación subida como memoria da 400 con la lista de módulos y no escribe nada', async () => {

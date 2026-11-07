@@ -54,6 +54,10 @@ memoria, así que funciona recién clonado y lo que se escriba se pierde al rein
   comparte memoria con el servidor; para sembrar de verdad hace falta `MONGODB_URI`. Un documento
   sembrado así se pide con `PCCF_SEMILLA_DESDE=out/importado PCCF_SEMILLA_CICLO=daw npm run dev`.
 - `npm run importar <fichero.docx>` importa un Word por consola y deja el resultado en `out/`.
+- `MONGODB_URI=mongodb://localhost:27017 npm run cargar-reales` carga en Mongo los documentos reales del
+  departamento, 2025-26 y 2026-27 encadenados (los de `docs/entrada_ej/`, que no se versionan); sustituye
+  lo que hubiera del mismo tipo y curso, y con `-- --repartir` reparte los módulos entre las personas de
+  muestra, que son inventadas. Sin `MONGODB_URI` se niega, porque lo cargado se perdería al terminar.
 
 ## Datos personales
 

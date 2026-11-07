@@ -290,46 +290,287 @@ const limpiarPlantilla = (s) => ({
 // styles.xml): es lo que Word usa para construir el índice, y no depende del
 // nombre ni del idioma. De ahí se arma el mapa de estilos que mammoth necesita.
 // Si el documento no declara ninguno, se queda el comportamiento de siempre.
-async function mapaDeTitulos(input) {
+// Las partes del .docx que hacen falta, leídas de una vez. Devuelve null si no se
+// puede abrir —un fichero que no es un zip, una ruta que no existe—: el
+// importador sigue entonces con el comportamiento por omisión de mammoth.
+async function partesDocx(input, nombres) {
   let buffer = input && input.buffer;
   if (!buffer && input && input.path) {
-    try { buffer = await fs.promises.readFile(input.path); } catch (e) { return []; }
+    try { buffer = await fs.promises.readFile(input.path); } catch (e) { return null; }
   }
-  if (!buffer) return [];
-  let styles;
+  if (!buffer) return null;
   try {
     const zip = await JSZip.loadAsync(buffer);
-    const parte = zip.file('word/styles.xml');
-    if (!parte) return [];
-    styles = await parte.async('string');
+    const out = {};
+    for (const n of nombres) { const parte = zip.file(n); out[n] = parte ? await parte.async('string') : null; }
+    return out;
   } catch (e) {
-    return [];
+    return null;
   }
+}
+
+// styles.xml -> los estilos de párrafo que declara, por su styleId. `nivel` es el
+// nivel de esquema ya en forma de hN (1..9), o null si el estilo no declara ninguno.
+function estilosDeParrafo(styles) {
+  const out = new Map();
+  for (const m of String(styles || '').matchAll(/<w:style\b([^>]*)>([\s\S]*?)<\/w:style>/g)) {
+    if (!/w:type="paragraph"/.test(m[1])) continue;
+    const id = (m[1].match(/w:styleId="([^"]+)"/) || [])[1];
+    if (!id) continue;
+    const nombre = (m[2].match(/<w:name\s+w:val="([^"]+)"/) || [])[1] || null;
+    const nivel = (m[2].match(/<w:outlineLvl\s+w:val="(\d+)"/) || [])[1];
+    out.set(id, {
+      id,
+      nombre,
+      nivel: nivel === undefined ? null : Number(nivel) + 1,
+      // el estilo base del documento (casi siempre «Normal»): el texto corriente
+      porDefecto: /w:default="(?:1|true|on)"/.test(m[1]),
+    });
+  }
+  return out;
+}
+
+// Una regla del mapa de estilos de mammoth. Por styleId cuando se puede
+// (`p.Estilo1`): es lo que lleva escrito cada párrafo y no se repite entre
+// estilos. Su gramática solo admite letras, dígitos, guión y subrayado, así que
+// un id con acentos se expresa por el nombre visible; y el nombre va entre
+// comillas simples, así que uno que las lleve dentro no se puede expresar.
+function reglaDeEstilo(estilo, h) {
+  if (h < 1 || h > 6) return null;
+  if (/^[A-Za-z_-][A-Za-z0-9_-]*$/.test(estilo.id)) return 'p.' + estilo.id + ' => h' + h + ':fresh';
+  if (estilo.nombre && estilo.nombre.indexOf("'") < 0) return "p[style-name='" + estilo.nombre + "'] => h" + h + ":fresh";
+  return null;
+}
+
+// El mapa de siempre: un estilo con nivel de esquema es un título de ese nivel.
+// Va por NOMBRE y no por styleId porque es así como lo hace mammoth por omisión y
+// porque es el camino por el que pasan todos los documentos que ya entran bien.
+function reglasDeNivelDeEsquema(estilos) {
   const reglas = [];
   const vistos = new Set();
-  for (const m of String(styles).matchAll(/<w:style\b([^>]*)>([\s\S]*?)<\/w:style>/g)) {
-    if (!/w:type="paragraph"/.test(m[1])) continue;
-    const nombre = (m[2].match(/<w:name\s+w:val="([^"]+)"/) || [])[1];
-    const nivel = (m[2].match(/<w:outlineLvl\s+w:val="(\d+)"/) || [])[1];
-    if (!nombre || nivel === undefined) continue;
-    const h = Number(nivel) + 1;
+  for (const e of estilos.values()) {
+    if (!e.nombre || e.nivel === null) continue;
     // El nombre va entre comillas simples en el mapa de mammoth, así que uno que
     // las lleve dentro no se puede expresar; y más de seis niveles no hay.
-    if (h < 1 || h > 6 || nombre.indexOf("'") >= 0 || vistos.has(nombre)) continue;
-    vistos.add(nombre);
-    reglas.push("p[style-name='" + nombre + "'] => h" + h + ":fresh");
+    if (e.nivel < 1 || e.nivel > 6 || e.nombre.indexOf("'") >= 0 || vistos.has(e.nombre)) continue;
+    vistos.add(e.nombre);
+    reglas.push("p[style-name='" + e.nombre + "'] => h" + e.nivel + ":fresh");
   }
   return reglas;
 }
 
+// ------------------------------------------------- respaldo: el índice del documento
+// Hay documentos cuyos apartados numerados están escritos con estilos PROPIOS
+// —`Estilo1`, `Estilo3` y `Estilo4` en los dos PCCF del departamento— que no
+// declaran nivel de esquema: ni Word los considera títulos, así que arriba no hay
+// nada que leer y el documento entero entra como un solo apartado.
+//
+// Pero esos documentos llevan dentro su propia TABLA DE CONTENIDOS, y ahí sí está
+// la estructura: una entrada por apartado, con su nivel. Así que cuando la
+// deducción normal se queda sin tronco se busca el índice, se mira con qué estilo
+// está escrito en el cuerpo el párrafo de cada entrada, y esos estilos se
+// promueven a título del nivel que diga el índice. El documento dice cuál es su
+// estructura; solo que en el índice en vez de en los estilos.
+//
+// Es un RESPALDO y no el camino normal porque adivinar la estructura es peor que
+// no deducirla: una estructura inventada no se nota al importar, se nota en junio
+// al exportar. De ahí las condiciones de `titulosDelIndice`.
+
+// Los estilos de entrada de índice son los built-in de Word, nueve niveles, y su
+// nombre cambia con el idioma del editor: `toc 1` es el nombre interno —lo que
+// Word escribe en `w:name` aunque el documento esté en otro idioma—, mientras el
+// styleId se localiza: `TDC1` en español, `IDC1` en los documentos en valenciano
+// de LibreOffice, `TM1` en francés. El patrón es siempre el mismo —una palabra de
+// índice y el número de nivel—, así que se busca eso en el nombre Y en el
+// styleId, y no una lista cerrada de estilos conocidos.
+const PALABRAS_DE_INDICE = new Set([
+  'toc', 'tdc', 'idc', 'tm', 'tdm', 'toi',
+  'indice', 'index', 'contents', 'tableofcontents', 'contenido', 'contenidos',
+  'contingut', 'continguts', 'taula', 'sumario', 'sumari', 'summary',
+  'tabledesmatieres', 'tablesdesmatieres', 'sommaire', 'matieres',
+  'inhalt', 'inhaltsverzeichnis', 'verzeichnis', 'innehall', 'indholdsfortegnelse',
+]);
+const clave = (t) => sinAcentos(String(t || '')).toLowerCase().replace(/[^a-z0-9]+/g, '');
+function nivelDeIndice(estilo) {
+  for (const etiqueta of [estilo.nombre, estilo.id]) {
+    const m = clave(etiqueta).match(/^([a-z]+)([1-9])$/);
+    if (m && PALABRAS_DE_INDICE.has(m[1])) return Number(m[2]);
+  }
+  return null;
+}
+
+// La entrada del índice lleva pegado el número de página, y delante de él puntos
+// de relleno o el tabulador que los sustituye: «0. Introducción3»,
+// «1. Identificación del ciclo formativo3». Se compara por las dos formas —con y
+// sin esa cola— para no estropear un título que de verdad acaba en un número
+// («Anexo 2» en la página 7 llega como «Anexo 27»).
+const COLA_DE_PAGINA = /[\s.·…_\- ]*\d+\s*$/;
+const clavesDeEntrada = (t) => {
+  const con = norm(t);
+  const sin = norm(String(t).replace(COLA_DE_PAGINA, ''));
+  return sin && sin !== con ? [con, sin] : [con];
+};
+
+// document.xml -> los párrafos del documento, con su estilo y su texto, en orden.
+// Se lee a mano y no del HTML de mammoth porque lo que hace falta aquí es justo lo
+// que el HTML ya ha perdido: con qué estilo está escrito cada párrafo. Lleva una
+// pila porque un párrafo puede contener otro (un cuadro de texto), y los párrafos
+// de dentro de una tabla cuentan como cualquier otro: un estilo que se use
+// también ahí no es un estilo de título y conviene que se note.
+function parrafosDeXml(xml) {
+  const out = [];
+  const pila = [];
+  const re = /<w:p(?=[ />])[^>]*?(\/?)>|<\/w:p>|<w:pStyle\b[^>]*?w:val="([^"]*)"[^>]*?\/?>|<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:tab\b[^>]*?\/?>/g;
+  let m;
+  while ((m = re.exec(String(xml || '')))) {
+    if (m[0].startsWith('</w:p')) { const p = pila.pop(); if (p) out.push(p); continue; }
+    if (m[2] === undefined && m[3] === undefined && m[0].startsWith('<w:p')) {
+      if (m[1] === '/') out.push({ estilo: '', texto: '' }); else pila.push({ estilo: '', texto: '' });
+      continue;
+    }
+    const act = pila[pila.length - 1];
+    if (!act) continue;
+    if (m[2] !== undefined) { if (!act.estilo) act.estilo = m[2]; continue; }
+    act.texto += m[3] === undefined ? ' ' : m[3];
+  }
+  return out;
+}
+
+// CON QUÉ CONDICIONES. Son cuatro, y las cuatro miden lo mismo: que el índice
+// describa de verdad el documento y que no se esté adivinando nada.
+//
+//   1. hay un índice reconocible y sus entradas llegan a MIN_ENTRADAS: con dos
+//      entradas, que casen no dice nada;
+//   2. una proporción alta de las entradas (PROPORCION) casa con un párrafo del
+//      cuerpo. Un índice viejo que ya no describe el documento no casa, y
+//      entonces no se toca nada;
+//   3. cada estilo candidato se usa EN EXCLUSIVA para esos títulos
+//      (EXCLUSIVIDAD): si un estilo tiene veinte párrafos con texto y solo cuatro
+//      son entradas del índice, es un estilo de texto corriente y no de título.
+//      Esta es la condición que impide que «Normal» —que casa con las entradas
+//      del índice que no son títulos— se lleve por delante el documento entero;
+//   4. y de todo eso sale al menos un título de primer nivel. Un árbol al que le
+//      falta el tronco es lo que ya había, no una mejora.
+//
+// Los párrafos vacíos no cuentan como uso de un estilo: no producen nada en el
+// HTML, así que no pueden convertirse en un título. En los PCCF `Estilo3` tiene
+// 21 párrafos, de los que 8 están vacíos; los 13 con texto son los 13 títulos de
+// segundo nivel del índice.
+const MIN_ENTRADAS = 3;
+const PROPORCION = 0.8;
+const EXCLUSIVIDAD = 0.8;
+function titulosDelIndice(styles, documentXml) {
+  const estilos = estilosDeParrafo(styles);
+  const nivelPorEstilo = new Map();
+  for (const e of estilos.values()) { const n = nivelDeIndice(e); if (n) nivelPorEstilo.set(e.id, n); }
+  if (!nivelPorEstilo.size) return null;
+
+  const entradas = [];
+  const usos = new Map();     // styleId -> párrafos con texto que lo usan
+  const porClave = new Map(); // texto normalizado del cuerpo -> estilos con los que aparece
+  for (const p of parrafosDeXml(documentXml)) {
+    const texto = limpiar(p.texto);
+    if (!texto) continue;
+    const nivel = nivelPorEstilo.get(p.estilo);
+    // de los nueve niveles del índice solo seis se pueden expresar como título;
+    // los más profundos no cuentan ni a favor ni en contra.
+    if (nivel) { if (nivel <= 6) entradas.push({ nivel, texto }); continue; }
+    usos.set(p.estilo, (usos.get(p.estilo) || 0) + 1);
+    const k = norm(texto);
+    if (!k) continue;
+    if (!porClave.has(k)) porClave.set(k, new Set());
+    porClave.get(k).add(p.estilo);
+  }
+  if (entradas.length < MIN_ENTRADAS) return null;
+
+  const votos = new Map(); // styleId -> Map(nivel -> nº de entradas del índice)
+  let casadas = 0;
+  for (const e of entradas) {
+    const ids = new Set();
+    for (const k of clavesDeEntrada(e.texto)) for (const id of porClave.get(k) || []) ids.add(id);
+    if (!ids.size) continue;
+    casadas += 1;
+    for (const id of ids) {
+      if (!votos.has(id)) votos.set(id, new Map());
+      const m = votos.get(id);
+      m.set(e.nivel, (m.get(e.nivel) || 0) + 1);
+    }
+  }
+  if (casadas / entradas.length < PROPORCION) return null;
+
+  const candidatos = [];
+  for (const [id, niveles] of votos) {
+    const estilo = estilos.get(id);
+    // un estilo que ya declara nivel de esquema ya es un título, y el estilo base
+    // del documento es el texto corriente: ni uno ni otro se promueven.
+    if (!estilo || estilo.nivel !== null || estilo.porDefecto) continue;
+    const titulos = [...niveles.values()].reduce((a, b) => a + b, 0);
+    if (titulos / (usos.get(id) || titulos) < EXCLUSIVIDAD) continue;
+    // si el índice le da dos niveles distintos manda el más repetido y, en
+    // empate, el más alto.
+    const nivel = [...niveles.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+    const regla = reglaDeEstilo(estilo, nivel);
+    if (regla) candidatos.push({ estilo: id, nombre: estilo.nombre, nivel, titulos, usos: usos.get(id) || titulos, regla });
+  }
+  if (!candidatos.some((c) => c.nivel === 1)) return null;
+
+  candidatos.sort((a, b) => a.nivel - b.nivel || b.titulos - a.titulos);
+  return { entradas: entradas.length, casadas, estilos: candidatos, reglas: candidatos.map((c) => c.regla) };
+}
+
 // ---------------------------------------------------------------- importación completa
-async function importarDocx(input, opts = {}) {
-  const styleMap = await mapaDeTitulos(input);
+const convertir = async (input, styleMap) => {
   const { value: html, messages } = await mammoth.convertToHtml(input, styleMap.length ? { styleMap } : undefined);
-  const nodos = htmlANodos(html);
+  return { messages, nodos: htmlANodos(html) };
+};
+const cuantosTitulos = (nodos, nivel) => nodos.filter((n) => n.type === 'h' && (!nivel || n.level === nivel)).length;
+
+async function importarDocx(input, opts = {}) {
+  const partes = await partesDocx(input, ['word/styles.xml']);
+  const styles = partes && partes['word/styles.xml'];
+  const styleMap = reglasDeNivelDeEsquema(estilosDeParrafo(styles));
+  let leido = await convertir(input, styleMap);
+
+  // EL RESPALDO DEL ÍNDICE se dispara solo cuando la deducción normal no ha
+  // encontrado NI UN título de primer nivel, que es la forma que tiene un
+  // documento sin estructura legible: o no hay títulos —el PCCF de SMR, cero— o
+  // los que hay cuelgan de la nada —el de DAW, nueve de cuarto y quinto nivel—.
+  // Un documento que ya trae su primer nivel no pasa por aquí, y eso es lo que
+  // garantiza que esto no pueda cambiar el resultado de nada que ya se importara
+  // bien: la PD y las memorias traen entre cinco y diez títulos de primer nivel.
+  let indice = null;
+  if (!cuantosTitulos(leido.nodos, 1)) {
+    // document.xml se lee AQUÍ y no arriba: en la PD son dos megas de XML que no
+    // hacen falta para nada por el camino normal.
+    const cuerpo = await partesDocx(input, ['word/document.xml']);
+    const hallado = cuerpo && cuerpo['word/document.xml']
+      ? titulosDelIndice(styles, cuerpo['word/document.xml'])
+      : null;
+    if (hallado) {
+      // las reglas nuevas van delante: en mammoth gana la primera que encaja.
+      const segundo = await convertir(input, hallado.reglas.concat(styleMap));
+      // y aun así solo se acepta si de verdad mejora: con su primer nivel y con
+      // más títulos que antes.
+      if (cuantosTitulos(segundo.nodos, 1) && cuantosTitulos(segundo.nodos) > cuantosTitulos(leido.nodos)) {
+        leido = segundo;
+        indice = hallado;
+      }
+    }
+  }
+
+  const { messages, nodos } = leido;
   const raiz = construirArbol(nodos);
   const avisos = [];
   if (raiz.bloques.length && !opts.incluirInicial) avisos.push(`${raiz.bloques.length} bloques antes del primer título (portada o índice); se ignoran.`);
+  // Que la estructura venga del índice y no de los estilos no es un error, pero
+  // sí algo que quien sube el fichero tiene que saber: lo que se ha importado
+  // depende de que el índice del Word esté al día.
+  if (indice) {
+    avisos.push(`La estructura se ha deducido del ÍNDICE del documento: sus apartados están escritos con estilos `
+      + `propios que no declaran nivel de esquema (${indice.estilos.map((e) => `${e.nombre || e.estilo} → nivel ${e.nivel}`).join(', ')}). `
+      + `${indice.casadas} de ${indice.entradas} entradas del índice casan con un párrafo del cuerpo. `
+      + `Si el índice no estuviera al día, lo importado tampoco lo estará.`);
+  }
 
   // 1) grupos de instancias en el primer nivel (p. ej. "Módulos del primer curso" + "... segundo curso")
   const grupos = [];
@@ -394,6 +635,9 @@ async function importarDocx(input, opts = {}) {
     nodos: nodos.length, titulos: nodos.filter((n) => n.type === 'h').length, tablas: nodos.filter((n) => n.type === 'table').length,
     secciones: cuenta.secciones, repetidores: cuenta.repetidores, camposPorTipo: cuenta.campos,
     instancias: instanciasOut.map((i) => `${i.grupo} › ${i.titulo}`), compartidos, avisos, mensajesMammoth: messages.length,
+    // null salvo cuando ha hecho falta el respaldo del índice; entonces, de dónde
+    // ha salido la estructura y con cuánto apoyo.
+    indice: indice ? { entradas: indice.entradas, casadas: indice.casadas, estilos: indice.estilos.map(({ regla, ...e }) => e) } : null,
   };
   return { plantilla, datos, informe };
 }

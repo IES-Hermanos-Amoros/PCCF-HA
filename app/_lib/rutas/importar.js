@@ -42,41 +42,40 @@ const PUEDEN_IMPORTAR = ['admin', 'jefe_departamento'];
 // Hasta el E7 solo la PD, a propósito: el importador leía los otros dos, pero su camino hasta el PDF
 // no estaba probado y era mejor negarse que guardar un documento que luego se exporta mal.
 //
-// El E7 lo prueba con los documentos reales del departamento, y el resultado es que entra la memoria
-// y NO entra el PCCF. Los números, que son lo que decide:
+// El E7 lo prueba con los documentos reales del departamento, y ahí entró la memoria y NO entró el
+// PCCF: sus apartados numerados están escritos con estilos propios del documento —`Estilo1`,
+// `Estilo3`, `Estilo4`— que no declaran nivel de esquema, así que ni Word los considera títulos y el
+// importador no encontraba estructura: 9 apartados en el de DAW —nueve `Título 4` y `Título 5`
+// colgando de la nada— y 0 en el de SMR.
+//
+// Eso ya no es verdad. El importador tiene ahora un respaldo: cuando la deducción por estilos se
+// queda sin tronco, lee la TABLA DE CONTENIDOS que el propio documento lleva dentro y de ahí saca qué
+// estilos llevan los títulos y a qué nivel (motor/importar-docx.js, «respaldo: el índice del
+// documento»). En los dos PCCF las 22 entradas del índice casan con un párrafo del cuerpo y los tres
+// estilos se usan en exclusiva para esos títulos, así que la estructura sale entera. Los números con
+// los que se decide admitirlo:
 //
 //   Memoria del departamento 2026-27    43 apartados · 0 módulos · el 96 % del texto del cuerpo
-//   PCCF de DAW                          9 apartados · 0 módulos · el 36 % del texto del cuerpo
-//   PCCF de SMR                          0 apartados · 0 módulos · el  0 % del texto del cuerpo
+//   PCCF de DAW                         31 apartados · 0 módulos · el 99 % del texto del cuerpo
+//   PCCF de SMR                         22 apartados · 0 módulos · el 98 % del texto del cuerpo
 //
-// POR QUÉ EL PCCF SE QUEDA FUERA
+// Y su camino hasta el PDF y hasta el Word, que es lo que faltaba por probar: el PCCF de SMR sale en
+// 20 páginas y el de DAW en 35, y el Word exportado vuelve a entrar por el importador con los mismos
+// apartados. Ninguno de los dos lleva bloques repetidos, así que entran como un solo tomo de
+// apartados comunes (ver abajo, «los módulos son de la PD»).
 //
-// No es un fallo del importador ni de la exportación: es que **en esos dos Word los títulos de los
-// apartados no son títulos**. El importador deduce la estructura de los estilos de título, y los dos
-// PCCF tienen sus veintitrés apartados numerados escritos con estilos propios del documento
-// —`Estilo1`, `Estilo3`, `Estilo4`— que no llevan nivel de esquema, así que **Word tampoco los
-// considera títulos**: el índice que traen quedó guardado de cuando sí lo eran y hoy no se
-// regeneraría. El de DAW usa además `Título 4` y `Título 5` nueve veces, y eso es exactamente lo que
-// el importador encuentra: nueve subapartados de cuarto nivel colgando de la nada, con dos tercios
-// del documento por el suelo.
-//
-// Importar eso daría un documento con un apartado por cada cosa que el importador reconoció y sin
-// nada de lo demás —el de SMR, literalmente vacío—, y exportarlo daría un PDF de dos páginas que
-// nadie reconocería como el proyecto curricular del ciclo. Es el caso para el que se escribió la
-// negativa, así que sigue negándose, pero el 400 dice ahora QUÉ hay que arreglar y dónde: se arregla
-// en Word, aplicando Título 1/2/3 a esos apartados, y entonces entra por aquí sin tocar una línea de
-// código. No se baja el umbral ni se adivina la estructura por el tamaño de la letra: una estructura
-// adivinada no se nota al importar, se nota en junio al exportar.
-const TIPOS = ['programacion_didactica', 'memoria'];
+// Lo que NO se ha hecho es bajar el umbral: la estructura no se adivina por el tamaño de la letra ni
+// por la negrita. O la dice el documento —en sus estilos o en su índice— o no se deduce, porque una
+// estructura adivinada no se nota al importar, se nota en junio al exportar. Un PCCF cuyo índice no
+// casara con el cuerpo volvería a dar 0 apartados, y entonces lo que hay que arreglar sigue estando
+// en el Word.
+const TIPOS = ['programacion_didactica', 'memoria', 'pccf'];
 
-// Los tipos que NO son la PD, con el motivo. Se responden con un 400 que explica el porqué en lugar
-// de un «todavía no»: lo de «todavía no» era verdad hasta el E7 y ya no lo es.
-const NO_ADMITIDOS = {
-  pccf: 'Los dos PCCF del departamento tienen los títulos de sus apartados escritos con estilos '
-    + 'propios en lugar de con los estilos de título de Word, así que ni Word ni esta herramienta los '
-    + 'reconocen como títulos: al importarlos no entra casi nada del documento. Aplícales Título 1, '
-    + 'Título 2 y Título 3 a los apartados y vuelve a subirlo.',
-};
+// Los tipos que se rechazan con un motivo, en lugar de con un «todavía no». Hoy no hay ninguno: aquí
+// estuvo el PCCF mientras el importador no sabía leerlo. Se queda el mecanismo —y su 400 explicado—
+// porque el siguiente tipo que se intente admitir pasará por el mismo sitio, y porque es la forma de
+// distinguir «este tipo no se puede importar POR ESTO» de «ese tipo no existe».
+const NO_ADMITIDOS = {};
 
 // El `ciclo` lo piden todos menos la memoria: la memoria es del departamento entero —ESO,
 // Bachillerato y los dos ciclos de FP en el mismo documento—, así que exigirle un ciclo sería
@@ -131,7 +130,9 @@ const POST = conErrores(async (peticion) => {
   }
 
   const tipo = texto(formulario, 'tipo');
-  if (NO_ADMITIDOS[tipo]) {
+  // Con `hasOwnProperty` y no `NO_ADMITIDOS[tipo]`: lo que llega es un campo de un formulario, y
+  // `tipo=constructor` encontraría lo que hereda cualquier objeto y respondería con un disparate.
+  if (Object.prototype.hasOwnProperty.call(NO_ADMITIDOS, tipo)) {
     return malaPeticion(`El tipo «${tipo}» no se puede importar. ${NO_ADMITIDOS[tipo]}`);
   }
   if (!TIPOS.includes(tipo)) {
@@ -160,15 +161,59 @@ const POST = conErrores(async (peticion) => {
     return SIN_PERMISO('Solo puedes importar documentos de tu propio departamento.');
   }
 
-  // El Word. Un fichero que el importador no sabe leer es culpa de quien lo sube, no del servidor.
   const buffer = Buffer.from(await archivo.arrayBuffer());
+  const resultado = await guardarImportacion({
+    buffer, origen: archivo.name || null, tipo, ciclo, curso, departamento, forzar, inicio,
+  });
+  if (resultado.error) {
+    return fallo(400, 'peticion', resultado.error.mensaje, resultado.error.extra);
+  }
+  return Response.json(
+    { documento: sinPlantilla(resultado.documento), resumen: resultado.resumen },
+    { status: 201, headers: { 'Cache-Control': 'no-store' } },
+  );
+});
+
+// ---------------------------------------------------------------- el núcleo, sin HTTP
+//
+// Lo que hace la ruta una vez validado el formulario: leer el Word, conciliar los módulos y escribir
+// el documento. La usan la ruta y scripts/cargar-reales.js, que carga los documentos del departamento
+// sin pasar por HTTP: así las dos cargas son la misma lógica y no dos que se separen.
+//
+// Devuelve { documento, resumen } si lo guarda, o { error: { mensaje, extra, causa } } si lo rechaza.
+// Todo rechazo ocurre antes de la primera escritura. `causa` es el mensaje técnico del importador, para
+// quien llama por consola; la ruta no lo envía.
+//
+// `anteriorId` apunta al documento del curso anterior (docs/plan.md §2.1). La ruta no lo pasa: lo que
+// sube un usuario empieza su historia, y el curso siguiente se crea con /siguiente-curso.
+async function guardarImportacion({
+  buffer, origen, tipo, ciclo, curso, departamento, forzar,
+  inicio = Date.now(), anteriorId = null, repo = obtenerRepositorio(),
+}) {
+  const rechazo = (mensaje, extra = {}, causa = undefined) => ({ error: { mensaje, extra, causa } });
+
   let importado;
   try {
-    importado = await importarDocx({ buffer }, { tipo, departamento, origen: archivo.name || null });
+    importado = await importarDocx({ buffer }, { tipo, departamento, origen });
   } catch (e) {
-    return malaPeticion('No puedo leer ese fichero como un documento de Word (.docx).');
+    return rechazo('No puedo leer ese fichero como un documento de Word (.docx).', {}, e.message);
   }
   const { plantilla, datos, informe } = importado;
+
+  // ---------------------------------------------------------------- UN DOCUMENTO SIN APARTADOS NO SE GUARDA
+  //
+  // Si el importador no ha deducido NI UN apartado, lo que se guardaría es un documento vacío: sale
+  // en la lista, no se puede navegar y su PDF son dos páginas de portada. Esta es la protección que
+  // antes daba el 400 del PCCF, y sigue hecha falta: el respaldo del índice resuelve los dos PCCF
+  // del departamento, pero un Word cuyos apartados no son títulos Y cuyo índice no casa con el
+  // cuerpo no tiene estructura por ningún lado, y eso se arregla en el Word y no aquí.
+  if (!informe.secciones) {
+    return rechazo('De este Word no sale ni un apartado: los títulos de sus apartados no están escritos con '
+      + 'los estilos de título de Word, así que ni Word ni esta herramienta los reconocen como títulos, y '
+      + 'tampoco hay un índice al día del que deducirlos. Aplícales Título 1, Título 2 y Título 3 a los '
+      + 'apartados —o actualiza el índice del documento— y vuelve a subirlo. No se ha guardado nada.',
+      { tipo, avisos: informe.avisos });
+  }
 
   // ---------------------------------------------------------------- LOS MÓDULOS SON DE LA PD
   //
@@ -195,9 +240,7 @@ const POST = conErrores(async (peticion) => {
   // No se escribe nada: el 400 llega antes de la primera escritura, como el de `sinResolver`.
   const instancias = Array.isArray(datos.instancias) ? datos.instancias : [];
   if (tipo !== 'programacion_didactica' && instancias.length) {
-    return fallo(
-      400, 'peticion',
-      `Este Word tiene ${instancias.length} bloques repetidos que parecen módulos, y un documento `
+    return rechazo(`Este Word tiene ${instancias.length} bloques repetidos que parecen módulos, y un documento `
       + `de tipo «${tipo}» no lleva módulos: el PCCF es del ciclo y la memoria, del departamento entero. `
       + 'Lo más probable es que sea una programación didáctica y se haya quedado el tipo sin cambiar. '
       + 'No se ha guardado nada.',
@@ -209,9 +252,7 @@ const POST = conErrores(async (peticion) => {
   const { unidades: conciliadas, sinResolver } = conciliar(datos.instancias, { curso, ciclo });
 
   if (sinResolver.length && !forzar) {
-    return fallo(
-      400, 'peticion',
-      `No reconozco ${sinResolver.length} de los ${datos.instancias.length} módulos del documento. `
+    return rechazo(`No reconozco ${sinResolver.length} de los ${datos.instancias.length} módulos del documento. `
       + 'Revisa su título en el catálogo, o vuelve a subirlo con forzar=1 para importarlos con un '
       + 'identificador derivado de su título.',
       { sinResolver: sinResolver.map(({ titulo, motivo }) => ({ titulo, motivo })) },
@@ -249,10 +290,10 @@ const POST = conErrores(async (peticion) => {
     // Un documento que se importa de cero: todos sus apartados nacen como `nuevo`. Lo `heredado`
     // aparece en el E5, cuando se cree un curso desde el anterior.
     origenApartados: 'nuevo',
+    anteriorId,
     conciliar: (_titulo, instancia) => idPorInstancia.get(instancia),
   });
 
-  const repo = obtenerRepositorio();
   const documento = await repo.documentos.crear(filas.documento);
   try {
     if (filas.unidades.length) await repo.unidades.crearMuchos(documento._id, filas.unidades);
@@ -288,10 +329,7 @@ const POST = conErrores(async (peticion) => {
     forzadas,
   };
 
-  return Response.json(
-    { documento: sinPlantilla(documento), resumen },
-    { status: 201, headers: { 'Cache-Control': 'no-store' } },
-  );
-});
+  return { documento, resumen };
+}
 
-module.exports = { POST };
+module.exports = { POST, guardarImportacion, TIPOS, NO_ADMITIDOS, EXIGEN_CICLO };

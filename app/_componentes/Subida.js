@@ -67,15 +67,7 @@ const CICLOS = (() => {
 const TIPOS = [
   { valor: 'programacion_didactica', etiqueta: 'Programación didáctica' },
   { valor: 'memoria', etiqueta: 'Memoria final de curso' },
-  // El PCCF se queda apagado y con el motivo a la vista porque el problema no es
-  // de la herramienta: sus apartados están escritos con estilos que no declaran
-  // nivel de esquema, así que ni Word los considera títulos y no hay estructura
-  // que deducir. Se arregla en el propio documento. Ver docs/plan.md.
-  {
-    valor: 'pccf',
-    etiqueta: 'Proyecto curricular del ciclo formativo (sus apartados no usan estilos de título)',
-    apagado: true,
-  },
+  { valor: 'pccf', etiqueta: 'Proyecto curricular del ciclo formativo' },
 ];
 
 // Quién puede importar, según app/_lib/rutas/importar.js. El servidor lo

@@ -96,7 +96,7 @@ título. Omitirlo significa «apartado común del documento».
 | `PATCH /api/personas/[id]` | `{ rol?, activo? }`. Nadie se sube de rango ni se da de baja a sí mismo | E2 |
 | `POST /api/personas/[id]/invitacion` | otro enlace para quien perdió el suyo; anula el anterior | E2 |
 | `GET /api/documentos` | lista, sin `plantilla` | E1 |
-| `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `curso`, `departamento`, `ciclo` (obligatorio salvo para `memoria`) y `forzar` opcional. Importa, concilia unidades y guarda. `tipo` es `programacion_didactica` o `memoria` (ver abajo). La importan `admin` y `jefe_departamento`, y solo en su departamento | E1·E7 |
+| `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `curso`, `departamento`, `ciclo` (obligatorio salvo para `memoria`) y `forzar` opcional. Importa, concilia unidades y guarda. `tipo` es `programacion_didactica`, `memoria` o `pccf` (ver abajo). La importan `admin` y `jefe_departamento`, y solo en su departamento | E1·E7 |
 | `GET /api/documentos/[id]` | el documento sin `plantilla` | E1 |
 | `GET /api/documentos/[id]/arbol` | el árbol de apartados y unidades, con el estado de cada nodo, el `origen` de cada apartado y el recuento `revision` (apartados, revisados, heredados y pendientes) | E1·E5 |
 | `POST /api/documentos/[id]/siguiente-curso` | crea el documento del curso siguiente a partir de este. Cuerpo opcional `{ curso }`, por omisión el siguiente al suyo. Copia la plantilla, las unidades con sus docentes, los apartados con su contenido y los textos compartidos; todos los apartados nacen `heredado` y el documento, en `borrador`, con `anteriorId`. 201 con el documento nuevo. La jefatura de departamento y el soporte, en su departamento. 409 si ese curso ya existe | E5 |
@@ -238,7 +238,8 @@ dejar documentos a medio importar en la lista.
 
 ## Qué tipos de documento se admiten
 
-Se admiten **`programacion_didactica` y `memoria`**. El PCCF da 400, y no por olvido.
+Se admiten **`programacion_didactica`, `memoria` y `pccf`**. Lo que da 400 es un Word del que no sale
+ni un apartado, sea del tipo que sea.
 
 Hasta el E7 solo entraba la PD, a propósito: el importador leía los otros dos, pero su camino hasta
 el PDF no estaba probado y era mejor negarse que guardar un documento que luego se exporta mal. El E7
@@ -248,28 +249,36 @@ lo prueba con los documentos reales del departamento, y lo que se mide es esto:
 |---|---|---|---|---|
 | Memoria del departamento 2026-27 | 43 | 0 | 96 % | **sí** |
 | Memoria del departamento 2025-26 | 43 | 0 | 96 % | **sí** |
-| PCCF de DAW | 9 | 0 | 36 % | no |
-| PCCF de SMR | 0 | 0 | 0 % | no |
+| PCCF de DAW | 31 | 0 | 99 % | **sí** |
+| PCCF de SMR | 22 | 0 | 98 % | **sí** |
 | PD de DAW 2026-27 (referencia) | 57 | 11 | — | sí |
 
 **La memoria entra entera.** 43 apartados, 34 tablas, ninguna unidad, y pasa el criterio del E1: la
 definición de pdfmake que da la base de datos es **idéntica** a la que da el importador sobre el mismo
 Word. El Word exportado vuelve a entrar por el importador con los mismos 43 apartados.
 
-**El PCCF no entra, y el problema está en el Word, no en el código.** El importador deduce la
-estructura de los estilos de título, y los dos PCCF tienen sus veintitrés apartados numerados escritos
-con estilos propios del documento (`Estilo1`, `Estilo3`, `Estilo4`) que no llevan nivel de esquema, así
-que **Word tampoco los considera títulos**: el índice que traen quedó guardado de cuando sí lo eran y
-hoy no se regeneraría. El de DAW usa además `Título 4` y `Título 5` nueve veces, y eso es exactamente
-lo que el importador encuentra: nueve subapartados de cuarto nivel colgando de la nada y dos tercios
-del documento por el suelo. El de SMR no usa ninguno y sale vacío.
+**El PCCF entra desde que el importador lee el índice del documento.** Antes no entraba: los dos PCCF
+tienen sus apartados numerados escritos con estilos propios del documento (`Estilo1`, `Estilo3`,
+`Estilo4`) que no llevan nivel de esquema, así que **Word tampoco los considera títulos** y el
+importador se quedaba con 9 apartados en el de DAW —nueve `Título 4` y `Título 5` colgando de la
+nada— y 0 en el de SMR. Pero los dos llevan dentro su propia tabla de contenidos, y ahí sí está la
+estructura: cuando la deducción por estilos se queda sin primer nivel, el importador busca el índice
+y de él saca qué estilos llevan los títulos y a qué nivel (`motor/importar-docx.js`, «respaldo: el
+índice del documento»). En los dos documentos las **22 entradas del índice casan con un párrafo del
+cuerpo** y los tres estilos se usan en exclusiva para esos títulos, así que la jerarquía sale entera
+—6 apartados, 13 subapartados y 3 de tercer nivel— y con ella el 98 % y el 99 % del texto. El PCCF de
+SMR se imprime en 20 páginas y el de DAW en 35, y el Word exportado vuelve a entrar por el importador
+con los mismos apartados.
 
-Importar eso daría un documento con un puñado de apartados y sin nada de lo demás, y exportarlo daría
-un PDF que nadie reconocería como el proyecto curricular del ciclo. Así que **sigue dando 400, pero el
-mensaje dice ahora qué hay que arreglar y dónde**: se arregla en Word, aplicando Título 1/2/3 a esos
-apartados, y entonces entra por aquí sin tocar una línea de código. No se baja el umbral ni se adivina
-la estructura por el tamaño de la letra: una estructura adivinada no se nota al importar, se nota en
-junio al exportar.
+**Lo que no se hace es adivinar.** El respaldo solo se dispara si la deducción normal se ha quedado
+sin un solo título de primer nivel —así no puede cambiar el resultado de un documento que ya entraba
+bien—, si una proporción alta de las entradas del índice casa con el cuerpo, y si los estilos que
+descubre se usan en exclusiva para esos títulos. Un índice que quedó de otra versión del documento no
+casa y entonces no se deduce nada; un estilo que también se usa para texto corriente no se toma por
+título. Y si de un Word no sale ni un apartado, **sigue dando 400 con lo que hay que arreglar y
+dónde**: se arregla en Word, aplicando Título 1/2/3 a los apartados o poniendo el índice al día. No se
+baja el umbral ni se deduce la estructura del tamaño de la letra: una estructura adivinada no se nota
+al importar, se nota en junio al exportar.
 
 **Los módulos son de la PD.** Un PCCF es del ciclo y una memoria, del departamento entero: ninguno
 repite un bloque por módulo, y los tres documentos reales dan **cero instancias**. Así que las

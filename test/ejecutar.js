@@ -34,6 +34,7 @@ const SUITES = [
   { archivo: 'scripts/test-compartidos.js', nombre: 'motor · textos compartidos' },
   { archivo: 'scripts/test-texto-rico.js', nombre: 'motor · texto con formato' },
   { archivo: 'scripts/test-ficha-sa.js', nombre: 'motor · fichas de situación de aprendizaje' },
+  { archivo: 'scripts/test-importar-docx.js', nombre: 'motor · importar de Word (estructura)' },
   { archivo: 'scripts/test-exportar-docx.js', nombre: 'motor · exportar a Word' },
   { archivo: 'scripts/test-sanear.js', nombre: 'motor · saneado de documentos' },
 
