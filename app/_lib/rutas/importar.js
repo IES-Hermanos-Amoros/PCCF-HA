@@ -7,9 +7,11 @@
 // LA SECUENCIA
 //
 //   1. quién pregunta (401) y si puede importar (403: solo admin y jefe de departamento);
-//   2. el formulario: los campos obligatorios, y que el departamento sea el de quien importa (403)
-//      salvo para el admin. Un jefe de departamento no crea documentos en el departamento de al lado;
-//   3. el .docx: se lee con motor/importar-docx.js. Un fichero que no es un Word da 400;
+//   2. el formulario: los campos obligatorios, el `tipo` —que es quien decide si hace falta el
+//      `ciclo`— y que el departamento sea el de quien importa (403) salvo para el admin. Un jefe de
+//      departamento no crea documentos en el departamento de al lado;
+//   3. el .docx: se lee con motor/importar-docx.js. Un fichero que no es un Word da 400. Y si el
+//      documento no es una PD pero trae bloques de módulo, 400: los módulos son de la PD (ver abajo);
 //   4. la conciliación de cada módulo con el catálogo (core/conciliar.js), que necesita el ciclo y el
 //      curso: por eso el formulario los pide (docs/api.md, «Por qué la importación exige el ciclo»);
 //   5. los módulos que no se reconocen: sin `forzar` se responde 400 con la lista y no se escribe
@@ -35,11 +37,55 @@ const { conErrores, fallo, malaPeticion, sinPlantilla } = require('./comun');
 // la jefatura de estudios no edita nada: es quien aprueba (docs/api.md, «Quién puede importar»).
 const PUEDEN_IMPORTAR = ['admin', 'jefe_departamento'];
 
-// De momento solo la PD. El PCCF y la memoria se importan por este mismo camino en el E7, y aceptarlos
-// aquí antes de probarlos sería aceptar un Word que luego no sale bien en el PDF.
-const TIPOS = ['programacion_didactica'];
+// ================================================================ QUÉ TIPOS SE ADMITEN, Y POR QUÉ
+//
+// Hasta el E7 solo la PD, a propósito: el importador leía los otros dos, pero su camino hasta el PDF
+// no estaba probado y era mejor negarse que guardar un documento que luego se exporta mal.
+//
+// El E7 lo prueba con los documentos reales del departamento, y el resultado es que entra la memoria
+// y NO entra el PCCF. Los números, que son lo que decide:
+//
+//   Memoria del departamento 2026-27    43 apartados · 0 módulos · el 96 % del texto del cuerpo
+//   PCCF de DAW                          9 apartados · 0 módulos · el 36 % del texto del cuerpo
+//   PCCF de SMR                          0 apartados · 0 módulos · el  0 % del texto del cuerpo
+//
+// POR QUÉ EL PCCF SE QUEDA FUERA
+//
+// No es un fallo del importador ni de la exportación: es que **en esos dos Word los títulos de los
+// apartados no son títulos**. El importador deduce la estructura de los estilos de título, y los dos
+// PCCF tienen sus veintitrés apartados numerados escritos con estilos propios del documento
+// —`Estilo1`, `Estilo3`, `Estilo4`— que no llevan nivel de esquema, así que **Word tampoco los
+// considera títulos**: el índice que traen quedó guardado de cuando sí lo eran y hoy no se
+// regeneraría. El de DAW usa además `Título 4` y `Título 5` nueve veces, y eso es exactamente lo que
+// el importador encuentra: nueve subapartados de cuarto nivel colgando de la nada, con dos tercios
+// del documento por el suelo.
+//
+// Importar eso daría un documento con un apartado por cada cosa que el importador reconoció y sin
+// nada de lo demás —el de SMR, literalmente vacío—, y exportarlo daría un PDF de dos páginas que
+// nadie reconocería como el proyecto curricular del ciclo. Es el caso para el que se escribió la
+// negativa, así que sigue negándose, pero el 400 dice ahora QUÉ hay que arreglar y dónde: se arregla
+// en Word, aplicando Título 1/2/3 a esos apartados, y entonces entra por aquí sin tocar una línea de
+// código. No se baja el umbral ni se adivina la estructura por el tamaño de la letra: una estructura
+// adivinada no se nota al importar, se nota en junio al exportar.
+const TIPOS = ['programacion_didactica', 'memoria'];
 
-const OBLIGATORIOS = ['archivo', 'tipo', 'ciclo', 'curso', 'departamento'];
+// Los tipos que NO son la PD, con el motivo. Se responden con un 400 que explica el porqué en lugar
+// de un «todavía no»: lo de «todavía no» era verdad hasta el E7 y ya no lo es.
+const NO_ADMITIDOS = {
+  pccf: 'Los dos PCCF del departamento tienen los títulos de sus apartados escritos con estilos '
+    + 'propios en lugar de con los estilos de título de Word, así que ni Word ni esta herramienta los '
+    + 'reconocen como títulos: al importarlos no entra casi nada del documento. Aplícales Título 1, '
+    + 'Título 2 y Título 3 a los apartados y vuelve a subirlo.',
+};
+
+// El `ciclo` lo piden todos menos la memoria: la memoria es del departamento entero —ESO,
+// Bachillerato y los dos ciclos de FP en el mismo documento—, así que exigirle un ciclo sería
+// obligar a quien la sube a elegir uno de mentira. El modelo ya lo admite nulo (docs/plan.md §3) y
+// `aFilas` lo guarda así. Para la PD y para cualquier documento de un ciclo sigue siendo obligatorio,
+// porque sin él la conciliación de los módulos es ambigua (docs/api.md, «Por qué la importación
+// exige el ciclo»).
+const OBLIGATORIOS = ['archivo', 'tipo', 'curso', 'departamento'];
+const EXIGEN_CICLO = ['programacion_didactica', 'pccf'];
 
 // Un campo de texto del formulario, sin espacios alrededor. Un `File` no es texto: si `archivo` llega
 // como texto plano, no hay fichero y se trata como si faltara.
@@ -77,19 +123,29 @@ const POST = conErrores(async (peticion) => {
 
   const archivo = formulario.get('archivo');
   const ficheroLlega = !!archivo && typeof archivo !== 'string' && typeof archivo.arrayBuffer === 'function';
+  // Los que hacen falta siempre. `ciclo` no está en la lista porque depende del tipo, así que se
+  // comprueba justo después de saber cuál es (ver EXIGEN_CICLO).
   for (const campo of OBLIGATORIOS) {
     const presente = campo === 'archivo' ? ficheroLlega : texto(formulario, campo) !== null;
     if (!presente) return malaPeticion(`Falta el campo «${campo}».`);
   }
 
   const tipo = texto(formulario, 'tipo');
-  const ciclo = texto(formulario, 'ciclo').toLowerCase();
+  if (NO_ADMITIDOS[tipo]) {
+    return malaPeticion(`El tipo «${tipo}» no se puede importar. ${NO_ADMITIDOS[tipo]}`);
+  }
+  if (!TIPOS.includes(tipo)) {
+    return malaPeticion(`El tipo «${tipo}» no se puede importar: usa ${TIPOS.join(' o ')}.`);
+  }
+
+  const cicloCrudo = texto(formulario, 'ciclo');
+  if (EXIGEN_CICLO.includes(tipo) && cicloCrudo === null) {
+    return malaPeticion('Falta el campo «ciclo».');
+  }
+  const ciclo = cicloCrudo === null ? null : cicloCrudo.toLowerCase();
   const curso = texto(formulario, 'curso');
   const departamento = texto(formulario, 'departamento');
 
-  if (!TIPOS.includes(tipo)) {
-    return malaPeticion(`El tipo «${tipo}» todavía no se puede importar: usa ${TIPOS.join(' o ')}.`);
-  }
   if (!/^\d{4}-\d{2}$/.test(curso)) {
     return malaPeticion(`El curso «${curso}» no tiene la forma 2026-27.`);
   }
@@ -113,6 +169,41 @@ const POST = conErrores(async (peticion) => {
     return malaPeticion('No puedo leer ese fichero como un documento de Word (.docx).');
   }
   const { plantilla, datos, informe } = importado;
+
+  // ---------------------------------------------------------------- LOS MÓDULOS SON DE LA PD
+  //
+  // Un documento que no es una programación didáctica NO repite un bloque por módulo: el PCCF es el
+  // proyecto del ciclo y la memoria es del departamento entero. Se ha comprobado con los documentos
+  // reales: la memoria del departamento y los dos PCCF dan **cero instancias**, así que las unidades
+  // —y por tanto la conciliación con el catálogo, el reparto al profesorado y el arrastre de
+  // asignaciones— simplemente no aplican ahí. No es que no funcionen: es que no hay nada que
+  // repartir, y el documento entra como un solo tomo de apartados comunes.
+  //
+  // Así que si el importador SÍ encuentra un bloque repetido en uno de esos tipos, no se concilia
+  // contra el catálogo de módulos: se para. Por dos motivos, y el primero es el que pasa de verdad:
+  //
+  //   1. ES EL ERROR MÁS PROBABLE DE QUIEN SUBE EL FICHERO: haber dejado el tipo sin cambiar. Una
+  //      programación subida como memoria se importaría sin protestar, con sus once módulos
+  //      conciliados y sus apartados en su sitio, y nadie lo notaría hasta que el documento saliera
+  //      en la lista con el nombre equivocado y la memoria de verdad no estuviera.
+  //   2. Y si el documento de verdad lleva un bloque repetido que no son los módulos del catálogo,
+  //      conciliarlo sería emparejar lo que no es un módulo con un módulo —o dejarlo sin resolver y
+  //      pedir `forzar=1`, que derivaría ids del título y los convertiría en unidades del documento
+  //      con su reparto y su arrastre—. Las dos cosas son adivinar, y la regla de esta ruta es que
+  //      no se adivina (docs/api.md, «Qué pasa si la importación no reconoce un módulo»).
+  //
+  // No se escribe nada: el 400 llega antes de la primera escritura, como el de `sinResolver`.
+  const instancias = Array.isArray(datos.instancias) ? datos.instancias : [];
+  if (tipo !== 'programacion_didactica' && instancias.length) {
+    return fallo(
+      400, 'peticion',
+      `Este Word tiene ${instancias.length} bloques repetidos que parecen módulos, y un documento `
+      + `de tipo «${tipo}» no lleva módulos: el PCCF es del ciclo y la memoria, del departamento entero. `
+      + 'Lo más probable es que sea una programación didáctica y se haya quedado el tipo sin cambiar. '
+      + 'No se ha guardado nada.',
+      { tipo, instancias: instancias.map((i) => i.titulo) },
+    );
+  }
 
   // La conciliación: cada módulo del Word, con su id estable del catálogo.
   const { unidades: conciliadas, sinResolver } = conciliar(datos.instancias, { curso, ciclo });

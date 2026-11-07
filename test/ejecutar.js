@@ -61,6 +61,10 @@ const SUITES = [
 
   // --- E6: cambiar la estructura del documento ----------------------------
   { archivo: 'test/estructura.js', nombre: 'estructura editable y versiones de la plantilla' },
+
+  // --- E7: aprobar, coordinar y los otros documentos ----------------------
+  { archivo: 'test/estados.js', nombre: 'estados del documento, PCCF y memoria' },
+  { archivo: 'test/coordinacion.js', nombre: 'coordinación y comentarios' },
 ];
 
 const AZUL = '\x1b[34m'; const ROJO = '\x1b[31m'; const VERDE = '\x1b[32m';

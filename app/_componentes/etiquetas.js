@@ -39,10 +39,17 @@ export const NOMBRE_ESTADO_DOC = {
 // pasa a significar lo que significaba en el prototipo: escrito, pero pendiente
 // de que alguien lo dé por bueno.
 //
-// El que sigue sin estar es «con errores»: sale de cruzar los avisos del panel de
-// validaciones con cada nodo del árbol, y `/arbol` no los manda. Mientras no los
-// mande NO se finge que exista, porque un ! que no sale cuando hay un error es
+// El quinto, «con errores», sale de cruzar los avisos del panel de validaciones
+// con cada apartado. `/arbol` no los manda, así que EN EL ÁRBOL sigue sin
+// aparecer y no se finge que exista: un ! que no sale cuando hay un error es
 // peor que no tener !.
+//
+// Donde sí aparece es en la coordinación del E7, porque ese cruce es exactamente
+// lo que hace su ruta (`app/_lib/rutas/coordinacion.js` llama al mismo cálculo
+// que sirve el panel de comprobaciones). De ahí que su nombre y su glifo estén
+// aquí y no escritos en esa pantalla: las cinco palabras y las cinco formas con
+// las que esta aplicación dice «cómo va esto» son una sola lista, y el día que
+// `/arbol` mande los avisos el árbol usará esta misma.
 //
 // El ÁRBOL DICE SI ESTÁ HECHO Y BIEN, NO DE DÓNDE VIENE (punto 6 de
 // docs/mockup-v2/CAMBIOS.md). La procedencia —que esto venga del curso pasado—
@@ -53,13 +60,14 @@ export const NOMBRE_ESTADO = {
   incompleto: 'incompleto: falta algún apartado',
   completo: 'con contenido, pendiente de revisar',
   validado: 'revisado para este curso',
+  errores: 'con errores que impiden aprobar',
 };
 
 // El color es el que lleva la información, igual que en el prototipo y en el v1;
 // la forma va detrás para que también se distinga sin color (anillo punteado,
 // medio relleno, relleno, ✓). Las clases son las de la hoja: .glifo-vacio,
 // .glifo-incompleto, .glifo-completo, .glifo-validado.
-export const GLIFO = { vacio: '', incompleto: '', completo: '', validado: '✓' };
+export const GLIFO = { vacio: '', incompleto: '', completo: '', validado: '✓', errores: '!' };
 
 // ---------------------------------------------------------------- la procedencia
 //

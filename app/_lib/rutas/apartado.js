@@ -586,4 +586,9 @@ const REVISAR = conErrores(async (peticion, parametros) => {
   }, { headers: { 'Cache-Control': 'no-store' } });
 });
 
-module.exports = { GET, PATCH, ANTERIOR, REVISAR };
+// `abrirApartado` se exporta porque hay otra ruta que habla de una rama del documento sin leerla ni
+// escribirla: los comentarios del E7 (app/_lib/rutas/comentarios.js). Un hilo cuelga del par
+// (seccion, unidad), así que tiene que resolverlo EXACTAMENTE igual que esta ruta —el mismo 404 para
+// una sección que no es de este documento, el mismo 400 para un enlace que no dice de qué módulo
+// habla— y resolverlo por su cuenta sería la manera de que un día acepten ramas distintas.
+module.exports = { GET, PATCH, ANTERIOR, REVISAR, abrirApartado };

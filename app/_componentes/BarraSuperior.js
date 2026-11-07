@@ -2,11 +2,12 @@
 //
 // Es la del prototipo con las piezas que hay: marca, el documento con el que se
 // está trabajando, el selector de vista, quién eres, el botón de tema y los de
-// exportar. Lo que no está todavía —el curso, y las vistas de cambios y de
-// coordinación, que son el E5 y el E7— no se deja como botón apagado: un botón
+// exportar. Lo que no está todavía —el selector de curso, que se navega por el
+// enlace al documento del curso anterior— no se deja como botón apagado: un botón
 // que no hace nada no se distingue de uno estropeado, que es exactamente lo que
 // se corrigió de la barra de formato del v1. Por eso el selector de vista solo
-// lleva las vistas que existen, y con el E4 son dos: contenido y validaciones.
+// lleva las vistas que existen, y con el E7 son las cuatro del prototipo:
+// Contenido · Cambios · Validaciones · Coordinación (la lista la pone Visor.js).
 //
 // DONDE ESTABA EL DESPLEGABLE DE PERSONA AHORA ESTÁ QUIÉN ERES
 //

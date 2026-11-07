@@ -364,7 +364,22 @@ function nombreDeArchivo(documento, unidad, extension) {
 
 // ---------------------------------------------------------------- parámetros
 
-// `estado` es borrador (con marca de agua) o aprobado; por omisión, el del documento (docs/api.md).
+// `estado` en la URL es CÓMO SE IMPRIME, no el estado del documento. Son dos escalas distintas y
+// conviene no confundirlas, porque el E7 añade una tercera posición a una de las dos:
+//
+//   el documento está en   borrador | revisión | aprobado      (docs/plan.md §3, /estado)
+//   el tomo se imprime en  borrador | aprobado                 (este parámetro)
+//
+// Solo hay dos formas de imprimir porque solo hay dos cosas que decir en el papel: lleva la marca de
+// agua de BORRADOR o no la lleva. `buildDocDefinition` trata como borrador todo lo que no sea
+// `aprobado` (motor/render-generico.js), así que **un documento en revisión se imprime como
+// borrador**, que es exacto: no está aprobado. Y por eso `revision` no es un valor de este parámetro.
+//
+// Por omisión se usa el estado del documento, y la conversión es esa: `revision` entra al generador y
+// sale impreso como borrador. Quien construya el enlace a mano con `documento.estado` dentro tiene
+// que mandar `borrador` cuando el documento esté en revisión, o no mandar nada y dejar que mande el
+// documento, que es lo que hace la interfaz.
+//
 // Un valor que no sea uno de los dos es un 400 y no «lo trato como borrador»: un enlace con
 // `estado=aprovado` escrito a mano tiene que decir que está mal, no entregar un PDF con marca de
 // agua que el usuario creía aprobado.

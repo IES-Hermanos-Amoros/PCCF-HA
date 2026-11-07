@@ -32,6 +32,15 @@
 //     se sigue saltando de uno a otro, no se copia hacia atrás;
 //   · `origen`, `revisadoPor` y `revisadoEn` de cada apartado: todos nacen `heredado`, sin revisor.
 //     Es lo que hace que el progreso empiece en 0 % (docs/plan.md §5, E5);
+//   · LOS COMENTARIOS (y el historial, cuando exista). Lo anunciaba docs/plan.md —«lo que no se copia
+//     son los comentarios ni el historial»— y desde el E7, que es cuando existen, sigue siendo
+//     verdad: aquí no se lee ni se escribe la colección `comentarios`. Y es a propósito, no un
+//     olvido: un comentario habla del texto de UN curso («esto de 2026-27 hay que actualizarlo»), así
+//     que copiarlo resucitaría en septiembre preguntas ya contestadas, como si estuvieran pendientes
+//     y firmadas por quien nunca las hizo en ese documento. El curso nuevo arranca con la
+//     conversación en blanco, y la del curso que se cierra se queda donde se escribió: se llega a
+//     ella por `anteriorId`, que es la única relación entre los dos documentos. Lo comprueba
+//     test/coordinacion.js;
 //   · el título de cada módulo: se toma el del catálogo para el curso NUEVO (`tituloDe`), no el del
 //     viejo. Los títulos cambian de curso a curso (core/unidades.js), y un título de 2025-26 en un
 //     curso 2027-28 sería el error que el catálogo vino a evitar. Si el módulo no está en el catálogo

@@ -27,21 +27,37 @@
 // `router.push` cada clic en el árbol volvería a pintar la página en el servidor
 // para acabar pidiendo lo mismo.
 //
-// TRES VISTAS, Y LA VISTA TAMBIÉN VA EN LA URL
+// LAS CUATRO VISTAS, Y LA VISTA TAMBIÉN VA EN LA URL
 //
-// El prototipo pone arriba cuatro —Contenido · Cambios · Validaciones ·
-// Coordinación— y de esas existen tres: el contenido, la comparación con el
-// curso anterior (E5) y el panel de comprobaciones (E4). La que falta es
-// *Coordinación*, que es el E7, y no se deja como botón apagado: un botón que no
-// hace nada no se distingue de uno estropeado.
+// Las cuatro del prototipo, ya completas: Contenido · Cambios · Validaciones ·
+// Coordinación. El contenido, la comparación con el curso anterior (E5), el panel
+// de comprobaciones (E4) y, con el E7, la matriz de unidades × bloques, que es la
+// pantalla que mira la jefatura de departamento para saber qué falta
+// (Coordinacion.js). Ninguna se deja como botón apagado: un botón que no hace
+// nada no se distingue de uno estropeado.
 //
-// La vista va en `?vista=cambios` o `?vista=validaciones` por lo mismo que la
-// sección va en la dirección: el panel de comprobaciones es la pantalla que la
-// jefatura manda por enlace («mira los errores de tu módulo») y la comparación es
-// la que se manda para preguntar «¿esto lo cambiaste tú?», y las dos tienen que
-// poder copiarse, recargarse y volver con la flecha de atrás. Desde un aviso se
-// salta al apartado que falla, y ese salto cambia de vista y de apartado a la
-// vez: es un `pushState` normal, así que la flecha de atrás devuelve al panel.
+// Dos de ellas son del DOCUMENTO entero —validaciones y coordinación— así que
+// sustituyen al contenido en lugar de meterse al lado, y no llevan panel derecho
+// ni botón de validar: lo que se está haciendo ahí es repasar lo que falta.
+//
+// Y EL PANEL DERECHO, QUE AHORA SÍ EXISTE
+//
+// El prototipo reserva 310 px a la derecha para las comprobaciones y los
+// comentarios. Los comentarios por apartado son el E7, así que la rejilla de dos
+// columnas se enciende con ellos (Comentarios.js) en las vistas que miran UN
+// apartado. Las comprobaciones de ese apartado siguen sin estar ahí: el panel del
+// E4 las calcula del documento entero, y recortarlas por apartado es otra
+// petición que todavía no existe.
+//
+// La vista va en `?vista=cambios`, `?vista=validaciones` o `?vista=coordinacion`
+// por lo mismo que la sección va en la dirección: el panel de comprobaciones es la
+// pantalla que la jefatura manda por enlace («mira los errores de tu módulo»), la
+// comparación es la que se manda para preguntar «¿esto lo cambiaste tú?» y la
+// coordinación es la que se enseña en la reunión de departamento; las tres tienen
+// que poder copiarse, recargarse y volver con la flecha de atrás. Desde un aviso o
+// desde una celda de la matriz se salta al apartado, y ese salto cambia de vista y
+// de apartado a la vez: es un `pushState` normal, así que la flecha de atrás
+// devuelve al panel.
 //
 // EL PROGRESO CUENTA REVISIÓN, NO RELLENO
 //
@@ -86,6 +102,8 @@ import ApartadoEditable from './ApartadoEditable';
 import Arbol from './Arbol';
 import BarraSuperior from './BarraSuperior';
 import Cambios, { BotonValidar } from './Cambios';
+import Comentarios from './Comentarios';
+import Coordinacion from './Coordinacion';
 import CursoSiguiente from './CursoSiguiente';
 import Estructura, { ApartadosRetirados } from './Estructura';
 import Ponderaciones from './Ponderaciones';
@@ -135,15 +153,27 @@ const corto = (d) => [
   d.curso,
 ].filter(Boolean).join(' · ');
 
-// El orden es el del prototipo: Contenido · Cambios · Validaciones. Falta
-// *Coordinación*, que es el E7.
+// El orden es el del prototipo: Contenido · Cambios · Validaciones · Coordinación.
 const VISTAS = [
   { id: 'contenido', etiqueta: 'Contenido' },
   { id: 'cambios', etiqueta: 'Cambios' },
   { id: 'validaciones', etiqueta: 'Validaciones' },
+  { id: 'coordinacion', etiqueta: 'Coordinación' },
 ];
 
 const esVista = (v) => VISTAS.some((x) => x.id === v);
+
+// Las vistas que miran el DOCUMENTO entero y no un apartado: sustituyen al
+// contenido, y ni la cabecera del apartado ni el panel derecho tienen sentido en
+// ellas.
+const DEL_DOCUMENTO = ['validaciones', 'coordinacion'];
+const esDelDocumento = (v) => DEL_DOCUMENTO.includes(v);
+
+// El título que lleva la cabecera en esas dos vistas.
+const TITULO_VISTA = {
+  validaciones: 'Comprobaciones del documento',
+  coordinacion: 'Coordinación',
+};
 
 export default function Visor({
   documentoId, seccionInicial, unidadInicial, vistaInicial,
@@ -591,6 +621,20 @@ export default function Visor({
   const unidadDelNodo = nodo && nodo.unidadId ? codigoDeUnidad(nodo.unidadId) : null;
   const base = `/api/documentos/${encodeURIComponent(documentoId)}`;
 
+  // DÓNDE HAY PANEL DERECHO: donde hay un apartado del que hablar.
+  //
+  // El hilo de comentarios cuelga del par (sección, unidad), el mismo que
+  // identifica el contenido, así que se pinta en las vistas que miran UN apartado
+  // —el contenido y la comparación con el curso anterior, que es justo donde se
+  // pregunta «¿esto lo cambiaste tú?»— y no en las del documento entero.
+  //
+  // Tampoco en una unidad: un módulo no es un apartado de la plantilla, y pedir
+  // su hilo sería pedir el de la sección que reparte las instancias diciendo de
+  // qué módulo, que es un enlace mal construido y la API contesta 400 (ver
+  // `abrirApartado` en app/_lib/rutas/apartado.js). El hilo del módulo se abre en
+  // cualquiera de sus apartados.
+  const hayPanel = !esDelDocumento(vista) && !!nodo && !!nodo.seccion && nodo.tipo !== 'unidad';
+
   // EL CONTENIDO QUE HAY TIENE QUE SER EL DEL APARTADO ABIERTO
   //
   // `nodo` cambia en cuanto se pincha en el árbol, y `apartado` llega una
@@ -921,10 +965,12 @@ export default function Visor({
   };
 
   const contenido = () => {
-    // El panel de comprobaciones es del DOCUMENTO entero, no del apartado
-    // abierto, así que sustituye al contenido y no se mete al lado: lo que se
-    // está haciendo ahí es repasar lo que falta, no escribir.
+    // El panel de comprobaciones y la coordinación son del DOCUMENTO entero, no
+    // del apartado abierto, así que sustituyen al contenido y no se meten al
+    // lado: lo que se está haciendo ahí es repasar lo que falta, no escribir. Y
+    // desde las dos se salta al apartado que hay que mirar, con el mismo `onIr`.
     if (vista === 'validaciones') return <Validaciones documentoId={documentoId} onIr={irAApartado} />;
+    if (vista === 'coordinacion') return <Coordinacion documentoId={documentoId} onIr={irAApartado} />;
     if (!nodo) return <p className="suave">Ese apartado no está en este documento.</p>;
     // La comparación con el curso anterior es de UN apartado, así que necesita el
     // nodo; en un nodo de paso lo dice y no pide nada al servidor.
@@ -1106,17 +1152,17 @@ export default function Visor({
           <div className="cabecera">
             <div>
               <h1>
-                {vista === 'validaciones'
-                  ? 'Comprobaciones del documento'
+                {esDelDocumento(vista)
+                  ? TITULO_VISTA[vista]
                   : (nodo ? ((nodo.num ? nodo.num + '. ' : '') + nodo.titulo) : corto(documento))}
               </h1>
-              <div className="chips">{vista === 'validaciones' ? null : chips()}</div>
+              <div className="chips">{esDelDocumento(vista) ? null : chips()}</div>
             </div>
             {/* «Validar este apartado» también en la cabecera, como en el
                 prototipo: se da por bueno desde donde se está leyendo, sin tener
                 que pasar por la comparación. Solo aparece en lo heredado sin
                 mirar, y solo si el servidor dijo que se puede editar. */}
-            {vista === 'validaciones' ? null : (
+            {esDelDocumento(vista) ? null : (
               <div className="cabecera-derecha">
                 {/* `key` por apartado: si no, al cambiar de apartado el botón se
                     queda con el estado del anterior y podría enseñar el error de
@@ -1133,21 +1179,42 @@ export default function Visor({
             )}
           </div>
 
-          {/* Sin `.rejilla`: la rejilla de dos columnas del prototipo reserva
-              310 px para el panel de comprobaciones y comentarios, que son el E4
-              y el E7. Con una sola columna el apartado ocupa el ancho entero. */}
-          <section className="contenido">
-            {/* Lo que acaba de pasar con la estructura, dicho donde se aterriza:
-                al retirar un apartado la pantalla se va a su padre, y el aviso
-                tiene que viajar con ella. `role="status"` para que también se
-                oiga. */}
-            {avisoEstructura ? (
-              <div className="nota" role="status">
-                <div>{avisoEstructura}</div>
-              </div>
+          {/* LA REJILLA DE DOS COLUMNAS SE ENCIENDE CON EL PANEL DERECHO.
+              El prototipo reserva 310 px a la derecha, y con el E7 hay algo que
+              ponerlos: el hilo de comentarios del apartado. Donde no hay panel
+              —la portada, una unidad, las dos vistas del documento entero— el
+              apartado sigue ocupando el ancho entero, porque una columna vacía a
+              la derecha es peor que no tenerla. Por debajo de 1150 px la hoja ya
+              pasa la rejilla a una sola columna y el panel cae debajo. */}
+          <div className={hayPanel ? 'rejilla' : undefined}>
+            <section className="contenido">
+              {/* Lo que acaba de pasar con la estructura, dicho donde se aterriza:
+                  al retirar un apartado la pantalla se va a su padre, y el aviso
+                  tiene que viajar con ella. `role="status"` para que también se
+                  oiga. */}
+              {avisoEstructura ? (
+                <div className="nota" role="status">
+                  <div>{avisoEstructura}</div>
+                </div>
+              ) : null}
+              {contenido()}
+            </section>
+
+            {hayPanel ? (
+              <aside className="panel" aria-label="Comentarios del apartado">
+                {/* `key` por apartado: al cambiar de apartado se monta otro hilo,
+                    y así el campo no se queda con el borrador del anterior ni se
+                    ve un instante la conversación de al lado. */}
+                <Comentarios
+                  key={`comentarios-${nodo.clave}`}
+                  documentoId={documentoId}
+                  seccion={nodo.seccion}
+                  unidadId={nodo.unidadId || null}
+                  persona={yo}
+                />
+              </aside>
             ) : null}
-            {contenido()}
-          </section>
+          </div>
 
           {/* Anterior y siguiente recorren el documento en el orden en que se
               imprime, que es como se revisa: apartado por apartado y módulo por

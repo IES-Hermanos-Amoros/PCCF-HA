@@ -59,6 +59,18 @@
 // Quien ve el documento, y nadie más: 401 sin identificar, 404 si es de otro departamento. No hay un
 // permiso aparte porque es de lectura y porque quien tiene que verlo antes que nadie es la jefatura
 // de estudios, que no edita nada y es la que aprueba (y `puedeAprobarse` es justo lo que va a mirar).
+//
+// POR QUÉ EL CÁLCULO SE EXPORTA APARTE (`informeDe`)
+//
+// Porque desde el E7 hay un segundo sitio que necesita la MISMA cuenta de errores: la puerta de
+// aprobación (app/_lib/rutas/estado.js), que no puede aprobar un documento con errores y tiene que
+// decir cuántos hay y dónde. Si esa ruta volviera a recorrer el árbol por su cuenta, el panel y la
+// puerta podrían discrepar —y entonces la pantalla diría «se puede aprobar» y el botón respondería
+// que no—, que es exactamente la avería que §2.2 de docs/plan.md existe para evitar.
+//
+// Así que `informeDe({ documento, repo })` hace todo el trabajo y se queda un paso antes de
+// responder, igual que `definicionDe` en app/_lib/rutas/pdf.js. El GET solo abre el documento y lo
+// serializa.
 
 'use strict';
 
@@ -120,10 +132,9 @@ function avisosDePonderaciones(valor, destino, impreso) {
   return out;
 }
 
-const GET = conErrores(async (peticion, parametros) => {
-  const { fallo, documento, repo } = await abrirDocumento(peticion, parametros);
-  if (fallo) return fallo;
-
+// Todo el panel menos la respuesta. Recibe el documento ya abierto —con los apartados retirados ya
+// podados por `abrirDocumento`— y devuelve el objeto que sirve el GET.
+async function informeDe({ documento, repo }) {
   // Sin reordenar: el orden de `unidades.listar()` es el del documento y el del tomo del PDF.
   const unidades = await repo.unidades.listar(documento._id);
   const apartados = await repo.apartados.listar(documento._id);
@@ -260,7 +271,7 @@ const GET = conErrores(async (peticion, parametros) => {
 
   const todos = salida.flatMap((g) => g.avisos);
 
-  return Response.json({
+  return {
     documentoId: documento._id,
     // Qué convenio se ha usado para contar los criterios. Viaja en la respuesta porque cambia lo que
     // se ve, y quien lea el panel tiene que poder saber con qué regla se ha medido.
@@ -271,11 +282,22 @@ const GET = conErrores(async (peticion, parametros) => {
     // una errata (ver la cabecera).
     impresos: todos.filter((a) => a.impreso).length,
     delOtroConvenio: todos.filter((a) => a.convenio === Val.CIEN_DENTRO_DEL_RA).length,
-    // Con errores abiertos el documento no se aprueba; los avisos no bloquean. La puerta la abre el
-    // E7, pero la cifra se sirve ya: es lo que mira quien aprueba.
+    // Con errores abiertos el documento no se aprueba; los avisos no bloquean. Desde el E7 esto no
+    // es solo una cifra para la pantalla: es LA MISMA que mira la puerta de aprobación
+    // (app/_lib/rutas/estado.js), que lee este informe en lugar de volver a contar.
     puedeAprobarse: Val.puedeAprobarse(todos),
     grupos: salida,
-  }, { headers: { 'Cache-Control': 'no-store' } });
+  };
+}
+
+const GET = conErrores(async (peticion, parametros) => {
+  const { fallo, documento, repo } = await abrirDocumento(peticion, parametros);
+  if (fallo) return fallo;
+
+  return Response.json(
+    await informeDe({ documento, repo }),
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
 });
 
-module.exports = { GET };
+module.exports = { GET, informeDe };

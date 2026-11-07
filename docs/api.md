@@ -54,6 +54,7 @@ Siempre JSON, con la misma forma: `{ "error": "<codigo>", "mensaje": "<en castel
 | 403 | `sin_permiso` | la hay, pero no puede hacer eso |
 | 404 | `no_encontrado` | el documento, el apartado o la unidad no existen, **o son de otro departamento** |
 | 409 | `conflicto` | alguien ha escrito ese apartado desde que lo leíste (lleva además `esperado` y `actual`) |
+| 409 | `con_errores` | se intenta **aprobar** un documento que tiene errores abiertos (lleva las cifras y dónde están) |
 | 410 | `enlace_gastado` | un enlace de acceso ya usado, anulado o caducado (lleva `motivo`) |
 | 500 | `error_interno` | lo demás |
 
@@ -68,6 +69,13 @@ pero no puedes hacer eso**, que es lo que aparece con el PATCH del E3 y con apro
 `enlace_gastado` con un `motivo` (`usado`, `anulado` o `caducado`), porque las tres cosas se arreglan
 de forma distinta y quien las lee necesita saber cuál es. Un testigo que no ha existido nunca es 404,
 para no confirmar cuáles existieron.
+
+**Dos códigos para el 409, porque son dos cosas distintas que se arreglan de dos maneras.** El
+`conflicto` es de concurrencia: alguien ha escrito antes que tú y hay que recargar. El `con_errores`
+es del estado del documento: la petición está bien escrita y llega en el momento bueno, lo que pasa es
+que el documento no se puede aprobar todavía. No es un 400 —no falta ni sobra ningún parámetro— ni un
+403 —quien lo pide es justo quien aprueba—, y 409 es literalmente lo que significa un 409: la petición
+choca con el estado actual del recurso. La interfaz las distingue por el código y no por el texto.
 
 **Un apartado de la plantilla que nadie ha escrito todavía responde 200**, con `existe: false` y
 `valores: {}`. Es parte del documento y sale en el árbol, así que hay que poder abrirlo. El 404 queda
@@ -88,7 +96,7 @@ título. Omitirlo significa «apartado común del documento».
 | `PATCH /api/personas/[id]` | `{ rol?, activo? }`. Nadie se sube de rango ni se da de baja a sí mismo | E2 |
 | `POST /api/personas/[id]/invitacion` | otro enlace para quien perdió el suyo; anula el anterior | E2 |
 | `GET /api/documentos` | lista, sin `plantilla` | E1 |
-| `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `ciclo`, `curso`, `departamento`, y `forzar` opcional. Importa, concilia unidades y guarda. La importan `admin` y `jefe_departamento`, y solo en su departamento | E1 |
+| `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `curso`, `departamento`, `ciclo` (obligatorio salvo para `memoria`) y `forzar` opcional. Importa, concilia unidades y guarda. `tipo` es `programacion_didactica` o `memoria` (ver abajo). La importan `admin` y `jefe_departamento`, y solo en su departamento | E1·E7 |
 | `GET /api/documentos/[id]` | el documento sin `plantilla` | E1 |
 | `GET /api/documentos/[id]/arbol` | el árbol de apartados y unidades, con el estado de cada nodo, el `origen` de cada apartado y el recuento `revision` (apartados, revisados, heredados y pendientes) | E1·E5 |
 | `POST /api/documentos/[id]/siguiente-curso` | crea el documento del curso siguiente a partir de este. Cuerpo opcional `{ curso }`, por omisión el siguiente al suyo. Copia la plantilla, las unidades con sus docentes, los apartados con su contenido y los textos compartidos; todos los apartados nacen `heredado` y el documento, en `borrador`, con `anteriorId`. 201 con el documento nuevo. La jefatura de departamento y el soporte, en su departamento. 409 si ese curso ya existe | E5 |
@@ -101,14 +109,88 @@ título. Omitirlo significa «apartado común del documento».
 | `PUT /api/documentos/[id]/unidades/[unidad]/docentes` | cambia quién lleva esa unidad. Cuerpo: `{ docentes: [id] }`, la lista completa | E2 |
 | `PATCH /api/documentos/[id]/apartado?seccion=&unidad=` | guarda esa rama. Cuerpo: `{ valores, esperaUpdatedAt }`, con **solo los campos que se han tocado**. Acepta texto, ponderaciones y fichas de situación de aprendizaje; los demás tipos todavía no. Devuelve 409 si no cuadra la versión | E3 |
 | `GET /api/documentos/[id]/validaciones` | los avisos agrupados por unidad, con quién lleva cada una, el recuento y si el documento se puede aprobar | E4 |
+| `GET /api/documentos/[id]/coordinacion` | la matriz **unidad × bloque**: una fila por módulo o materia con quién lo lleva, una columna por bloque (que viaja **una vez**, no una por unidad) y en cada cruce cómo va esa rama: `estado` —los cinco del árbol, con `errores`— más los recuentos de los que sale (`apartados`, `conContenido`, `revisados`, `errores`, `avisos`) y el `destino` al que lleva el clic. **No lleva contenido**: ni un `valores`. El estado sale de lo que ya se sirve —`relleno` y `origen` de `/arbol`, y los avisos del MISMO cálculo que `/validaciones`, que viajan también como `cuenta` y `puedeAprobarse`—, así que no puede discrepar de ninguna de las dos. Un documento sin unidades responde `modo: 'comun'`: una fila por apartado de primer nivel y la jefatura del departamento como responsable. La ve quien ve el documento | E7 |
+| `GET /api/documentos/[id]/comentarios?seccion=&unidad=` | el hilo de ese apartado, del más antiguo al más reciente, con el nombre y el rol de cada autor (nunca su correo) y `puedeComentar` | E7 |
+| `POST /api/documentos/[id]/comentarios?seccion=&unidad=` | comenta ese apartado. Cuerpo `{ texto }`, recortado y de 2000 caracteres como máximo; el autor sale de la sesión y **nunca del cuerpo**. 201 con el comentario. **Comenta todo el que ve el documento**, no solo quien puede editarlo: quien pregunta es justamente quien no puede escribir ahí —la jefatura de estudios aprueba y no edita nada, y un docente necesita avisar en el módulo de otro—. Por eso las dos rutas del hilo **no dan 403**: 401 sin sesión, 404 si el documento, la sección o la unidad no son suyos (un apartado retirado tampoco lo es) y 400 si el enlace o el cuerpo están mal. Los comentarios **no se copian** al arrastrar el curso | E7 |
 | `GET /api/documentos/[id]/estructura` | la estructura del documento tal como se puede cambiar: una fila por apartado con su id, su título, si es de la plantilla de las unidades y qué se le puede hacer (`puedeSubir`, `puedeBajar`, `admiteHijos`), más los **retirados** —que ya no salen en el árbol—, la `plantillaVersion` y el registro de cambios. La ve quien ve el documento; `puedeCambiar` dice si los botones van habilitados, porque **la estructura la cambian la jefatura del departamento y el soporte**: no quien escribe los apartados, y la jefatura de estudios tampoco | E6 |
 | `POST /api/documentos/[id]/estructura/apartado` | añade un apartado. Cuerpo: `{ titulo, padre?, esperaPlantillaVersion? }`; sin `padre`, al final del documento. Nace con un campo de texto, y con `edita` de la jefatura del departamento si no lo hereda de su bloque. 201 con el `seccion` que le toca **para siempre**. Los cinco cambios responden igual: la `plantillaVersion` nueva, el `cambio` que queda apuntado y `afectaUnidades` con `unidades`, porque un apartado de la plantilla de las unidades cambia los once módulos a la vez y la interfaz tiene que poder advertirlo | E6 |
 | `PATCH /api/documentos/[id]/estructura/apartado?seccion=` | renombra un apartado. Cuerpo: `{ titulo, esperaPlantillaVersion? }`. **El id no cambia**: el título es solo la etiqueta, y el contenido, los comentarios y los enlaces guardados cuelgan del id | E6 |
 | `POST /api/documentos/[id]/estructura/apartado/mover?seccion=` | lo mueve entre sus hermanos. Cuerpo: `{ delta, esperaPlantillaVersion? }`, `-1` arriba y `1` abajo, contando solo los hermanos visibles. Mover el primero hacia arriba es 400 y no un 200 que no hace nada | E6 |
 | `POST /api/documentos/[id]/estructura/apartado/retirar?seccion=` | **retira sin borrar**: el apartado y su subárbol dejan de salir en el árbol, en el apartado y en el PDF, y su contenido se conserva entero. Por eso no es un `DELETE`. Cuerpo opcional `{ esperaPlantillaVersion }` | E6 |
 | `POST /api/documentos/[id]/estructura/apartado/restaurar?seccion=` | devuelve al documento un apartado retirado, con todo lo que tenía escrito. Primero el padre, si también está retirado | E6 |
+| `GET /api/documentos/[id]/estado` | en qué estado está el documento, si su PDF lleva `marcaDeAgua` y las `transiciones` que salen de ahí, cada una con su `accion`, `quien` la mueve y un `puede` resuelto para quien pregunta. La ve quien ve el documento, y la lista es la misma para todos: lo que cambia es el `puede`, porque el cliente refleja el candado y no vuelve a escribir las reglas de rol. **No lleva la cuenta de errores**: está en `/validaciones`, que la pantalla de aprobación pide igualmente | E7 |
+| `POST /api/documentos/[id]/estado` | cambia el estado. Cuerpo: `{ estado, esperaUpdatedAt? }`. 200 con el estado nuevo, el `anterior`, la `accion` y `marcaDeAgua`. **Solo las flechas del circuito**, y las mueve quien responde de cada tramo (ver abajo): 403 si no es quien la mueve, 400 si esa flecha no existe —con los `destinos` que sí— o si el documento ya está en ese estado, 409 `con_errores` al aprobar con errores abiertos y 409 `conflicto` si el documento ha cambiado desde que se leyó | E7 |
 
-`estado` es `borrador` (con marca de agua) o `aprobado`. Por omisión, el del documento.
+### Los estados del documento: `borrador → revisión → aprobado`
+
+El estado es el circuito por el que pasa el documento del departamento, y cada tramo lo mueve quien
+responde de él. `estado` ya era un campo del documento desde el E0 (`docs/plan.md` §3); el E7 pone la
+puerta.
+
+| Flecha | `accion` | Quién |
+|---|---|---|
+| `borrador → revision` | `enviar` | **la jefatura del departamento** y el soporte |
+| `revision → borrador` | `devolver` | las dos jefaturas —la de estudios y la del departamento— y el soporte |
+| `revision → aprobado` | `aprobar` | **la jefatura de estudios** y el soporte |
+| `aprobado → revision` · `aprobado → borrador` | `reabrir` | la jefatura de estudios y el soporte |
+
+**Manda a revisión la jefatura del departamento.** No el docente, por lo mismo que no cambia la
+estructura: escribe lo suyo y no responde del documento entero, y «ya he acabado mi módulo» no es «la
+programación está lista». Y no la jefatura de estudios, porque mandar a revisión es decir «esto ya se
+puede mirar», y eso lo dice quien lo ha escrito, no quien lo va a mirar.
+
+**Aprueba la jefatura de estudios**, que es lo que ya decía `core/permisos.js` desde el E2: ve los
+documentos de todos los departamentos y no edita ninguno. Eso es lo que la deja en condiciones de
+aprobar, y esta es la primera ruta en la que ese rol hace algo más que mirar.
+
+**`borrador → aprobado` no existe para nadie**, tampoco para el soporte. Saltarse la revisión
+convierte la aprobación en una firma sobre un documento que nadie de fuera del departamento ha
+mirado, y entonces los tres estados sobran. Son dos llamadas.
+
+**El estado no es un candado de escritura**: un documento aprobado se sigue pudiendo editar, y quién
+puede editarlo lo sigue decidiendo `core/permisos.js`. Congelar lo aprobado sería otra decisión.
+
+**Lo que no queda apuntado es quién aprobó y cuándo.** `CAMPOS.documento` de `repositorio/index.js`
+acepta `estado` y no hay todavía la colección `historial` que `docs/plan.md` §3 reserva. Para el
+criterio de aceptación basta; para justificar una aprobación en una inspección, no. El arreglo es un
+campo más (`aprobadoPor`, `aprobadoEn`) o esa colección, y los dos están en `repositorio/`.
+
+### Por qué un documento con errores no se puede aprobar, y qué dice el rechazo
+
+La cuenta es la de `/validaciones` —el mismo cálculo, no otro— y la puerta es su `puedeAprobarse`:
+con errores abiertos no se aprueba; los avisos no bloquean. Si la puerta contara por su cuenta, la
+pantalla podría decir «se puede aprobar» y el botón responder que no.
+
+Y el rechazo **no es un «no se puede» a secas**, porque eso no sería ni útil ni del todo cierto. El
+409 `con_errores` lleva:
+
+```
+errores      45   todos los que bloquean
+porArreglar  23   los que hay que arreglar
+delConvenio  22   los que son una decisión pendiente, no un documento roto
+porRegla          el desglose por regla, que es lo que dice qué hacer con cada uno
+donde             por módulo: el título, las dos cifras y el `destino` al que hay que ir
+```
+
+Las cifras son las de la programación real del departamento. De sus 45 errores, **22 no son erratas**:
+son el otro convenio de ponderación de los criterios —suman 100 % dentro de su RA en lugar de repartir
+su peso— y **qué convenio vale es una decisión del departamento que sigue pendiente** (`docs/plan.md`,
+«Lo que ha dejado el E0»). Con la regla tal cual ese documento no se puede aprobar hasta que alguien
+decida, y eso es incómodo y es correcto: **la salida no es bajarle la severidad**, que sería decidir el
+convenio por la puerta de atrás y en silencio. La salida es que el rechazo separe los dos grupos, y es
+lo que hace.
+
+El desglose de esos 45, que es lo que de verdad dice qué hay que hacer: `sin_docente` 11 (módulos que
+no lleva nadie, se arreglan en el reparto), `criterios_de_ra` 10 y `suma_de_ra` 2 (descuadres de
+verdad, en el apartado de ponderaciones) y `cien_dentro_del_ra` 22 (la decisión pendiente). Son tres
+cosas distintas, en tres pantallas distintas y de tres personas distintas, y por eso el rechazo no da
+un solo número.
+
+`estado` **en la URL de `/pdf` y `/docx` es otra escala**: es cómo se imprime el tomo, y solo tiene
+dos valores, `borrador` (con marca de agua) o `aprobado`. Por omisión, el del documento, y un documento
+en revisión se imprime como borrador, que es exacto: no está aprobado. Por eso `?estado=revision` es un
+400. En Word el estado se valida pero no cambia nada, porque la marca de agua es una propiedad de
+página de pdfmake y `motor/exportar-docx.js` no escribe ninguna.
 
 ## Por qué el apartado viaja con sus `campos` y sus `compartidos`
 
@@ -154,11 +236,60 @@ curso.
 Y si una escritura falla a mitad, el documento ya creado se borra antes de devolver el error, para no
 dejar documentos a medio importar en la lista.
 
-**De momento solo se admite `tipo=programacion_didactica`.** El PCCF y la memoria dan 400 hasta el
-E7: el importador los lee, pero su camino hasta el PDF no está probado, y es mejor negarse que
-guardar un documento que luego se exporta mal.
+## Qué tipos de documento se admiten
 
-## Por qué la importación exige el ciclo
+Se admiten **`programacion_didactica` y `memoria`**. El PCCF da 400, y no por olvido.
+
+Hasta el E7 solo entraba la PD, a propósito: el importador leía los otros dos, pero su camino hasta
+el PDF no estaba probado y era mejor negarse que guardar un documento que luego se exporta mal. El E7
+lo prueba con los documentos reales del departamento, y lo que se mide es esto:
+
+| Documento | Apartados | Módulos | Del texto del cuerpo | ¿Entra? |
+|---|---|---|---|---|
+| Memoria del departamento 2026-27 | 43 | 0 | 96 % | **sí** |
+| Memoria del departamento 2025-26 | 43 | 0 | 96 % | **sí** |
+| PCCF de DAW | 9 | 0 | 36 % | no |
+| PCCF de SMR | 0 | 0 | 0 % | no |
+| PD de DAW 2026-27 (referencia) | 57 | 11 | — | sí |
+
+**La memoria entra entera.** 43 apartados, 34 tablas, ninguna unidad, y pasa el criterio del E1: la
+definición de pdfmake que da la base de datos es **idéntica** a la que da el importador sobre el mismo
+Word. El Word exportado vuelve a entrar por el importador con los mismos 43 apartados.
+
+**El PCCF no entra, y el problema está en el Word, no en el código.** El importador deduce la
+estructura de los estilos de título, y los dos PCCF tienen sus veintitrés apartados numerados escritos
+con estilos propios del documento (`Estilo1`, `Estilo3`, `Estilo4`) que no llevan nivel de esquema, así
+que **Word tampoco los considera títulos**: el índice que traen quedó guardado de cuando sí lo eran y
+hoy no se regeneraría. El de DAW usa además `Título 4` y `Título 5` nueve veces, y eso es exactamente
+lo que el importador encuentra: nueve subapartados de cuarto nivel colgando de la nada y dos tercios
+del documento por el suelo. El de SMR no usa ninguno y sale vacío.
+
+Importar eso daría un documento con un puñado de apartados y sin nada de lo demás, y exportarlo daría
+un PDF que nadie reconocería como el proyecto curricular del ciclo. Así que **sigue dando 400, pero el
+mensaje dice ahora qué hay que arreglar y dónde**: se arregla en Word, aplicando Título 1/2/3 a esos
+apartados, y entonces entra por aquí sin tocar una línea de código. No se baja el umbral ni se adivina
+la estructura por el tamaño de la letra: una estructura adivinada no se nota al importar, se nota en
+junio al exportar.
+
+**Los módulos son de la PD.** Un PCCF es del ciclo y una memoria, del departamento entero: ninguno
+repite un bloque por módulo, y los tres documentos reales dan **cero instancias**. Así que las
+unidades —y con ellas la conciliación, el reparto al profesorado y el arrastre de asignaciones— no
+aplican ahí: el documento entra como un solo tomo de apartados comunes. Y si el importador **sí**
+encuentra un bloque repetido en un documento que no es una PD, la respuesta es 400 con la lista de lo
+que ha visto, sin escribir nada. Por dos motivos, y el primero es el que pasa de verdad: es el error
+más probable de quien sube el fichero —dejarse el tipo sin cambiar—, y una programación importada
+como memoria se guardaría sin protestar, con sus once módulos conciliados, mientras la memoria de
+verdad se queda sin subir. El segundo es que conciliar contra el catálogo de módulos algo que no son
+módulos sería adivinar, y aquí no se adivina.
+
+**Qué comprobaciones no aplican a una memoria.** Todas las que son de un módulo: `criterios_de_ra` y
+`suma_de_ra` necesitan un campo de ponderaciones, que una memoria no tiene; `ra_sin_situacion` y
+`sa_sin_evaluacion` necesitan fichas de situación de aprendizaje; y `sin_docente` necesita unidades.
+Así que `/validaciones` sale con un solo grupo —el de los apartados comunes— y sin un solo aviso. No
+es «aprobada a la fuerza»: es que no hay nada que comprobar, y por eso una memoria se puede aprobar
+en cuanto el departamento la da por buena.
+
+## Por qué la importación exige el ciclo (y por qué a la memoria no)
 
 Ni `ciclo` ni `curso` se pueden deducir de un `.docx`, así que los pide el formulario de subida. Pero
 el `ciclo` además hace falta para **conciliar** las unidades: el Word identifica cada módulo solo por
@@ -169,6 +300,14 @@ módulos son ambiguos y `core/conciliar.js` los deja sin resolver antes que adiv
 Y el `curso` hace falta porque los títulos cambian de un curso a otro: el catálogo guarda la variante
 de cada curso para poder reconocer un módulo renombrado y no perder sus asignaciones cada septiembre.
 Es el motivo de que exista el id estable (`docs/plan.md` §2.1).
+
+**A la memoria no se le pide el ciclo.** Es del departamento entero —ESO, Bachillerato y los dos
+ciclos de FP en el mismo documento—, así que exigirle uno sería obligar a quien la sube a elegir uno
+de mentira, y de paso etiquetar la memoria del departamento como si fuera de DAW. El modelo ya admite
+`ciclo` nulo desde el E0 (`docs/plan.md` §3) y no hay nada que conciliar, porque una memoria no tiene
+módulos. Si llega con ciclo, se guarda: quien lo mande no se lleva un error por mandarlo. El `curso`
+sigue siendo obligatorio para todos, que es lo que distingue la memoria de un curso de la del
+siguiente.
 
 ## Por qué `esperaUpdatedAt`
 

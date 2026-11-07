@@ -224,7 +224,7 @@ pruebas y sin que pase la prueba de ida y vuelta (§2.6).
 | **E4** | Situaciones de aprendizaje (crear, duplicar, mover, borrar, la tabla resumen calculada), ponderaciones de RA y CE con suma en vivo, panel de validaciones agrupado | Los avisos del panel coinciden uno a uno con los de la cajita roja del PDF. Una SA creada en la app sale impresa igual que una importada |
 | **E5** | Arrastre entre cursos: crear el documento de un curso nuevo desde el anterior, vista *Cambios* con el diff, *validar este apartado*, progreso por revisión | Crear 2027-28 desde 2026-27 deja todos los apartados como `heredado` y el progreso a 0 %, con el contenido intacto |
 | **E6** | Estructura editable (renombrar, añadir, mover, retirar) con la plantilla versionada y migración de los datos | Añadir un apartado, escribir en él y exportar; y que un documento del curso anterior siga abriéndose con su plantilla antigua |
-| **E7** | Panel de coordinación, comentarios por apartado, estados `borrador → revisión → aprobado` con la marca de agua, y PCCF y memoria | Aprobar quita la marca de agua y los errores lo impiden. El PCCF y la memoria se importan y exportan por el mismo camino que la PD |
+| **E7** | Panel de coordinación, comentarios por apartado, estados `borrador → revisión → aprobado` con la marca de agua, y la memoria (el PCCF no: ver «Lo que ha dejado el E7») | Aprobar quita la marca de agua y los errores lo impiden. El PCCF y la memoria se importan y exportan por el mismo camino que la PD |
 
 Los avisos conocidos de `interfaz-web.md` §5 caen donde les toca: el camino redundante de
 `pd-docdef.js` (nº 1) se retira en el E1; `instancias[].docentes` vacío (nº 2) es el E2 entero; los
@@ -305,6 +305,29 @@ porque nadie las podía mirar de golpe. Conviene arreglarlas en el documento.
   ponderación de los criterios. Los otros **10 sí** lo son (14,94 % donde debería haber 15 %). El
   panel de validaciones los distingue, pero **qué convenio vale es una decisión del departamento** y
   sigue pendiente.
+
+### Lo que ha dejado el E7
+
+- **Los dos PCCF no se pueden importar, y el fallo está en el Word, no en el código.** El importador
+  deduce la estructura de los estilos de título, y esos documentos no los usan: de los estilos que
+  llevan el peso del texto (`Estilo3`, `IDC2`) ninguno declara nivel de esquema. El PCCF de DAW tiene
+  **nueve** párrafos con estilo de título —y todos de cuarto y quinto nivel, colgando de nada—; el de
+  SMR, **ninguno**. Para comparar, la PD que sí entra usa `Título 1`×11, `Título 2`×38, `Título 3`×87.
+
+  La consecuencia va más allá de esta herramienta: **Word tampoco los considera títulos**, así que el
+  panel de navegación no los ve y el índice que traen dentro está cacheado de cuando sí lo eran —hoy
+  no se regeneraría igual—. Se arregla en el propio documento, aplicando `Título 1/2/3` a los
+  apartados numerados, y entonces entra aquí sin tocar una línea de código.
+- **La memoria sí entra**, y de verdad: 43 apartados, 34 tablas, el PDF y el Word salen, y la
+  definición que da la base de datos es idéntica a la que da el importador sobre el mismo Word.
+- **Las propuestas pedagógicas de ESO y Bachillerato se importan sorprendentemente bien** (27 y 24
+  apartados, y sus materias concilian con el catálogo), pero **no tienen un tipo propio** y no son
+  memorias. Darles uno parece poco trabajo para lo que se gana.
+- **La programación real no se puede aprobar hoy, y es correcto**: once módulos sin docente asignado,
+  doce ponderaciones descuadradas y veintidós avisos del convenio sin decidir. Los tres grupos se
+  arreglan en sitios distintos y por personas distintas, así que el rechazo los cuenta por separado
+  en vez de decir «45 errores». **Decidir el convenio ya no es solo una incomodidad del panel: es lo
+  que impide aprobar el documento.**
 
 ### Lo que ha dejado el E5
 

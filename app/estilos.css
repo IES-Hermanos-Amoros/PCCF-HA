@@ -805,3 +805,51 @@ del > mark.quita { text-decoration-thickness: 2px; }
    botón —también en la cabecera, que es estrecha— así que se le pone un ancho
    máximo para que un mensaje de dos frases no empuje la fila entera. */
 .aviso-validar { font-size: 12px; line-height: 1.45; max-width: 46ch; }
+
+/* ------------------------------------------------------------ el E7
+   El panel de coordinación y los comentarios por apartado reutilizan lo que el
+   prototipo ya había dejado en esta hoja: `.tabla`, `.matriz`, `.celda`,
+   `.celda-validado`/`-completo`/`-incompleto`/`-vacio`/`-errores`, `.vacia`,
+   `.tabla-scroll`, `.glifo-*`, `.pastilla-*`, `.leyenda`, `.metricas`,
+   `.rejilla`, `.panel`, `.panel-caja`, `.hilo`, `#form-comentario`,
+   `.asig-seccion`, `.asig-sin-nadie`, `.marca-error` y `.total`. Lo único que
+   faltaba es esto. */
+
+/* Una columna de la matriz es el título de un apartado del documento («Propuestas
+   de mejora del curso anterior»), no una palabra como en el prototipo, que las
+   llevaba abreviadas a mano. Con ocho columnas así hace falta decirle al navegador
+   que las parta: sin un ancho máximo, la cabecera estira la tabla hasta los dos
+   mil píxeles y el desplazamiento horizontal se come la pantalla. */
+.matriz th.col-bloque {
+  min-width: 86px; max-width: 130px; font-size: 11px; line-height: 1.35;
+  white-space: normal; vertical-align: bottom; font-weight: 600;
+}
+/* La primera columna es la que se lee siempre, así que se queda pegada al borde
+   cuando la matriz se desplaza a lo ancho: sin esto, al llegar al último bloque ya
+   no se sabe de qué módulo es la fila. Y con ella la ESQUINA de la cabecera, que
+   es la otra mitad del asunto: si solo se pegan las filas, los títulos de columna
+   se desplazan mientras sus celdas se esconden detrás del nombre del módulo, y la
+   cabecera deja de cuadrar con lo que hay debajo. Se vio así en el navegador. */
+.matriz th[scope="row"] { position: sticky; left: 0; background: var(--panel); z-index: 1; }
+.matriz th.esquina { position: sticky; left: 0; background: var(--panel-2); z-index: 2; min-width: 230px; }
+/* La fila de un grupo ocupa el ancho entero, así que pegarla no vale: lo que se
+   pega es su texto dentro de la celda, para que «Módulos del segundo curso» no se
+   vaya por la izquierda y quede un «· 6 módulos» que no dice de qué. */
+.matriz .asig-seccion th { position: static; }
+.matriz .asig-seccion .pegada { position: sticky; left: 0; display: inline-block; }
+.matriz th[scope="row"] .chip { margin-left: 6px; }
+.matriz th[scope="row"] .marca-error { margin-left: 6px; }
+/* El botón de la celda ya viene sin borde del prototipo; esto es solo el foco,
+   que tiene que verse: es la celda por la que se está pasando con el teclado. */
+.matriz .celda button { display: flex; align-items: center; justify-content: center; min-height: 30px; }
+.matriz .celda button:focus-visible { outline: 2px solid var(--acento); outline-offset: -2px; }
+.matriz .celda button .glifo { width: 14px; height: 14px; }
+
+/* El hilo de comentarios. `.hilo` y `#form-comentario` son del prototipo; lo que
+   no tenía es la hora de cada comentario al lado del nombre, ni la ayuda de
+   debajo del formulario. */
+.hilo time { font-variant-numeric: tabular-nums; }
+.hilo .suave { font-size: 11px; }
+#form-comentario .ayuda { line-height: 1.45; }
+#form-comentario textarea:disabled { opacity: .7; }
+#form-comentario button:disabled { opacity: .6; cursor: default; }
