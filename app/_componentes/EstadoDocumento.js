@@ -170,7 +170,7 @@ const SITIOS = [
     id: 'convenio',
     titulo: 'La decisión de convenio que sigue pendiente',
     severidad: 'info',
-    comoSeArregla: 'No son erratas: son el otro convenio de ponderación —los criterios suman 100 % dentro de su RA en lugar de repartir su peso—, y cuál de los dos vale es una decisión del departamento que está sin tomar. Mientras no se decida, bloquean la aprobación: no se les baja la severidad desde una pantalla, porque eso sería decidir el convenio por la puerta de atrás.',
+    comoSeArregla: 'No son erratas: son el otro convenio de ponderación —los criterios suman 100 % dentro de su RA en lugar de repartir su peso—. La comprobación no se desactiva ni se le baja la severidad, porque es normativa; lo que se decide es el convenio del documento, y con el otro estos avisos desaparecen del panel y de la cajita roja del PDF a la vez, porque los dos lo leen del mismo sitio. La otra salida es unificar esos módulos al estricto, apartado por apartado.',
   },
   {
     id: 'otras',
@@ -463,8 +463,8 @@ function Rechazo({ rechazo, documentoId, onIr }) {
                     <span>{s.comoSeArregla}</span>
                     {/* La única salida que es una pantalla concreta: las otras
                         dos son un apartado por módulo —y están en la lista de
-                        abajo, cada uno con su enlace— o una decisión que no
-                        arregla ninguna pantalla. */}
+                        abajo, cada uno con su enlace— o el convenio del
+                        documento, que hoy solo se cambia por la API. */}
                     {s.id === 'reparto' ? (
                       <a className="enlace" href={`/reparto/${encodeURIComponent(documentoId)}`}>
                         Repartir las unidades entre el profesorado

@@ -183,7 +183,7 @@
       severidad: 'error',
       titulo: `RA${ra}: los criterios suman ${porcentaje(suma)} y el RA pondera ${porcentaje(peso)}.`,
       detalle: cienDentroDelRa
-        ? `Los criterios de este RA suman exactamente 100 %, así que este módulo está usando el otro convenio: reparte 100 % dentro del RA en lugar de repartir su peso (${porcentaje(peso)}), y el peso real de cada criterio sale de multiplicar. Casi nunca es una errata: es la decisión de convenio que el departamento tiene pendiente. Mientras el documento se imprima con el convenio estricto, el PDF lo seguirá sacando en la cajita roja.`
+        ? `Este RA reparte 100 % dentro de sí en lugar de repartir su peso (${porcentaje(peso)}), y el peso real de cada criterio sale de multiplicar los dos: es el otro convenio de ponderación, no una errata. Sale marcado porque este documento se mide con el estricto.`
         : 'Los criterios de un resultado de aprendizaje tienen que sumar ' + reglaCorta + '.',
     };
     if (cienDentroDelRa) aviso.convenio = CIEN_DENTRO_DEL_RA;
