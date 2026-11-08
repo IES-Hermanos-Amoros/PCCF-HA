@@ -9,6 +9,9 @@
 //                                  fundamental }], filas? }   ·  `multiple`: una lista de esas
 //   ficha_situacion_aprendizaje  el modelo de core/sa.js        ·  `multiple`: una lista de esas
 //   el repetidor que las agrupa  { items: [ { titulo, ficha: [ficha], texto? } ] }
+//   tabla                        { filas: [[celda, …], …] }, celda { text, colspan?, rowspan?, bold? }
+//   tabla_clave_valor            { pares: [{ etiqueta, valor }] }   ·  son las tablas que se crean en la
+//                                aplicación (core/campos.js); también guardan las importadas
 //
 // Y NADA MÁS. `pintarPonderaciones` hace `p.ce.map(...)` y `pct(p.ponderacion)`, así que
 // un peso que sea la cadena '15 %' imprime «15 %15 %» y un `ce` que no sea una lista
@@ -89,6 +92,8 @@
   const TIPO_FICHA = 'ficha_situacion_aprendizaje';
   const TIPO_TEXTO_LARGO = 'texto_largo';
   const TIPO_TEXTO = 'texto';
+  const TIPO_TABLA = 'tabla';
+  const TIPO_CLAVE_VALOR = 'tabla_clave_valor';
 
   // El id del valor de una sección repetidora. No es un campo de la plantilla: el
   // importador guarda los ítems repetidos como `{ items: [...] }` (ver `extraer` en
@@ -96,10 +101,18 @@
   const CAMPO_ITEMS = 'items';
 
   // Los tipos que ESTA PUERTA sabe comprobar y que por tanto se pueden guardar. Los demás
-  // —las rejillas importadas, la tabla de RA y CE, la ficha del módulo— tienen cada uno su
-  // forma y su editor y llegarán cuando les toque: hasta entonces se rechazan, porque un
-  // campo que entra sin puerta es un documento que deja de salir.
-  const TIPOS = [TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_PONDERACION, TIPO_FICHA];
+  // —la tabla de RA y CE, la ficha del módulo— tienen cada uno su forma y su editor y
+  // llegarán cuando les toque: hasta entonces se rechazan, porque un campo que entra sin
+  // puerta es un documento que deja de salir.
+  const TIPOS = [TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_PONDERACION, TIPO_FICHA, TIPO_TABLA, TIPO_CLAVE_VALOR];
+
+  // Lo más grande que cabe en una tabla de la programación. La mayor de la PD real tiene 48
+  // filas y 7 columnas; los topes no están para recortar el documento sino porque `anchos()`
+  // de motor/render-generico.js da a cada columna 26 pt como mínimo, así que con más de una
+  // docena la tabla se sale del margen del A4 y eso se descubre al exportar.
+  const MAX_FILAS = 200;
+  const MAX_COLUMNAS = 12;
+  const MAX_PARES = 100;
 
   const seGuarda = (campo) => !!campo && TIPOS.indexOf(campo.tipo) >= 0;
 
@@ -177,6 +190,194 @@
         if (celda.rowspan !== undefined && !esEntero(celda.rowspan, 1)) return `${suyo} tiene un «rowspan» que no es un número entero de 1 en adelante.`;
         if (celda.bold !== undefined && typeof celda.bold !== 'boolean') return `${suyo} tiene «bold» y no es true ni false.`;
       }
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------- tablas escritas en la aplicación
+
+  const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+  // Por qué las filas de una rejilla no CUADRAN con sus combinaciones.
+  //
+  // `rejilla()` de motor/render-generico.js (y su gemela de motor/exportar-docx.js) coloca las
+  // celdas como lo hace HTML: salta las casillas que una combinación de arriba ya ocupa, y a
+  // lo que falta le pone una celda vacía sin avisar. Una fila corta se rellena, una larga
+  // ensancha la tabla entera, un `rowspan` que se pasa del final inventa filas, y dos
+  // combinaciones que se pisan dejan una sin sitio. Nada de eso falla: la tabla se guarda,
+  // sale torcida en el papel y nadie sabe por qué. Aquí se RECHAZA, porque en una tabla
+  // escrita en la aplicación no hay nada que admitir —el editor siempre puede dar una rejilla
+  // entera— y el aviso hay que darlo ahora, delante de quien la escribe, y no en junio.
+  //
+  // La referencia es la PRIMERA fila: no tiene nada combinado por encima, así que su anchura
+  // es la de la tabla. Se coloca como lo hace el generador, y el mensaje dice qué fila sobra o
+  // falta contando como celda las casillas que vienen combinadas desde arriba, que es lo que
+  // ve quien mira la tabla.
+  // La forma de una rejilla: qué combina cada celda, sin el texto ni el estilo.
+  const formaDe = (filas) => JSON.stringify(filas.map((f) => f.map((x) => [x.colspan || 1, x.rowspan || 1])));
+
+  function motivoDeCuadricula(filas, donde) {
+    if (!filas.length) return null;
+    const ocupado = filas.map(() => []);
+    let ncols = 0;
+    for (let i = 0; i < filas.length; i += 1) {
+      let col = 0;
+      const fila = filas[i];
+      for (let j = 0; j < fila.length; j += 1) {
+        while (ocupado[i][col]) col += 1;
+        const celda = fila[j];
+        const cs = celda.colspan || 1;
+        const rs = celda.rowspan || 1;
+        const suya = `la celda ${j + 1} de la fila ${i + 1} de ${donde}`;
+        if (i + rs > filas.length) {
+          return `${suya} se combina con ${plural(rs - 1, 'fila', 'filas')} hacia abajo y la tabla solo tiene ${plural(filas.length - i - 1, 'fila', 'filas')} más.`;
+        }
+        if (i > 0 && col + cs > ncols) {
+          // Lo que sobra es todo lo que queda de la fila a partir de la primera celda que se sale.
+          const resto = fila.slice(j + 1).reduce((t, x) => t + (x.colspan || 1), 0);
+          const sobran = col + cs + resto - ncols;
+          return `la fila ${i + 1} de ${donde} es más ancha que la primera (${plural(ncols, 'columna', 'columnas')}): le ${sobran === 1 ? 'sobra' : 'sobran'} ${plural(sobran, 'celda', 'celdas')}.`;
+        }
+        for (let dr = 0; dr < rs; dr += 1) {
+          for (let dc = 0; dc < cs; dc += 1) {
+            if (ocupado[i + dr][col + dc]) {
+              return `${suya} se solapa con otra celda combinada: dos combinaciones no pueden tapar la misma casilla.`;
+            }
+            ocupado[i + dr][col + dc] = true;
+          }
+        }
+        col += cs;
+      }
+      if (i === 0) { ncols = col; continue; }
+      // Lo que no está ocupado ni lo ha puesto esta fila es lo que falta.
+      let huecos = 0;
+      for (let k = 0; k < ncols; k += 1) if (!ocupado[i][k]) huecos += 1;
+      if (huecos) {
+        return `la fila ${i + 1} de ${donde} es más corta que la primera (${plural(ncols, 'columna', 'columnas')}): le ${huecos === 1 ? 'falta' : 'faltan'} ${plural(huecos, 'celda', 'celdas')}.`;
+      }
+    }
+    return null;
+  }
+
+  // El texto de una celda o de un par. Es texto de la programación, no de Word: lo único que
+  // se rechaza es la huella del procesador de textos, como en el resto de la puerta.
+  function motivoDeTextoDeCelda(texto, suyo) {
+    const huella = Bloques().huellaDeWord(texto);
+    return huella
+      ? `${suyo} trae dentro una marca del procesador de textos («${huella}»), que no es texto de la programación: eso llega al pegar desde Word.`
+      : null;
+  }
+
+  // UNA REJILLA ESCRITA EN LA APLICACIÓN: `{ filas: [[celda, …], …] }`. La forma de la celda
+  // y la comprobación celda a celda son las de `motivoDeFilas`; aquí se añade lo que solo
+  // importa cuando alguien la escribe: que las filas cuadren, los topes y la cabecera.
+  //
+  // UNA TABLA SIN FILAS SÍ SE GUARDA. `{ filas: [] }` es una tabla que existe y a la que no se
+  // le ha escrito nada, y la necesita el editor: quien quita la última fila tiene que poder
+  // guardar ese estado sin inventarse una fila vacía. El generador imprime «(tabla vacía)» en
+  // cursiva, que es verdad y se nota al revisar; una fila de celdas en blanco imprimiría un
+  // rectángulo que parece una tabla rellena. (Y un campo SIN valor, que es como nace uno
+  // recién creado, no imprime nada: ver `pintarCampo`.)
+  //
+  // LA CABECERA. Qué fila es la cabecera lo decide el campo (`columnas`) para el PDF, pero el
+  // exportador a Word no lo mira: allí la cabecera es la primera fila si todas sus celdas
+  // van en negrita (`tabla` de motor/exportar-docx.js). Para que las dos salidas digan lo
+  // mismo, una tabla creada en la aplicación con cabecera (`campo.inicial` y `campo.columnas`)
+  // tiene que llevar la primera fila entera en negrita. Las importadas no se comprueban: dos
+  // de la PD real tienen `columnas` y su primera fila sin negrita, y editarles una celda no
+  // puede exigir que cambien de aspecto.
+  //
+  // LO QUE YA ESTABA TORCIDO NO SE RECHAZA. Las tablas importadas de los documentos reales traen
+  // defectos de maquetación del Word —un `rowspan` que se pasa del final, tablas de 13 a 17
+  // columnas— y quien corrige una errata en una celda no puede toparse con que su tabla «no vale».
+  // Si la forma de la rejilla (las combinaciones de cada celda) es la que ya estaba guardada, solo
+  // ha cambiado texto, y los defectos de cuadrícula y de tamaño no se vuelven a exigir. En cuanto la
+  // forma cambia —una fila nueva, una celda combinada— se exige entera.
+  function motivoDeRejilla(valor, donde, { exigeCabecera = false, guardada } = {}) {
+    if (!esObjeto(valor)) return `${donde} no es una tabla { filas: [[celda, …], …] }.`;
+    const extra = sobran(valor, ['filas']);
+    if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en una tabla: solo «filas».`;
+    if (valor.filas === undefined) return `falta «filas» en ${donde}: una tabla sin filas es { filas: [] }.`;
+    const m = motivoDeFilas(valor.filas, donde);
+    if (m) return m;
+    const igual = esObjeto(guardada) && Array.isArray(guardada.filas) && formaDe(guardada.filas) === formaDe(valor.filas);
+    if (!igual) {
+      if (valor.filas.length > MAX_FILAS) return `${donde} tiene ${valor.filas.length} filas: el máximo son ${MAX_FILAS}.`;
+      const c = motivoDeCuadricula(valor.filas, donde);
+      if (c) return c;
+      const ancho = valor.filas.length ? valor.filas[0].reduce((a, x) => a + (x.colspan || 1), 0) : 0;
+      if (ancho > MAX_COLUMNAS) {
+        return `${donde} tiene ${ancho} columnas: el máximo son ${MAX_COLUMNAS}, porque con más no caben en el ancho de la hoja.`;
+      }
+    }
+    for (let i = 0; i < valor.filas.length; i += 1) {
+      for (let j = 0; j < valor.filas[i].length; j += 1) {
+        const t = motivoDeTextoDeCelda(valor.filas[i][j].text, `la celda ${j + 1} de la fila ${i + 1} de ${donde}`);
+        if (t) return t;
+      }
+    }
+    if (exigeCabecera && valor.filas.length && !valor.filas[0].every((x) => x.bold === true)) {
+      return `la primera fila de ${donde} es su cabecera y todas sus celdas tienen que ir en negrita («bold»: true): así la imprimen igual el PDF y el Word.`;
+    }
+    return null;
+  }
+
+  // UNA TABLA DE CLAVE Y VALOR: `{ pares: [{ etiqueta, valor }] }`, dos columnas con la de la
+  // izquierda a 150 pt (`pintarClaveValor`). Un par sin nada escrito se guarda: una fila a
+  // medio rellenar es el estado normal mientras se escribe.
+  //
+  // El importador deja además `filas`, la tabla tal como venía del Word, y el generador solo
+  // la usa si no hay pares (`pintarClaveValor` cae a ella: así se importan las que el lector
+  // no supo interpretar). Con las dos a la vez el PDF imprime los pares y el exportador a
+  // Word las `filas` (`tabla_clave_valor` de motor/exportar-docx.js las prefiere), y lo
+  // escrito en la aplicación no saldría igual en las dos salidas. Por eso quien edita manda
+  // SOLO `pares`, y una escritura que trae las dos se rechaza en lugar de elegir una por él.
+  function motivoDeClaveValor(valor, donde) {
+    if (!esObjeto(valor)) return `${donde} no es una tabla de clave y valor { pares: [{ etiqueta, valor }] }.`;
+    const extra = sobran(valor, ['pares', 'filas']);
+    if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en una tabla de clave y valor: solo «pares».`;
+    if (valor.pares === undefined && valor.filas === undefined) {
+      return `falta «pares» en ${donde}: una tabla sin filas es { pares: [] }.`;
+    }
+    if (valor.pares !== undefined) {
+      if (!Array.isArray(valor.pares)) return `«pares» de ${donde} no es una lista.`;
+      if (valor.pares.length > MAX_PARES) return `${donde} tiene ${valor.pares.length} filas: el máximo son ${MAX_PARES}.`;
+      for (let i = 0; i < valor.pares.length; i += 1) {
+        const p = valor.pares[i];
+        const suyo = `la fila ${i + 1} de ${donde}`;
+        if (!esObjeto(p)) return `${suyo} no es un objeto { etiqueta, valor }.`;
+        const sobra = sobran(p, ['etiqueta', 'valor']);
+        if (sobra.length) return `${suyo} lleva ${comillas(sobra)}, que no existe en una fila de clave y valor.`;
+        for (const clave of ['etiqueta', 'valor']) {
+          if (typeof p[clave] !== 'string') return `${suyo} no tiene «${clave}», o no es texto.`;
+          const t = motivoDeTextoDeCelda(p[clave], `${clave === 'etiqueta' ? 'la etiqueta' : 'el valor'} de ${suyo}`);
+          if (t) return t;
+        }
+      }
+    }
+    if (valor.filas !== undefined) {
+      const m = motivoDeFilas(valor.filas, `la tabla importada de ${donde}`);
+      if (m) return m;
+      if (valor.filas.length && Array.isArray(valor.pares) && valor.pares.length) {
+        return `${donde} trae a la vez «pares» y «filas», que son la misma tabla escrita de dos maneras: el PDF imprimiría una y el Word la otra. Al editarla se manda solo «pares».`;
+      }
+    }
+    return null;
+  }
+
+  // Los dos tipos son `multiple` o no según el campo: el importador guarda una lista cuando
+  // la sección trae varias tablas y la tabla suelta cuando trae una, y en la PD real hay
+  // campos de clave y valor de las dos clases. `pintarCampo` imprime una lista tabla a tabla,
+  // así que una lista vacía es un campo sin tablas.
+  function motivoDeTablas(valor, campo, guardado, motivoDeUna) {
+    if (!campo.multiple) {
+      if (Array.isArray(valor)) return 'este campo es una sola tabla y esto es una lista de tablas.';
+      return motivoDeUna(valor, 'la tabla', guardado);
+    }
+    if (!Array.isArray(valor)) return 'este campo es una lista de tablas, y esto no es una lista.';
+    for (let i = 0; i < valor.length; i += 1) {
+      const m = motivoDeUna(valor[i], `la tabla ${i + 1}`, Array.isArray(guardado) ? guardado[i] : undefined);
+      if (m) return m;
     }
     return null;
   }
@@ -516,6 +717,12 @@
         return motivoPonderaciones(valor, { multiple: !!campo.multiple, raModulo: contexto.raModulo });
       case TIPO_FICHA:
         return motivoFichas(valor, { multiple: !!campo.multiple });
+      case TIPO_TABLA:
+        return motivoDeTablas(valor, campo, contexto.guardado, (v, donde, guardada) => motivoDeRejilla(v, donde, {
+          exigeCabecera: !!(campo.inicial && campo.columnas), guardada,
+        }));
+      case TIPO_CLAVE_VALOR:
+        return motivoDeTablas(valor, campo, contexto.guardado, (v, donde) => motivoDeClaveValor(v, donde));
       default:
         break;
     }
@@ -532,9 +739,10 @@
   // ---------------------------------------------------------------- exportado
 
   const api = {
-    TIPOS, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, CAMPO_ITEMS,
+    TIPOS, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_TABLA, TIPO_CLAVE_VALOR,
+    CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES,
     seGuarda,
-    motivoDeFilas,
+    motivoDeFilas, motivoDeRejilla, motivoDeClaveValor,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,
     motivoItems, renumerarItems,

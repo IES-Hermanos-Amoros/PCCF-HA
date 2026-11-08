@@ -894,7 +894,7 @@ prueba('si un campo de la petición no vale, tampoco entra el que valía', async
   await esError(await guardar(u.jefa, doc._id, 'introduccion', null, {
     valores: {
       texto: [{ type: 'p', text: 'Esto vale.' }],
-      tabla_normativa: { filas: [] },
+      tabla_normativa: { filas: 'esto no son filas' },
     },
     esperaUpdatedAt: version,
   }), 400, 'peticion');

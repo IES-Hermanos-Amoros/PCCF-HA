@@ -7,6 +7,9 @@
 //   POST   /api/documentos/[id]/estructura/apartado/mover?seccion=      mover
 //   POST   /api/documentos/[id]/estructura/apartado/retirar?seccion=    retirar (no borra)
 //   POST   /api/documentos/[id]/estructura/apartado/restaurar?seccion=  restaurar
+//   POST   /api/documentos/[id]/estructura/apartado/campo?seccion=      añadir un campo a un apartado
+//   POST   /api/documentos/[id]/estructura/apartado/campo/retirar?seccion=&campo=    quitar un campo (no borra)
+//   POST   /api/documentos/[id]/estructura/apartado/campo/restaurar?seccion=&campo=  devolverlo
 //
 // Es la mitad de servidor del E6 (docs/plan.md §5), y su criterio de aceptación tiene dos mitades:
 //
@@ -71,6 +74,7 @@
 
 const C = require('../../../core/permisos');
 const Plantilla = require('../../../core/plantilla');
+const Campos = require('../../../core/campos');
 const {
   conErrores, abrirDocumento, leerJson, fallo, malaPeticion, noEncontrado, SIN_PERMISO,
 } = require('./comun');
@@ -115,6 +119,15 @@ function cambio(tipo, pedir, { estado = 200 } = {}) {
       }
     }
 
+    // Igual con el campo: el que se quita o se devuelve tiene que ser de ese apartado.
+    if (tipo !== 'anadir_campo' && pedida.campo !== undefined) {
+      const dentro = Plantilla.buscar(plantillaCompleta, pedida.seccion);
+      const campos = dentro && Array.isArray(dentro.seccion.campos) ? dentro.seccion.campos : [];
+      if (!campos.some((c) => c && c.id === pedida.campo)) {
+        return noEncontrado(`El apartado «${pedida.seccion}» no tiene ningún campo «${pedida.campo}».`);
+      }
+    }
+
     // Un documento sin plantilla no tiene estructura que cambiar. No debería existir —la crean la
     // importación y el arrastre, y las dos la ponen—, pero el aviso vale más que el 500 que saldría
     // de intentar recorrerla.
@@ -144,6 +157,7 @@ function cambio(tipo, pedir, { estado = 200 } = {}) {
 
     // Cuántas unidades repiten este apartado. Se cuentan solo si hace falta: un apartado común no
     // tiene nada que ver con las unidades y pedirlas sería una lectura por gusto.
+    const esDeCampo = String(hecho.cambio.tipo).startsWith('campo_');
     const unidades = hecho.cambio.deUnidades ? (await repo.unidades.listar(documento._id)).length : 0;
     return Response.json(
       {
@@ -159,7 +173,13 @@ function cambio(tipo, pedir, { estado = 200 } = {}) {
         unidades,
         // Cuántos apartados toca el cambio: el de la petición y su subárbol. En «retirar» es de lo
         // que hay que avisar antes de pulsar, y el contenido de todos ellos se conserva.
-        apartadosAfectados: Plantilla.rama(apuntado, hecho.cambio.seccion).length,
+        apartadosAfectados: esDeCampo ? 1 : Plantilla.rama(apuntado, hecho.cambio.seccion).length,
+        // Los campos que el cambio ha creado, tal como quedan en la plantilla, cada uno con el valor
+        // con el que se abre mientras no tenga ninguno (core/campos.js → `valorInicial`). Un campo
+        // recién creado no tiene valor guardado: es lo que el editor pone en pantalla.
+        campos: (hecho.campos || []).map((c) => ({ ...c, valorInicial: Campos.valorInicial(c) })),
+        campo: hecho.cambio.campo === undefined ? null : hecho.cambio.campo,
+        camposRetirados: Plantilla.camposRetirados(apuntado).length,
         retirados: Plantilla.retirados(apuntado).length,
       },
       { status: estado, headers: { 'Cache-Control': 'no-store' } },
@@ -237,6 +257,17 @@ const GET = conErrores(async (peticion, parametros) => {
       unidades: unidades.length,
       apartados: Plantilla.estructura(plantillaCompleta),
       retirados: Plantilla.retirados(plantillaCompleta),
+      // Los campos retirados de los apartados, para la lista desde la que se restauran.
+      camposRetirados: Plantilla.camposRetirados(plantillaCompleta),
+      // LO QUE EL EDITOR NECESITA PARA PINTAR EL ALTA DE UN CAMPO sin adivinar nada: qué tipos se
+      // pueden crear, con su nombre en castellano, sus parámetros (con límites y valor por defecto)
+      // y la forma del valor que se guarda. Lo decide core/campos.js y no esta ruta, para que el
+      // editor y el servidor no tengan ideas distintas de qué es una tabla válida.
+      tiposDeCampo: Campos.catalogo(),
+      limites: {
+        camposPorApartado: Plantilla.MAX_CAMPOS,
+        camposAlCrearUnApartado: Plantilla.MAX_CAMPOS_AL_CREAR,
+      },
       // La historia de la estructura de ESTE documento, del primer cambio al último. Es lo que se
       // enseña («la estructura se cambió por última vez el…») y lo que hace falta para saber de qué
       // versión viene un documento arrastrado.
@@ -251,7 +282,7 @@ const GET = conErrores(async (peticion, parametros) => {
 // AÑADIR. `padre` vacío o ausente es «al final del documento»; con padre, al final de sus hijos.
 // 201, porque crea un apartado que antes no existía.
 //
-// El apartado nace con un campo de texto y, si no hereda de nadie quién lo edita, con la jefatura
+// El apartado nace con un campo de texto, o con los de `campos` (una tabla, por ejemplo), y, si no hereda de nadie quién lo edita, con la jefatura
 // del departamento: sin eso no lo podría escribir nadie y el criterio de aceptación («añadir un
 // apartado, ESCRIBIR EN ÉL y exportar») no se cumpliría. Lo decide core/plantilla.js.
 const ANADIR = cambio('anadir', (cuerpo) => {
@@ -261,7 +292,10 @@ const ANADIR = cambio('anadir', (cuerpo) => {
   if (cuerpo.padre !== undefined && cuerpo.padre !== null && typeof cuerpo.padre !== 'string') {
     return { fallo: malaPeticion('«padre» es el id del apartado que lo contiene, o nada para que vaya al final del documento.') };
   }
-  return { titulo: cuerpo.titulo, padre: cuerpo.padre || '' };
+  if (cuerpo.campos !== undefined && cuerpo.campos !== null && !Array.isArray(cuerpo.campos)) {
+    return { fallo: malaPeticion('«campos» es la lista de campos con los que nace el apartado, cada uno como { tipo, … }; sin ella nace con un campo de texto.') };
+  }
+  return { titulo: cuerpo.titulo, padre: cuerpo.padre || '', campos: cuerpo.campos || undefined };
 }, { estado: 201 });
 
 // RENOMBRAR. Es un PATCH porque cambia un campo del apartado y deja el resto como estaba, y
@@ -314,4 +348,37 @@ const RESTAURAR = cambio('restaurar', (cuerpo, url) => {
   return { seccion };
 });
 
-module.exports = { GET, ANADIR, RENOMBRAR, MOVER, RETIRAR, RESTAURAR };
+// ---------------------------------------------------------------- los campos de un apartado
+
+// Un apartado puede tener más de un campo, y se le pueden añadir y quitar. El campo se pide como
+// `{ tipo, etiqueta?, … }` con los parámetros del catálogo que devuelve el GET (core/campos.js).
+// Los campos retirados se quedan, con su contenido, igual que un apartado retirado.
+
+// AÑADIR UN CAMPO. 201, con el campo tal como queda en la plantilla —su id es para siempre— y el
+// valor con el que se abre. En un apartado de módulo el campo sale en los once (`afectaUnidades`).
+const ANADIR_CAMPO = cambio('anadir_campo', (cuerpo, url) => {
+  const { fallo: falloSeccion, seccion } = seccionDeLaUrl(url);
+  if (falloSeccion) return { fallo: falloSeccion };
+  if (!cuerpo.campo || typeof cuerpo.campo !== 'object' || Array.isArray(cuerpo.campo)) {
+    return { fallo: malaPeticion('Falta «campo»: el campo que se añade, como { tipo, … }. Los tipos y sus datos los da la lectura de la estructura (`tiposDeCampo`).') };
+  }
+  return { seccion, campo: cuerpo.campo };
+}, { estado: 201 });
+
+// El campo sobre el que se actúa viene en la URL, junto al apartado.
+function campoDeLaUrl(url) {
+  const { fallo: falloSeccion, seccion } = seccionDeLaUrl(url);
+  if (falloSeccion) return { fallo: falloSeccion };
+  const campo = url.searchParams.get('campo');
+  if (!campo) return { fallo: malaPeticion('Falta el parámetro «campo»: el campo del apartado que se cambia.') };
+  return { seccion, campo };
+}
+
+// QUITAR UN CAMPO. NO BORRA: se queda en el apartado marcado como retirado, deja de pintarse, de
+// imprimirse y de poder escribirse, y lo escrito en él se conserva.
+const RETIRAR_CAMPO = cambio('retirar_campo', (cuerpo, url) => campoDeLaUrl(url));
+
+// DEVOLVERLO, con todo lo que tenía escrito.
+const RESTAURAR_CAMPO = cambio('restaurar_campo', (cuerpo, url) => campoDeLaUrl(url));
+
+module.exports = { GET, ANADIR, RENOMBRAR, MOVER, RETIRAR, RESTAURAR, ANADIR_CAMPO, RETIRAR_CAMPO, RESTAURAR_CAMPO };

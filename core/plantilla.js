@@ -1,5 +1,6 @@
-// LA ESTRUCTURA DEL DOCUMENTO, Y LOS CUATRO CAMBIOS QUE SE LE PUEDEN HACER:
-// renombrar un apartado, añadir uno, moverlo entre sus hermanos y retirarlo.
+// LA ESTRUCTURA DEL DOCUMENTO, Y LOS CAMBIOS QUE SE LE PUEDEN HACER: renombrar un apartado,
+// añadir uno, moverlo entre sus hermanos y retirarlo (más restaurarlo), y los de sus CAMPOS:
+// añadir uno a un apartado, retirarlo y restaurarlo.
 //
 // Es lo que convierte la herramienta en el sitio donde vive la programación en lugar de
 // un visor de lo que diga un Word. Hasta el E6 la estructura solo se podía cambiar
@@ -35,6 +36,20 @@
 // lo que había escrito. Quien lee la plantilla para pintar o para imprimir usa `vigente()`,
 // que la devuelve sin los retirados; quien los va a restaurar la lee tal cual.
 //
+// LOS CAMPOS SIGUEN LAS MISMAS DOS REGLAS
+//
+// Un apartado guarda su contenido por campo (`valores[idDeCampo]`), así que el id de un campo
+// se genera UNA VEZ al crearlo (core/campos.js) y no cambia nunca, por lo mismo que el de un
+// apartado: un id que cambiara dejaría huérfano lo escrito. Nunca se reutiliza, ni siquiera
+// el de un campo retirado, porque el retirado conserva su sitio y su contenido.
+//
+// Y quitar un campo NO BORRA: se queda en `campos` con `retirado: true`, `vigente()` lo poda
+// de lo que ve el resto de la aplicación, y el apartado funde `valores` campo a campo
+// (app/_lib/rutas/apartado.js), así que escribir en los demás campos no toca lo del retirado.
+// Restaurarlo lo devuelve con todo lo que tenía escrito. Solo se retiran los campos de los
+// tipos que se pueden crear (core/campos.js): los demás —la tabla de RA y CE, las fichas— los
+// leen las comprobaciones y el reparto, y quitarlos desde aquí rompería cosas que no se ven.
+//
 // UN APARTADO DE MÓDULO ES DE LA PLANTILLA
 //
 // Las secciones que cuelgan del bloque con `instancias: true` las repiten los once módulos
@@ -48,6 +63,17 @@
 
 (function (global) {
   'use strict';
+
+  // La dependencia se resuelve al usarla, igual que en core/estructurados.js, y con la ruta
+  // LITERAL: un `require(variable)` corta el `npm run build`.
+  function deCore(nombre) {
+    if (global.Core && global.Core[nombre]) return global.Core[nombre];
+    if (typeof require === 'function') {
+      if (nombre === 'campos') return require('./campos.js');
+    }
+    throw new Error('core/plantilla.js necesita core/' + nombre + '.js');
+  }
+  const Campos = () => deCore('campos');
 
   // ---------------------------------------------------------------- el id de un apartado
 
@@ -166,20 +192,23 @@
 
   // ---------------------------------------------------------------- lo que se pinta
 
+  const retirado = (x) => !!x && !!x.retirado;
+  const camposDe = (sec) => (Array.isArray(sec && sec.campos) ? sec.campos : []);
+
   const hayRetirados = (plantilla) => {
     let hay = false;
     (function bajar(lista) {
       for (const sec of lista) {
         if (hay) return;
-        if (sec && sec.retirado) { hay = true; return; }
+        if (sec && (sec.retirado || camposDe(sec).some(retirado))) { hay = true; return; }
         bajar(hijosDe(sec));
       }
     })(raizDe(plantilla));
     return hay;
   };
 
-  // La plantilla que ve el resto de la aplicación: la misma, sin los apartados retirados y
-  // sin sus subárboles. Es la que se le pasa al árbol, a la que se le busca una sección y la
+  // La plantilla que ve el resto de la aplicación: la misma, sin los apartados retirados ni
+  // sus subárboles, y sin los campos retirados de los apartados que quedan. Es la que se le pasa al árbol, a la que se le busca una sección y la
   // que se imprime, así que un apartado retirado deja de salir en todas partes a la vez.
   //
   // Si no hay ninguno retirado devuelve LA MISMA plantilla, sin copiarla: es el caso normal y
@@ -191,7 +220,9 @@
       const antes = hijosDe(s);
       const despues = podar(antes);
       const igual = despues.length === antes.length && despues.every((x, i) => x === antes[i]);
-      return igual ? s : { ...s, hijos: despues };
+      const conCampos = camposDe(s).some(retirado);
+      if (igual && !conCampos) return s;
+      return { ...s, hijos: despues, ...(conCampos ? { campos: s.campos.filter((c) => !retirado(c)) } : {}) };
     });
     return { ...plantilla, secciones: podar(plantilla.secciones) };
   }
@@ -223,6 +254,28 @@
     return out;
   }
 
+  // Los campos retirados de los apartados, para la lista desde la que se restauran. Un campo
+  // dentro de un apartado retirado también sale, con `apartadoRetirado`: restaurarlo no lo
+  // devolvería a la vista hasta que vuelva su apartado.
+  function camposRetirados(plantilla) {
+    const out = [];
+    (function bajar(lista, deUnidades, apartadoRetirado) {
+      for (const sec of lista) {
+        if (!esObjeto(sec)) continue;
+        const fuera = apartadoRetirado || !!sec.retirado;
+        for (const c of camposDe(sec)) {
+          if (!retirado(c)) continue;
+          out.push({
+            seccion: sec.id, titulo: sec.titulo || sec.id, campo: c.id, etiqueta: c.etiqueta || c.id,
+            tipo: c.tipo, deUnidades, apartadoRetirado: fuera,
+          });
+        }
+        bajar(hijosDe(sec), deUnidades || !!sec.instancias, fuera);
+      }
+    })(raizDe(plantilla), false, false);
+    return out;
+  }
+
   // La estructura tal como se maneja en la tarjeta *Estructura*: una fila por apartado, en
   // orden de lectura, con lo que la interfaz necesita para pintar los botones sin volver a
   // recorrer nada. `puedeSubir` y `puedeBajar` se calculan entre los hermanos VISIBLES: un
@@ -240,7 +293,18 @@
           titulo: sec.titulo || sec.id,
           nivel: sec.nivel === undefined ? null : sec.nivel,
           padre: padre ? padre.id : null,
-          contenido: (Array.isArray(sec.campos) ? sec.campos.length : 0) > 0,
+          contenido: camposDe(sec).some((c) => !retirado(c)),
+          // Los campos del apartado, retirados incluidos, para pintar el editor de campos sin
+          // volver a pedir nada: `puedeRetirar` solo se da a los de un tipo que se pueda crear.
+          campos: camposDe(sec).map((c) => ({
+            id: c.id,
+            tipo: c.tipo,
+            etiqueta: c.etiqueta || c.id,
+            retirado: retirado(c),
+            puedeRetirar: !sec.retirado && !sec.repetidor && !retirado(c) && Campos().esCreable(c.tipo),
+            puedeRestaurar: !sec.retirado && !sec.repetidor && retirado(c),
+          })),
+          puedeAnadirCampo: !sec.retirado && !sec.repetidor,
           repetidor: !!sec.repetidor,
           instancias: !!sec.instancias,
           deUnidades,
@@ -260,13 +324,24 @@
 
   // ---------------------------------------------------------------- los cambios
 
-  const TIPOS = ['anadir', 'renombrar', 'mover', 'retirar', 'restaurar'];
+  const TIPOS = ['anadir', 'renombrar', 'mover', 'retirar', 'restaurar', 'anadir_campo', 'retirar_campo', 'restaurar_campo'];
+
+  // Cuántos campos puede tener un apartado, y cuántos se le pueden pedir al crearlo. Un
+  // apartado con decenas de campos no es una programación, es un formulario, y el árbol y el
+  // PDF no están hechos para eso.
+  const MAX_CAMPOS = 20;
+  const MAX_CAMPOS_AL_CREAR = 10;
 
   // El campo con el que nace un apartado añadido. Es el mismo que el importador deduce de una
   // sección con texto suelto (`camposDe` en motor/importar-docx.js), y hace falta: un apartado
   // sin campos no se puede escribir —el PATCH lo rechaza porque «solo agrupa a los de dentro»—
   // y el criterio de aceptación del E6 es añadir un apartado, ESCRIBIR EN ÉL y exportar.
   const CAMPO_NUEVO = { id: 'texto', tipo: 'texto_largo', etiqueta: 'Texto' };
+
+  // Ids que un campo no puede tomar: `items` es la clave del valor de un repetidor
+  // (core/estructurados.js → CAMPO_ITEMS), y en un apartado de fichas no se puede escribir
+  // otra cosa con ese nombre.
+  const RESERVADOS = ['items'];
 
   // Lo que se le niega a quien pide un cambio imposible: un motivo en castellano, para que la
   // ruta lo pueda devolver tal cual y la interfaz lo pueda enseñar. Nunca se devuelve una
@@ -309,10 +384,30 @@
 
   // AÑADIR. `padre` vacío significa «al final del documento»; con padre, al final de sus
   // hijos. El id se deriva del título con el que nace y no vuelve a cambiar.
-  function anadir(plantilla, { padre, titulo } = {}) {
+  //
+  // `campos` es la lista de campos con la que nace (core/campos.js → `crearCampo`); si no se
+  // pide ninguno nace con el de texto de siempre. Es lo que permite que un apartado nazca ya
+  // con una tabla.
+  function anadir(plantilla, { padre, titulo, campos: pedidos } = {}) {
     const limpio = limpiarTitulo(titulo);
     if (!limpio) return no('Hace falta un título para el apartado nuevo.');
     if (limpio.length > LARGO_TITULO) return no(`El título no puede pasar de ${LARGO_TITULO} caracteres.`);
+
+    let campos;
+    if (pedidos === undefined || pedidos === null) {
+      campos = [{ ...CAMPO_NUEVO }];
+    } else {
+      if (!Array.isArray(pedidos) || !pedidos.length) {
+        return no('«campos» es la lista de campos con los que nace el apartado, y tiene que traer al menos uno. Sin ella nace con un campo de texto.');
+      }
+      if (pedidos.length > MAX_CAMPOS_AL_CREAR) return no(`Un apartado no puede nacer con más de ${MAX_CAMPOS_AL_CREAR} campos.`);
+      campos = [];
+      for (let i = 0; i < pedidos.length; i += 1) {
+        const hecho = Campos().crearCampo(pedidos[i], campos.map((c) => c.id).concat(RESERVADOS));
+        if (hecho.motivo) return no(`El campo ${i + 1} del apartado nuevo no vale: ${hecho.motivo}`);
+        campos.push(hecho.campo);
+      }
+    }
 
     const copia = clonar(plantilla);
     const idPadre = padre ? String(padre) : '';
@@ -363,7 +458,7 @@
       id: idDe(local),
       titulo: limpio,
       nivel,
-      campos: [{ ...CAMPO_NUEVO }],
+      campos,
       hijos: [],
     };
 
@@ -381,6 +476,7 @@
       cambio: {
         tipo: 'anadido', seccion: nueva.id, titulo: limpio, padre: idPadre || null, deUnidades,
       },
+      campos: nueva.campos.map(clonar),
     };
   }
 
@@ -472,7 +568,99 @@
     };
   }
 
-  // Una sola puerta para los cinco cambios, para que la ruta y el navegador no puedan tener
+  // ---------------------------------------------------------------- los cambios de campos
+
+  // Un apartado de fichas no tiene campos suyos que cambiar: tiene los de cada ficha, y su
+  // valor es `{ items: [...] }`.
+  const sinCamposPropios = (h) => (h.seccion.repetidor
+    ? no(`«${h.seccion.titulo}» es una lista de fichas: lo de dentro son los campos de cada ficha, que no se cambian por aquí.`)
+    : null);
+
+  // AÑADIR UN CAMPO a un apartado que ya existe, al final de los suyos. Si el apartado es de
+  // los de módulo, el campo sale en los once (`deUnidades`).
+  function anadirCampo(plantilla, { seccion, campo } = {}) {
+    const copia = clonar(plantilla);
+    const h = buscar(copia, seccion);
+    if (!h) return no(`Este documento no tiene ningún apartado «${seccion}».`);
+    const estorbo = estorbaRetirado(h, 'añadirle un campo') || sinCamposPropios(h);
+    if (estorbo) return estorbo;
+
+    if (!Array.isArray(h.seccion.campos)) h.seccion.campos = [];
+    const lista = h.seccion.campos;
+    if (lista.filter((c) => !retirado(c)).length >= MAX_CAMPOS) {
+      return no(`«${h.seccion.titulo}» ya tiene ${MAX_CAMPOS} campos: no caben más.`);
+    }
+    // Los retirados también ocupan su id: van a volver, con lo que tenían escrito.
+    const hecho = Campos().crearCampo(campo, lista.map((c) => c.id).concat(RESERVADOS));
+    if (hecho.motivo) return no(hecho.motivo);
+
+    lista.push(hecho.campo);
+    return {
+      plantilla: copia,
+      cambio: {
+        tipo: 'campo_anadido', seccion: h.seccion.id, titulo: h.seccion.titulo,
+        campo: hecho.campo.id, etiqueta: hecho.campo.etiqueta, tipoCampo: hecho.campo.tipo,
+        padre: h.padre ? h.padre.id : null, deUnidades: h.deUnidades,
+      },
+      campos: [clonar(hecho.campo)],
+    };
+  }
+
+  const buscarCampo = (h, idCampo) => camposDe(h.seccion).find((c) => c && c.id === idCampo) || null;
+
+  // RETIRAR UN CAMPO: no borra. Ver la cabecera.
+  function retirarCampo(plantilla, { seccion, campo } = {}) {
+    const copia = clonar(plantilla);
+    const h = buscar(copia, seccion);
+    if (!h) return no(`Este documento no tiene ningún apartado «${seccion}».`);
+    const estorbo = estorbaRetirado(h, 'quitarle un campo') || sinCamposPropios(h);
+    if (estorbo) return estorbo;
+
+    const c = buscarCampo(h, campo);
+    if (!c) return no(`«${h.seccion.titulo}» no tiene ningún campo «${campo}».`);
+    if (retirado(c)) return no(`El campo «${c.etiqueta || c.id}» de «${h.seccion.titulo}» ya está retirado.`);
+    if (!Campos().esCreable(c.tipo)) {
+      return no(`El campo «${c.etiqueta || c.id}» es de tipo «${c.tipo}» y no se puede quitar desde aquí: de él dependen las comprobaciones y el reparto del documento.`);
+    }
+
+    c.retirado = true;
+    return {
+      plantilla: copia,
+      cambio: {
+        tipo: 'campo_retirado', seccion: h.seccion.id, titulo: h.seccion.titulo,
+        campo: c.id, etiqueta: c.etiqueta || c.id, tipoCampo: c.tipo,
+        padre: h.padre ? h.padre.id : null, deUnidades: h.deUnidades,
+      },
+    };
+  }
+
+  // RESTAURAR UN CAMPO: vuelve a su sitio con todo lo que tenía escrito.
+  function restaurarCampo(plantilla, { seccion, campo } = {}) {
+    const copia = clonar(plantilla);
+    const h = buscar(copia, seccion);
+    if (!h) return no(`Este documento no tiene ningún apartado «${seccion}».`);
+    const estorbo = estorbaRetirado(h, 'devolverle un campo') || sinCamposPropios(h);
+    if (estorbo) return estorbo;
+
+    const c = buscarCampo(h, campo);
+    if (!c) return no(`«${h.seccion.titulo}» no tiene ningún campo «${campo}».`);
+    if (!retirado(c)) return no(`El campo «${c.etiqueta || c.id}» de «${h.seccion.titulo}» no está retirado: no hay nada que restaurar.`);
+    if (camposDe(h.seccion).filter((x) => !retirado(x)).length >= MAX_CAMPOS) {
+      return no(`«${h.seccion.titulo}» ya tiene ${MAX_CAMPOS} campos: no cabe uno más.`);
+    }
+
+    delete c.retirado;
+    return {
+      plantilla: copia,
+      cambio: {
+        tipo: 'campo_restaurado', seccion: h.seccion.id, titulo: h.seccion.titulo,
+        campo: c.id, etiqueta: c.etiqueta || c.id, tipoCampo: c.tipo,
+        padre: h.padre ? h.padre.id : null, deUnidades: h.deUnidades,
+      },
+    };
+  }
+
+  // Una sola puerta para los ocho cambios, para que la ruta y el navegador no puedan tener
   // ideas distintas sobre lo que se puede hacer. Devuelve { plantilla, cambio } o { motivo }.
   function aplicar(plantilla, peticion) {
     const p = peticion || {};
@@ -482,6 +670,9 @@
       case 'mover': return mover(plantilla, p);
       case 'retirar': return retirar(plantilla, p);
       case 'restaurar': return restaurar(plantilla, p);
+      case 'anadir_campo': return anadirCampo(plantilla, p);
+      case 'retirar_campo': return retirarCampo(plantilla, p);
+      case 'restaurar_campo': return restaurarCampo(plantilla, p);
       default: return no(`«${p.tipo}» no es un cambio de estructura: ${TIPOS.join(', ')}.`);
     }
   }
@@ -510,9 +701,9 @@
   // ---------------------------------------------------------------------- exportado
 
   const api = {
-    slug, idLocal, limpiarTitulo, LARGO_TITULO, CAMPO_NUEVO, TIPOS,
-    buscar, rama, contar, vigente, retirados, estructura,
-    renombrar, anadir, mover, retirar, restaurar, aplicar,
+    slug, idLocal, limpiarTitulo, LARGO_TITULO, CAMPO_NUEVO, TIPOS, MAX_CAMPOS, MAX_CAMPOS_AL_CREAR,
+    buscar, rama, contar, vigente, retirados, camposRetirados, estructura,
+    renombrar, anadir, mover, retirar, restaurar, anadirCampo, retirarCampo, restaurarCampo, aplicar,
     siguienteVersion, registrar,
   };
 

@@ -107,17 +107,20 @@ título. Omitirlo significa «apartado común del documento».
 | `GET /api/documentos/[id]/docx?estado=&unidad=` | lo mismo en Word | E1 |
 | `GET /api/documentos/[id]/unidades` | el reparto: las unidades con sus docentes, las personas que pueden llevarlas y **cuántas unidades no tiene nadie** | E2 |
 | `PUT /api/documentos/[id]/unidades/[unidad]/docentes` | cambia quién lleva esa unidad. Cuerpo: `{ docentes: [id] }`, la lista completa | E2 |
-| `PATCH /api/documentos/[id]/apartado?seccion=&unidad=` | guarda esa rama. Cuerpo: `{ valores, esperaUpdatedAt }`, con **solo los campos que se han tocado**. Acepta texto, ponderaciones y fichas de situación de aprendizaje; los demás tipos todavía no. Devuelve 409 si no cuadra la versión | E3 |
+| `PATCH /api/documentos/[id]/apartado?seccion=&unidad=` | guarda esa rama. Cuerpo: `{ valores, esperaUpdatedAt }`, con **solo los campos que se han tocado**. Acepta texto, ponderaciones, fichas de situación de aprendizaje, **tablas** y **tablas de clave y valor** (ver «Tablas y campos creados en la aplicación»); los demás tipos todavía no. Devuelve 409 si no cuadra la versión. La lectura del mismo apartado trae además `iniciales`: con qué abrir cada campo de tabla que todavía no tiene valor | E3 |
 | `GET /api/documentos/[id]/validaciones` | los avisos agrupados por unidad, con quién lleva cada una, el recuento y si el documento se puede aprobar. Mide con **las comprobaciones que tenga configuradas el documento** (`/comprobaciones`): lleva el `convenioCe` con el que ha contado los criterios y las `desactivadas`, porque un panel sin avisos porque todo está bien y uno sin avisos porque alguien apagó las comprobaciones son la misma pantalla y no son lo mismo | E4·E7 |
 | `GET /api/documentos/[id]/coordinacion` | la matriz **unidad × bloque**: una fila por módulo o materia con quién lo lleva, una columna por bloque (que viaja **una vez**, no una por unidad) y en cada cruce cómo va esa rama: `estado` —los cinco del árbol, con `errores`— más los recuentos de los que sale (`apartados`, `conContenido`, `revisados`, `errores`, `avisos`) y el `destino` al que lleva el clic. **No lleva contenido**: ni un `valores`. El estado sale de lo que ya se sirve —`relleno` y `origen` de `/arbol`, y los avisos del MISMO cálculo que `/validaciones`, que viajan también como `cuenta` y `puedeAprobarse`—, así que no puede discrepar de ninguna de las dos. Un documento sin unidades responde `modo: 'comun'`: una fila por apartado de primer nivel y la jefatura del departamento como responsable. La ve quien ve el documento | E7 |
 | `GET /api/documentos/[id]/comentarios?seccion=&unidad=` | el hilo de ese apartado, del más antiguo al más reciente, con el nombre y el rol de cada autor (nunca su correo) y `puedeComentar` | E7 |
 | `POST /api/documentos/[id]/comentarios?seccion=&unidad=` | comenta ese apartado. Cuerpo `{ texto }`, recortado y de 2000 caracteres como máximo; el autor sale de la sesión y **nunca del cuerpo**. 201 con el comentario. **Comenta todo el que ve el documento**, no solo quien puede editarlo: quien pregunta es justamente quien no puede escribir ahí —la jefatura de estudios aprueba y no edita nada, y un docente necesita avisar en el módulo de otro—. Por eso las dos rutas del hilo **no dan 403**: 401 sin sesión, 404 si el documento, la sección o la unidad no son suyos (un apartado retirado tampoco lo es) y 400 si el enlace o el cuerpo están mal. Los comentarios **no se copian** al arrastrar el curso | E7 |
-| `GET /api/documentos/[id]/estructura` | la estructura del documento tal como se puede cambiar: una fila por apartado con su id, su título, si es de la plantilla de las unidades y qué se le puede hacer (`puedeSubir`, `puedeBajar`, `admiteHijos`), más los **retirados** —que ya no salen en el árbol—, la `plantillaVersion` y el registro de cambios. La ve quien ve el documento; `puedeCambiar` dice si los botones van habilitados, porque **la estructura la cambian la jefatura del departamento y el soporte**: no quien escribe los apartados, y la jefatura de estudios tampoco | E6 |
-| `POST /api/documentos/[id]/estructura/apartado` | añade un apartado. Cuerpo: `{ titulo, padre?, esperaPlantillaVersion? }`; sin `padre`, al final del documento. Nace con un campo de texto, y con `edita` de la jefatura del departamento si no lo hereda de su bloque. 201 con el `seccion` que le toca **para siempre**. Los cinco cambios responden igual: la `plantillaVersion` nueva, el `cambio` que queda apuntado y `afectaUnidades` con `unidades`, porque un apartado de la plantilla de las unidades cambia los once módulos a la vez y la interfaz tiene que poder advertirlo | E6 |
+| `GET /api/documentos/[id]/estructura` | la estructura del documento tal como se puede cambiar: una fila por apartado con su id, su título, si es de la plantilla de las unidades y qué se le puede hacer (`puedeSubir`, `puedeBajar`, `admiteHijos`), más los **retirados** —que ya no salen en el árbol—, la `plantillaVersion` y el registro de cambios. Cada apartado lleva sus `campos` (con `retirado`, `puedeRetirar` y `puedeRestaurar`) y `puedeAnadirCampo`; la respuesta trae además `tiposDeCampo` —**el catálogo de lo que se puede crear**, con nombre en castellano, parámetros con límites y la forma del valor—, `limites` y `camposRetirados`. La ve quien ve el documento; `puedeCambiar` dice si los botones van habilitados, porque **la estructura la cambian la jefatura del departamento y el soporte**: no quien escribe los apartados, y la jefatura de estudios tampoco | E6 |
+| `POST /api/documentos/[id]/estructura/apartado` | añade un apartado. Cuerpo: `{ titulo, padre?, esperaPlantillaVersion? }`; sin `padre`, al final del documento. Nace con un campo de texto o con los que pida `campos: [{ tipo, … }]` (una tabla, por ejemplo), y con `edita` de la jefatura del departamento si no lo hereda de su bloque. 201 con el `seccion` que le toca **para siempre**. Los ocho cambios responden igual: la `plantillaVersion` nueva, el `cambio` que queda apuntado y `afectaUnidades` con `unidades`, porque un apartado de la plantilla de las unidades cambia los once módulos a la vez y la interfaz tiene que poder advertirlo | E6 |
 | `PATCH /api/documentos/[id]/estructura/apartado?seccion=` | renombra un apartado. Cuerpo: `{ titulo, esperaPlantillaVersion? }`. **El id no cambia**: el título es solo la etiqueta, y el contenido, los comentarios y los enlaces guardados cuelgan del id | E6 |
 | `POST /api/documentos/[id]/estructura/apartado/mover?seccion=` | lo mueve entre sus hermanos. Cuerpo: `{ delta, esperaPlantillaVersion? }`, `-1` arriba y `1` abajo, contando solo los hermanos visibles. Mover el primero hacia arriba es 400 y no un 200 que no hace nada | E6 |
 | `POST /api/documentos/[id]/estructura/apartado/retirar?seccion=` | **retira sin borrar**: el apartado y su subárbol dejan de salir en el árbol, en el apartado y en el PDF, y su contenido se conserva entero. Por eso no es un `DELETE`. Cuerpo opcional `{ esperaPlantillaVersion }` | E6 |
 | `POST /api/documentos/[id]/estructura/apartado/restaurar?seccion=` | devuelve al documento un apartado retirado, con todo lo que tenía escrito. Primero el padre, si también está retirado | E6 |
+| `POST /api/documentos/[id]/estructura/apartado/campo?seccion=` | **añade un campo a un apartado que ya existe**, al final de los suyos. Cuerpo: `{ campo: { tipo, etiqueta?, … }, esperaPlantillaVersion? }`, con los datos que cada tipo declara en `tiposDeCampo` (para una tabla, `filas`, `columnas` y `cabecera`). 201 con `campos` —el campo tal como queda, con su `id` **para siempre** y su `valorInicial`— y la respuesta de siempre: `afectaUnidades` avisa de que en un apartado de módulo sale en los once. No hay campos que añadir a una lista de fichas | E6 |
+| `POST /api/documentos/[id]/estructura/apartado/campo/retirar?seccion=&campo=` | **quita un campo sin borrarlo**: deja de verse, de imprimirse y de poder escribirse, y lo que había escrito se conserva. Solo los de los tipos que se pueden crear. Cuerpo opcional `{ esperaPlantillaVersion }` | E6 |
+| `POST /api/documentos/[id]/estructura/apartado/campo/restaurar?seccion=&campo=` | lo devuelve a su apartado con todo lo que tenía escrito | E6 |
 | `GET /api/documentos/[id]/estado` | en qué estado está el documento, si su PDF lleva `marcaDeAgua` y las `transiciones` que salen de ahí, cada una con su `accion`, `quien` la mueve y un `puede` resuelto para quien pregunta. La ve quien ve el documento, y la lista es la misma para todos: lo que cambia es el `puede`, porque el cliente refleja el candado y no vuelve a escribir las reglas de rol. **No lleva la cuenta de errores**: está en `/validaciones`, que la pantalla de aprobación pide igualmente | E7 |
 | `GET /api/documentos/[id]/comprobaciones` | **qué se le comprueba a este documento y con qué convenio.** Una fila por comprobación con su código, su título, su `clase` (`normativa` o `centro`), si es `fija` y **`porque` lo es**, lo que tiene puesto (`activa`, `severidad`), lo de serie (`severidadPorOmision`) y si el panel la busca de verdad hoy (`enElPanel`, con `motivo` cuando no). Lleva además el `convenioCe` del documento y los dos `convenios` con qué es cada uno, el registro de `cambios` —quién y cuándo— y el `updatedAt` con el que se escribe. La ve quien ve el documento; `puedeConfigurar` dice si los controles van habilitados | E7 |
 | `PATCH /api/documentos/[id]/comprobaciones` | la cambia. Cuerpo **parcial**: `{ convenioCe?, reglas?, esperaUpdatedAt? }`, con `reglas` como `{ <codigo>: { activa?, severidad? } }`. **La configura la jefatura de estudios y el soporte** (ver abajo): 403 para quien ve el documento y no es quien aprueba. 400 si se pide desactivar o cambiar una de las dos **normativas** —con el motivo dentro—, si el código o la severidad no existen o si no se manda nada que cambiar; 409 `conflicto` si el documento ha cambiado desde que se leyó. 200 con la tabla entera y `aplicados`, lo que ha cambiado en esta petición; pedir lo que ya estaba es un 200 con `aplicados: []` que **no escribe ni deja fila en el historial** | E7 |
@@ -253,6 +256,51 @@ dos valores, `borrador` (con marca de agua) o `aprobado`. Por omisión, el del d
 en revisión se imprime como borrador, que es exacto: no está aprobado. Por eso `?estado=revision` es un
 400. En Word el estado se valida pero no cambia nada, porque la marca de agua es una propiedad de
 página de pdfmake y `motor/exportar-docx.js` no escribe ninguna.
+
+## Tablas y campos creados en la aplicación
+
+Un campo de tabla puede crearse y guardarse aquí; antes solo existía si venía de un Word. La forma de
+cada tipo es la que ya pinta el generador (`motor/render-generico.js`), y la decide
+`core/estructurados.js` —la puerta— y `core/campos.js` —el catálogo—, no la ruta, para que el editor y
+el servidor no puedan tener ideas distintas de qué es una tabla válida.
+
+| Tipo | Nombre | Valor que se guarda |
+|---|---|---|
+| `texto_largo` | Texto | la lista de bloques de siempre |
+| `tabla` | Tabla | `{ filas: [[celda, …], …] }`, con la celda `{ text, colspan?, rowspan?, bold? }` y **ninguna clave más** |
+| `tabla_clave_valor` | Clave y valor | `{ pares: [{ etiqueta, valor }] }`: dos columnas, la de la izquierda a 150 pt |
+
+Qué hay que saber para escribir un editor sin adivinar:
+
+- **Cabecera.** La primera fila es la cabecera si todas sus celdas van en `bold: true`: se pinta con
+  fondo azul claro (fuera de la cabecera, una celda en negrita va en gris). El campo de una tabla creada
+  con cabecera lo lleva en `columnas`, como el que deja el importador, y la puerta exige entonces la
+  primera fila entera en negrita: el PDF lo decide por `columnas`, pero el Word solo mira la negrita, y
+  así las dos salidas coinciden. Los anchos no se guardan.
+- **Las filas tienen que cuadrar.** Todas, del mismo ancho contando las casillas que vienen combinadas
+  desde arriba. El generador rellena sin avisar lo que falta y sale una tabla torcida, así que se
+  rechaza y el motivo dice qué fila sobra o falta. Una tabla importada que **ya venía** torcida se puede
+  corregir celda a celda mientras no cambie de forma. Máximo 12 columnas, 200 filas y 100 pares.
+- **Una tabla vacía se guarda** (`{ filas: [] }`, `{ pares: [] }`) y se imprime como «(tabla vacía)»;
+  un campo sin valor, que es como nace uno nuevo, no imprime nada. Los campos de tabla sin valor se
+  abren con `iniciales` de la lectura del apartado (o `Core.campos.valorInicial(campo)`); un `null`
+  importado se trata igual que «sin valor».
+- **Clave y valor importada.** El importador deja `pares` **y** `filas`. Se edita mandando solo
+  `pares` (`Core.campos.sinFilas`): con las dos, el PDF imprimiría una y el Word la otra, y la
+  puerta lo rechaza.
+- **El `id` de un campo no cambia ni se reutiliza**, como el de un apartado: el contenido se guarda
+  por campo. **Quitar un campo no lo borra**: se queda con `retirado: true`, lo escrito se conserva y
+  se puede restaurar. El curso siguiente no arrastra los campos retirados, igual que los apartados.
+
+Errores propios de estas rutas, además de los de arriba:
+
+| Estado | `error` | Cuándo |
+|---|---|---|
+| 400 | `peticion` | falta `campo` o `campo` no es un objeto; el tipo no se puede crear; un dato fuera de rango (`filas`, `columnas`…) o que ese tipo no admite; el apartado es una lista de fichas; el campo no se puede quitar (tabla de RA y CE, ponderaciones…), ya está retirado o no lo está al restaurar; el apartado ya tiene 20 campos. El `mensaje` dice qué |
+| 400 | `peticion` | al guardar una tabla: filas que no cuadran, celdas con claves de más, marcas de Word, más de 12 columnas, `pares` y `filas` a la vez. Lleva `campo` y `motivo`, y no se escribe nada |
+| 403 | `sin_permiso` | quien pregunta no es la jefatura del departamento ni el soporte |
+| 404 | `no_encontrado` | el apartado o el campo no existen en este documento |
+| 409 | `conflicto` | la `esperaPlantillaVersion` ya no es la actual, o alguien ha cambiado el documento a la vez |
 
 ## Por qué el apartado viaja con sus `campos` y sus `compartidos`
 

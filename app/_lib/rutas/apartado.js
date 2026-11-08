@@ -106,6 +106,7 @@
 
 const C = require('../../../core/permisos');
 const Estructurados = require('../../../core/estructurados');
+const CamposCore = require('../../../core/campos');
 const { listasDeTexto } = require('../../../motor/compartidos');
 const {
   conErrores, abrirDocumento, puedeEditarApartado, buscarSeccion, leerJson, raDelModulo,
@@ -190,6 +191,16 @@ async function compartidosDe(repo, documentoId, seccion, valores) {
 // Lo que devuelve el GET de una rama, sea la del documento o la de su curso anterior. Está en una
 // función para que las dos respuestas no puedan separarse: el apartado del curso anterior «devuelve
 // lo mismo que el apartado normal» (docs/api.md), y el día que una gane un campo la otra también.
+function inicialesDe(campos, valores) {
+  const out = {};
+  for (const c of campos || []) {
+    if (c.tipo !== Estructurados.TIPO_TABLA && c.tipo !== Estructurados.TIPO_CLAVE_VALOR) continue;
+    const v = valores && valores[c.id];
+    if (v === undefined || v === null) out[c.id] = CamposCore.valorInicial(c);
+  }
+  return out;
+}
+
 function cuerpoRama({ documentoId, seccion, unidadId, info, fila, compartidos, puedeEditar }) {
   return {
     documentoId,
@@ -203,6 +214,10 @@ function cuerpoRama({ documentoId, seccion, unidadId, info, fila, compartidos, p
     puedeEditar,
     existe: !!fila,
     valores: (fila && fila.valores) || {},
+    // Con qué abrir los campos de tabla que todavía no tienen valor (un campo recién creado, o uno
+    // importado cuyo valor es `null`): `{ idDeCampo: valor }`. Es lo que el editor pone en pantalla; no
+    // está guardado hasta que se escribe.
+    iniciales: inicialesDe(info.campos, fila && fila.valores),
     origen: fila ? fila.origen : null,
     // El token de concurrencia: es la versión que el cliente tiene que devolver en el PATCH para
     // que el servidor sepa que no ha escrito nadie por medio (docs/api.md, `esperaUpdatedAt`).
@@ -377,7 +392,7 @@ function conflictoDeEscritura(e) {
 //
 // `contexto` lleva lo que las puertas no pueden saber solas: los RA que declara el módulo
 // (`raDelModulo` de comun.js), para que una ponderación no pueda apuntar a un RA que no existe.
-function revisarValores(valores, { seccion, info, contexto }) {
+function revisarValores(valores, { seccion, info, contexto, guardados = {} }) {
   if (valores === undefined) {
     return { fallo: malaPeticion('Falta «valores»: los campos que se guardan, en forma { idDeCampo: valor }.') };
   }
@@ -417,7 +432,7 @@ function revisarValores(valores, { seccion, info, contexto }) {
     if (!campo) {
       return { fallo: fallo(400, 'peticion', `El apartado «${seccion}» no tiene ningún campo «${id}». No se ha guardado nada.`, { campo: id }) };
     }
-    const motivo = Estructurados.motivoDeCampo(campo, valor, contexto);
+    const motivo = Estructurados.motivoDeCampo(campo, valor, { ...contexto, guardado: guardados[id] });
     if (motivo) {
       return {
         fallo: fallo(400, 'peticion',
@@ -481,11 +496,13 @@ const PATCH = conErrores(async (peticion, parametros) => {
   // el módulo» no significa nada cuando no hay módulo, y una lista vacía rechazaría cualquier RA.
   const contexto = { raModulo: unidadId ? await raDelModulo(repo, documento, unidadId) : undefined };
 
-  const { fallo: falloValores } = revisarValores(cuerpo.valores, { seccion, info, contexto });
-  if (falloValores) return falloValores;
-
+  // Lo guardado se lee antes de comprobar: una tabla importada que ya venía torcida del Word se puede
+  // seguir corrigiendo celda a celda mientras no cambie de forma (core/estructurados.js).
   const fila = await repo.apartados.leer(documento._id, seccion, unidadId);
   const guardados = (fila && fila.valores) || {};
+
+  const { fallo: falloValores } = revisarValores(cuerpo.valores, { seccion, info, contexto, guardados });
+  if (falloValores) return falloValores;
   const valores = { ...guardados, ...alGuardar(cuerpo.valores, { info, guardados }) };
 
   let guardado;
