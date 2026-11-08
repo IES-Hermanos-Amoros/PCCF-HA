@@ -232,6 +232,8 @@ export default function Personas() {
   // filas y acabas de pulsar en la treinta.
   const [resultado, setResultado] = useState(null);
   const [ocupada, setOcupada] = useState(null);
+  const [corrigiendo, setCorrigiendo] = useState(null);
+  const [borrador, setBorrador] = useState({ nombre: '', email: '' });
 
   const cargar = useCallback(() => pedir('/api/personas')
     .then((r) => {
@@ -275,6 +277,30 @@ export default function Personas() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activo }),
   }));
+
+  // Corregir el nombre o el correo de alguien ya dado de alta. Antes, por una letra mal, había que
+  // darlo de baja y crearlo otra vez, y con el alta nueva se perdían sus asignaciones.
+  const empezarCorreccion = (p) => {
+    setResultado(null);
+    setCorrigiendo(p._id);
+    setBorrador({ nombre: p.nombre || '', email: p.email || '' });
+  };
+
+  const guardarCorreccion = async (p) => {
+    const cambios = {};
+    if (borrador.nombre.trim() !== (p.nombre || '')) cambios.nombre = borrador.nombre.trim();
+    if (borrador.email.trim().toLowerCase() !== (p.email || '')) cambios.email = borrador.email.trim();
+    if (Object.keys(cambios).length === 0) { setCorrigiendo(null); return; }
+
+    const r = await accion(p._id, () => pedir(`/api/personas/${encodeURIComponent(p._id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cambios),
+    }));
+    // Si el servidor lo rechaza —un correo que ya es de otra persona— se deja abierto con lo
+    // escrito: cerrarlo obligaría a teclearlo entero otra vez para arreglar una letra.
+    if (r) setCorrigiendo(null);
+  };
 
   const volverAInvitar = async (p) => {
     const r = await accion(
@@ -399,11 +425,40 @@ export default function Personas() {
                     return (
                       <tr key={p._id} className={p.activo ? '' : 'fila-baja'}>
                         <th scope="row">
-                          {p.nombre}
-                          {soyYo ? <span className="chip" style={{ marginLeft: 6 }}>tú</span> : null}
+                          {corrigiendo === p._id ? (
+                            <>
+                              <label className="sr" htmlFor={`nombre-${p._id}`}>Nombre de {p.nombre}</label>
+                              <input
+                                id={`nombre-${p._id}`}
+                                type="text"
+                                value={borrador.nombre}
+                                maxLength={120}
+                                disabled={trabajando}
+                                onChange={(ev) => setBorrador((b) => ({ ...b, nombre: ev.target.value }))}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              {p.nombre}
+                              {soyYo ? <span className="chip" style={{ marginLeft: 6 }}>tú</span> : null}
+                            </>
+                          )}
                         </th>
                         {hayCorreos ? (
-                          <td className="suave">{p.email || <span aria-hidden="true">—</span>}</td>
+                          <td className="suave">
+                            {corrigiendo === p._id ? (
+                              <>
+                                <label className="sr" htmlFor={`email-${p._id}`}>Correo de {p.nombre}</label>
+                                <input
+                                  id={`email-${p._id}`}
+                                  type="email"
+                                  value={borrador.email}
+                                  disabled={trabajando}
+                                  onChange={(ev) => setBorrador((b) => ({ ...b, email: ev.target.value }))}
+                                />
+                              </>
+                            ) : (p.email || <span aria-hidden="true">—</span>)}
+                          </td>
                         ) : null}
                         <td>
                           {puedeGestionar ? (
@@ -450,6 +505,38 @@ export default function Personas() {
                         {puedeGestionar ? (
                           <td>
                             <div className="acciones-persona">
+                              {corrigiendo === p._id ? (
+                                <>
+                                  <button
+                                    className="mini"
+                                    type="button"
+                                    disabled={trabajando}
+                                    onClick={() => guardarCorreccion(p)}
+                                    aria-label={`Guardar el nombre y el correo de ${p.nombre}`}
+                                  >
+                                    {trabajando ? 'Guardando…' : 'Guardar'}
+                                  </button>
+                                  <button
+                                    className="mini"
+                                    type="button"
+                                    disabled={trabajando}
+                                    onClick={() => setCorrigiendo(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  className="mini"
+                                  type="button"
+                                  disabled={trabajando}
+                                  onClick={() => empezarCorreccion(p)}
+                                  aria-label={`Corregir el nombre o el correo de ${p.nombre}`}
+                                  title="Para arreglar una errata, sin dar de baja a nadie"
+                                >
+                                  Corregir
+                                </button>
+                              )}
                               {p.activo ? (
                                 <>
                                   <button

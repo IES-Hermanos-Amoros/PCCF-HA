@@ -579,6 +579,78 @@ prueba('la baja no se puede dar a uno mismo, ni se pueden pedir cambios que no s
   assert.equal((await rutaProtegida({ testigo: t.marta })).status, 200);
 });
 
+prueba('una errata en el alta se corrige, sin dar de baja a nadie ni perder sus asignaciones', async () => {
+  // Antes el nombre y el correo no se podían tocar, así que una letra mal obligaba a dar de baja a
+  // la persona y crearla otra vez —con otro identificador—, y con ella se iban sus asignaciones.
+  const { repo, u, t } = await montar();
+
+  const r = await cambiar(t.marta, u.ana._id, { nombre: 'Ana Docente Corregida', email: 'ANA.NUEVA@Ejemplo.Invalid' });
+  assert.equal(r.status, 200);
+  const { persona, mensaje } = await r.json();
+  assert.equal(persona.nombre, 'Ana Docente Corregida');
+  assert.equal(persona.email, 'ana.nueva@ejemplo.invalid', 'el correo se guarda en minúsculas, como en el alta');
+  assert.match(mensaje, /nombre y el correo/);
+
+  // El identificador no cambia: es lo que sostiene las asignaciones y lo que guardan los apartados.
+  const guardada = await repo.usuarios.obtener(u.ana._id);
+  assert.equal(guardada.nombre, 'Ana Docente Corregida');
+  assert.equal(String(guardada._id), String(u.ana._id));
+
+  // Y sigue dentro: la sesión guarda quién eres, no cómo te llamas.
+  assert.equal((await rutaProtegida({ testigo: t.ana })).status, 200);
+});
+
+prueba('corregirse a uno mismo el nombre sí; el rol, no', async () => {
+  const { u, t } = await montar();
+  // Arreglar una errata en el propio nombre no es ascenderse.
+  const r = await cambiar(t.marta, u.marta._id, { nombre: 'Marta Jefa de Departamento' });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).persona.nombre, 'Marta Jefa de Departamento');
+  // El rol sigue sin poder cambiárselo uno mismo, en ninguna dirección.
+  await esError(await cambiar(t.marta, u.marta._id, { rol: 'admin' }), 403, 'sin_permiso');
+  await esError(await cambiar(t.marta, u.marta._id, { rol: 'docente' }), 403, 'sin_permiso');
+});
+
+prueba('cambiar el correo anula el enlace sin usar, porque pudo irse a la dirección equivocada', async () => {
+  // Un enlace de acceso es la llave de esa persona. Si el correo del alta estaba mal, esa llave pudo
+  // acabar en otro buzón: corregir la dirección sin retirarla dejaría la puerta abierta siete días.
+  const { repo, u, t } = await montar();
+  await reinvitar(t.marta, u.ana._id);
+  const pendientes = async () => (await repo.invitaciones.listar({ usuarioId: u.ana._id, estado: 'pendiente' })).length;
+  assert.equal(await pendientes(), 1, 'la prueba no vale si no había enlace que anular');
+
+  const r = await cambiar(t.marta, u.ana._id, { email: 'otra.direccion@ejemplo.invalid' });
+  assert.equal(r.status, 200);
+  const { enlacesAnulados, mensaje } = await r.json();
+  assert.equal(enlacesAnulados, 1);
+  assert.equal(await pendientes(), 0, 'el enlace viejo deja de servir');
+  assert.match(mensaje, /mándale otro/);
+
+  // Corregir solo el nombre NO retira nada: no hay ninguna llave en el sitio equivocado.
+  await reinvitar(t.marta, u.ana._id);
+  const soloNombre = await cambiar(t.marta, u.ana._id, { nombre: 'Ana' });
+  assert.equal((await soloNombre.json()).enlacesAnulados, 0);
+  assert.equal(await pendientes(), 1);
+});
+
+prueba('dos personas no pueden compartir correo, ni al corregirlo', async () => {
+  const { u, t } = await montar();
+  const r = await cambiar(t.marta, u.ana._id, { email: u.marta.email });
+  await esError(r, 400, 'peticion');
+  // Y ponerse el suyo propio no es un choque: no cambia nada y no se queja.
+  const igual = await cambiar(t.marta, u.ana._id, { email: u.ana.email.toUpperCase() });
+  assert.equal(igual.status, 200);
+  assert.equal((await igual.json()).persona.email, u.ana.email);
+});
+
+prueba('un nombre vacío o un correo que no lo parece se rechazan', async () => {
+  const { u, t } = await montar();
+  await esError(await cambiar(t.marta, u.ana._id, { nombre: '   ' }), 400, 'peticion');
+  await esError(await cambiar(t.marta, u.ana._id, { nombre: 42 }), 400, 'peticion');
+  await esError(await cambiar(t.marta, u.ana._id, { email: 'esto no es un correo' }), 400, 'peticion');
+  await esError(await cambiar(t.marta, u.ana._id, { email: '' }), 400, 'peticion');
+});
+
 prueba('volver a activar a alguien no le devuelve sus sesiones: necesita otro enlace', async () => {
   const { u, t } = await montar();
   await cambiar(t.marta, u.ana._id, { activo: false });

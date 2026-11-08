@@ -110,4 +110,6 @@ const POST = conErrores(async (peticion) => {
   }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
 });
 
-module.exports = { POST, comoSale };
+// PARECE_CORREO se exporta para que la corrección de una persona (persona.js) use la MISMA regla:
+// dos validaciones de correo acaban aceptando cosas distintas en el alta y en la corrección.
+module.exports = { POST, comoSale, PARECE_CORREO };

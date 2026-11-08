@@ -93,7 +93,7 @@ título. Omitirlo significa «apartado común del documento».
 | `GET /api/acceso?t=` · `POST /api/acceso` | canjea el enlace y abre la sesión | E2 |
 | `GET /api/sesion` · `DELETE /api/sesion` | quién soy · cerrar sesión (revoca, no solo borra la cookie) | E2 |
 | `GET /api/personas` | el censo del departamento. Con correo y invitación pendiente solo para quien gestiona personas | E1·E2 |
-| `PATCH /api/personas/[id]` | `{ rol?, activo? }`. Nadie se sube de rango ni se da de baja a sí mismo | E2 |
+| `PATCH /api/personas/[id]` | `{ nombre?, email?, rol?, activo? }`. El nombre y el correo se corrigen, también a uno mismo; el rol no. Nadie se sube de rango ni se da de baja a sí mismo | E2 |
 | `POST /api/personas/[id]/invitacion` | otro enlace para quien perdió el suyo; anula el anterior | E2 |
 | `GET /api/documentos` | lista, sin `plantilla` | E1 |
 | `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `curso`, `departamento`, `ciclo` (obligatorio salvo para `memoria`) y `forzar` opcional. Importa, concilia unidades y guarda. `tipo` es `programacion_didactica`, `propuesta_pedagogica`, `memoria` o `pccf` (ver abajo). En la propuesta pedagógica el `ciclo` es el **ámbito**: `eso` o `bach`. La importan `admin` y `jefe_departamento`, y solo en su departamento | E1·E7 |
@@ -201,6 +201,18 @@ obligar al navegador a descargarse las 57 secciones para leer una.
 
 Y lleva los **textos compartidos a los que apunta ese apartado**, porque un bloque `{ ref: 'c001' }`
 sin el texto al que apunta es un hueco en la pantalla. Solo los suyos, no los del documento.
+
+## Corregir una errata en el alta
+
+El nombre y el correo de alguien ya dado de alta se pueden cambiar. No es un detalle: antes no se
+podía, y una letra mal obligaba a darlo de baja y crearlo otra vez —con otro identificador—, con lo
+que se perdían sus asignaciones. Corregirse el **nombre** a uno mismo sí se puede, porque arreglar
+una errata no es ascenderse; el **rol**, no.
+
+**Cambiar el correo anula los enlaces de acceso sin usar.** Si la dirección estaba mal, el enlace del
+alta pudo mandarse a otro buzón, y un enlace es la llave de esa persona durante siete días. Al
+corregir la dirección se retira la llave y la respuesta avisa de que hay que mandar otra. Las
+sesiones abiertas no se tocan: guardan el identificador de la persona, no su correo.
 
 ## Por qué el reparto se manda entero y no «añade a este»
 
