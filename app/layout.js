@@ -33,7 +33,40 @@ export default function Layout({ children }) {
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <AvisoAccesoLibre />
+        {children}
+      </body>
     </html>
   );
+}
+
+// Mientras el acceso sin enlace esté encendido, se dice en todas las pantallas.
+// Es un puente sobre la autenticación: lo peor que podría pasar es que quedara
+// puesto sin que nadie se diera cuenta. Se apaga solo en cuanto se quita la
+// variable, y cómo se retira entero está en app/_lib/rutas/acceso-libre.js.
+function AvisoAccesoLibre() {
+  const { estado } = require('./_lib/rutas/acceso-libre');
+  const e = estado();
+
+  if (e.activo) {
+    return (
+      <div className="aviso-acceso-libre" role="status">
+        Modo de pruebas: se puede entrar como cualquiera desde <a href="/entrar">/entrar</a>,
+        sin enlace de acceso. Esto no es cómo se entra de verdad.
+      </div>
+    );
+  }
+
+  // Se pidió y no se ha abierto: decirlo. Un 404 mudo manda a buscar el fallo al
+  // sitio equivocado, y el motivo más probable no es el que uno supone.
+  if (e.pedido) {
+    return (
+      <div className="aviso-acceso-libre aviso-acceso-apagado" role="status">
+        El acceso de pruebas está pedido pero <strong>no se ha abierto</strong>: {e.motivo}
+      </div>
+    );
+  }
+
+  return null;
 }

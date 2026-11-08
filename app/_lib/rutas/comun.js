@@ -329,16 +329,27 @@ const SUBTITULO = 'IES Hermanos Amorós';
 const NOMBRE_TIPO = {
   programacion_didactica: 'Programación didáctica',
   pd: 'Programación didáctica',
+  propuesta_pedagogica: 'Propuesta pedagógica',
   pccf: 'Proyecto curricular del ciclo formativo',
   memoria: 'Memoria del departamento',
 };
+
+// Cómo se escribe el `ciclo` en la portada. Por omisión en mayúsculas, porque DAW y SMR son siglas y
+// así es como las llama el departamento. `bach` no es una sigla, es una abreviatura: en la portada de
+// un documento que se imprime y se lleva a una reunión, «BACH» se lee como una errata. ESO sí es
+// sigla y se queda. Es un único sitio porque la portada del PDF y la del Word tienen que decir lo
+// mismo (ver justo debajo).
+const NOMBRE_CICLO = { bach: 'Bachillerato' };
+const comoSeEscribeElCiclo = (ciclo) => (ciclo
+  ? (NOMBRE_CICLO[String(ciclo).toLowerCase()] || String(ciclo).toUpperCase())
+  : null);
 
 // El título de la portada. Sale del documento y no de un parámetro a propósito: es el mismo para el
 // PDF y para el Word, y dos exportaciones del mismo documento tienen que llevar la misma portada.
 function tituloDelTomo(documento, unidad) {
   const partes = [
     NOMBRE_TIPO[documento.tipo] || 'Documento',
-    documento.ciclo ? String(documento.ciclo).toUpperCase() : null,
+    comoSeEscribeElCiclo(documento.ciclo),
     documento.curso || null,
   ].filter(Boolean);
   if (unidad) partes.push(unidad.titulo);
@@ -351,7 +362,7 @@ const SIN_ACENTOS = { á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u', ñ: 
 function nombreDeArchivo(documento, unidad, extension) {
   const crudo = [
     (NOMBRE_TIPO[documento.tipo] || 'documento').split(' ')[0],
-    documento.ciclo ? String(documento.ciclo).toUpperCase() : null,
+    comoSeEscribeElCiclo(documento.ciclo),
     documento.curso || null,
     unidad ? unidad.titulo : null,
   ].filter(Boolean).join('_');

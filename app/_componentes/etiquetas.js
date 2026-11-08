@@ -17,6 +17,7 @@ export const ROLES = Permisos.ROLES;
 export const NOMBRE_TIPO = {
   programacion_didactica: 'Programación didáctica',
   pd: 'Programación didáctica',
+  propuesta_pedagogica: 'Propuesta pedagógica',
   pccf: 'Proyecto curricular del ciclo formativo',
   memoria: 'Memoria del departamento',
 };

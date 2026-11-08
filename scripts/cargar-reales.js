@@ -18,8 +18,9 @@
 //
 // Los de 2026-27 se cargan con `anteriorId` apuntando al de 2025-26 del mismo tipo y ciclo. Por eso
 // los de 2025-26 van primero. Sin ese enlace no hay vista de Cambios ni progreso por revisión. La
-// memoria, que es del departamento entero, se encadena con la memoria; el PCCF de 2026-27 no tiene
-// PCCF de 2025-26 en la carpeta, así que no apunta a nada, y se dice.
+// memoria, que es del departamento entero, se encadena con la memoria; las dos propuestas
+// pedagógicas se encadenan cada una con la de su etapa, porque el ámbito viaja en `ciclo`; el PCCF de
+// 2026-27 no tiene PCCF de 2025-26 en la carpeta, así que no apunta a nada, y se dice.
 //
 // REPETIBLE: SE SUSTITUYE, NO SE DUPLICA
 //
@@ -55,15 +56,25 @@ const { guardarImportacion, TIPOS, NO_ADMITIDOS, EXIGEN_CICLO } = require('../ap
 const DEPARTAMENTO = 'informatica';
 
 // El orden importa: los de 2025-26 antes que los de 2026-27, para poder encadenarlos.
+//
+// En las propuestas pedagógicas el `ciclo` es el ÁMBITO —`eso` o `bach`—, que es lo que
+// `core/conciliar.js` necesita para buscar las materias entre las del catálogo y no entre las de los
+// ciclos de FP (app/_lib/rutas/importar.js, «la propuesta pedagógica también lo exige»).
+//
 const CARGA = [
   { fichero: '2025-26/PD_DAW_25-26_final.docx', tipo: 'programacion_didactica', ciclo: 'daw', curso: '2025-26' },
   { fichero: '2025-26/PD_SMR_25-26_final.docx', tipo: 'programacion_didactica', ciclo: 'smr', curso: '2025-26' },
   { fichero: '2025-26/Informática - Memoria Final - Curso 2025-2026.docx', tipo: 'memoria', ciclo: null, curso: '2025-26' },
+  { fichero: '2025-26/Propuesta Pedagógica ESO - Informática 25-26.docx', tipo: 'propuesta_pedagogica', ciclo: 'eso', curso: '2025-26' },
+  { fichero: '2025-26/Propuesta Pedagógica Bachillerato - Informática 25-26.docx', tipo: 'propuesta_pedagogica', ciclo: 'bach', curso: '2025-26',
+    forzar: 'la materia «Primer curso – PRSI I» no está en el catálogo (ver arriba)' },
   { fichero: '2026-27/PD_DAW_26-27_161026.docx', tipo: 'programacion_didactica', ciclo: 'daw', curso: '2026-27' },
   { fichero: '2026-27/PD_SMR_26-27_221026.docx', tipo: 'programacion_didactica', ciclo: 'smr', curso: '2026-27' },
   { fichero: '2026-27/(EN PROGRESO) Informática - Memoria Final - Curso 2026-2027.docx', tipo: 'memoria', ciclo: null, curso: '2026-27' },
   { fichero: '2026-27/PCCF DAW.docx', tipo: 'pccf', ciclo: 'daw', curso: '2026-27' },
   { fichero: '2026-27/PCCF SMR.docx', tipo: 'pccf', ciclo: 'smr', curso: '2026-27' },
+  { fichero: '2026-27/Propuesta Pedagógica ESO - Informática 26-27.docx', tipo: 'propuesta_pedagogica', ciclo: 'eso', curso: '2026-27' },
+  { fichero: '2026-27/Propuesta Pedagógica Bachillerato - Informática 26-27.docx', tipo: 'propuesta_pedagogica', ciclo: 'bach', curso: '2026-27' },
 ];
 
 // «2026-27» → «2025-26»
@@ -160,7 +171,7 @@ async function repartirModulos(repo, documentos) {
       continue;
     }
     if (EXIGEN_CICLO.includes(entrada.tipo) && !entrada.ciclo) {
-      console.log('  NO SE CARGA: falta el ciclo, y sin él no se pueden conciliar los módulos.');
+      console.log('  NO SE CARGA: falta el ciclo o el ámbito, y sin él no se pueden conciliar las unidades.');
       resultados.push({ nombre, ok: false });
       continue;
     }
@@ -178,6 +189,9 @@ async function repartirModulos(repo, documentos) {
     // Se encadena con el del curso anterior si se ha cargado en esta corrida.
     const anterior = cargados.get(clave(entrada.tipo, entrada.ciclo, cursoAnterior(entrada.curso)));
 
+    // `--forzar` vale para todos; `forzar` de la entrada, solo para esa, y con el motivo escrito.
+    if (entrada.forzar) console.log(`  Se importa con forzar: ${entrada.forzar}`);
+
     const inicio = Date.now();
     const resultado = await guardarImportacion({
       buffer: fs.readFileSync(ruta),
@@ -186,7 +200,7 @@ async function repartirModulos(repo, documentos) {
       ciclo: entrada.ciclo,
       curso: entrada.curso,
       departamento: DEPARTAMENTO,
-      forzar,
+      forzar: forzar || !!entrada.forzar,
       inicio,
       anteriorId: anterior ? anterior._id : null,
       repo,
@@ -213,7 +227,7 @@ async function repartirModulos(repo, documentos) {
       + ` · textos compartidos: ${resumen.compartidos}`);
     console.log(`  anterior: ${anterior ? `${anterior.curso} (${anterior._id})` : (entrada.curso === '2025-26' ? 'ninguno (primer curso cargado)' : 'ninguno cargado en esta corrida')}`);
     if (resumen.conciliacion.length) {
-      console.log(`  módulos, cómo se han reconocido: ${resumenDeComo(resumen.conciliacion)}`);
+      console.log(`  unidades (módulos o materias), cómo se han reconocido: ${resumenDeComo(resumen.conciliacion)}`);
       if (resumen.forzadas.length) {
         console.log(`  derivados del título (forzar): ${resumen.forzadas.map((f) => f.titulo).join('; ')}`);
       }

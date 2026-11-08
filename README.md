@@ -59,6 +59,24 @@ memoria, así que funciona recién clonado y lo que se escriba se pierde al rein
   lo que hubiera del mismo tipo y curso, y con `-- --repartir` reparte los módulos entre las personas de
   muestra, que son inventadas. Sin `MONGODB_URI` se niega, porque lo cargado se perdería al terminar.
 
+### Entrar sin enlace, mientras se prueba
+
+Probar con enlaces de un solo uso es incómodo: se gastan al pincharlos y, para ver la misma pantalla
+con los cuatro roles, hacen falta cuatro. Mientras duren las pruebas hay un atajo:
+
+```bash
+PCCF_ACCESO_LIBRE=1 MONGODB_URI=mongodb://localhost:27017 npm run dev
+```
+
+y en `/entrar` se elige con quién verlo. Sale una franja roja en todas las pantallas mientras está
+puesto.
+
+**Es un puente sobre la autenticación y se quita cuando acaben las pruebas** (está dicho dónde, en
+`app/_lib/rutas/acceso-libre.js`). No se abre si no está la variable, si `NODE_ENV` es `production`
+—y `npm run start` arranca siempre así, por eso aquí pone `npm run dev`— o si `MONGODB_URI` apunta
+a una base que no está en esta máquina. Cuando está apagado, la ruta responde 404 y no se anuncia; y
+si se pide y no se abre, la franja dice por qué.
+
 ## Datos personales
 
 El repositorio es público y **no contiene ningún documento del departamento ni dato de ninguna

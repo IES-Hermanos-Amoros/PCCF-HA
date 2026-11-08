@@ -72,6 +72,21 @@
     { id: 'bach-inf1', codigo: null, ambito: 'bach', titulo: 'Primer curso – Informática I' },
     { id: 'bach-inf2', codigo: null, ambito: 'bach', titulo: 'Segundo curso – Informática II' },
     { id: 'bach-prsi2', codigo: null, ambito: 'bach', titulo: 'Segundo curso – PRSI II' },
+    // PRSI I es del currículo viejo y en 2026-27 ya no se imparte: primero pasó a
+    // Informática I mientras segundo seguía con PRSI II, que es por lo que los tres
+    // conviven ese curso. Faltaba porque el catálogo se sacó de los documentos de
+    // 2026-27, donde PRSI I ya no aparece, y sin ella la propuesta de 2025-26 se
+    // importaba con una materia sin reconocer.
+    // CONFIRMAR con el departamento que es materia propia y no el nombre viejo de
+    // Informática I: si fuera lo segundo, lo correcto sería quitar esta entrada y
+    // darle a `bach-inf1` un `titulos: { '2025-26': 'Primer curso – PRSI I' }`.
+    //
+    // `historica` quiere decir «ya no se imparte»: no sale en el árbol de un
+    // documento de hoy, pero la conciliación sí la encuentra, que es justo lo que
+    // hace falta para importar un documento de un curso en que sí existía. Sin esa
+    // distinción habría que elegir entre pintar una materia que ya no se da o
+    // importar la propuesta vieja con una materia sin reconocer.
+    { id: 'bach-prsi1', codigo: null, ambito: 'bach', titulo: 'Primer curso – PRSI I', historica: true },
   ];
 
   const porId = new Map(UNIDADES.map((u) => [u.id, u]));
@@ -95,7 +110,10 @@
 
   // Las materias de ESO/Bach que se pintan en el árbol: los bloques con `padre`
   // cuelgan de su materia, no del nivel.
-  const deAmbito = (ambito) => UNIDADES.filter((u) => u.ambito === ambito && !u.padre);
+  // Las que se imparten hoy: las `historica` quedan fuera del árbol, aunque sigan
+  // en el catálogo para que los documentos de los cursos en que sí se daban se
+  // puedan importar con su id de siempre.
+  const deAmbito = (ambito) => UNIDADES.filter((u) => u.ambito === ambito && !u.padre && !u.historica);
   const hijasDe = (id) => UNIDADES.filter((u) => u.padre === id);
 
   const unidad = (id) => porId.get(id) || null;

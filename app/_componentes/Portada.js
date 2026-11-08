@@ -32,8 +32,9 @@ import { useSesion } from './sesion-cliente';
 import { NOMBRE_ESTADO_DOC, NOMBRE_TIPO } from './etiquetas';
 
 // El orden en que se enseñan los tipos: la programación didáctica primero
-// porque es la que se toca cada semana.
-const ORDEN_TIPOS = ['programacion_didactica', 'pd', 'pccf', 'memoria'];
+// porque es la que se toca cada semana, y la propuesta pedagógica de ESO y
+// Bachillerato justo detrás, que es lo mismo un nivel más arriba.
+const ORDEN_TIPOS = ['programacion_didactica', 'pd', 'propuesta_pedagogica', 'pccf', 'memoria'];
 
 const porTipo = (documentos) => {
   const grupos = new Map();

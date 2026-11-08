@@ -60,12 +60,20 @@ const CICLOS = (() => {
   return vistos;
 })();
 
-// El PCCF y la memoria se importan por el mismo camino en el E7. Salen en la
-// lista pero apagados, con el motivo al lado: esconderlos haría pensar que la
-// herramienta no los contempla, y dejarlos activos sería prometer una
-// importación que la ruta rechaza con un 400.
+// Los cuatro documentos del departamento, y los cuatro se importan por el mismo
+// camino: el PCCF y la memoria desde el E7 y la propuesta pedagógica de ESO y
+// Bachillerato desde que tiene tipo propio. El mecanismo de `apagado` se queda
+// —esconder un tipo haría pensar que la herramienta no lo contempla, y dejarlo
+// activo sería prometer una importación que la ruta rechaza con un 400— pero hoy
+// no lo usa ninguno.
+//
+// La propuesta pedagógica se llama así porque es lo que lleva escrito la portada
+// del documento del departamento, y es como la nombran ya `docs/plan.md` y
+// `docs/entrada_ej/README.md`. En el desplegable de abajo le toca ESO o
+// Bachillerato, que son los dos ámbitos del catálogo (ver `NOMBRES_CICLO`).
 const TIPOS = [
   { valor: 'programacion_didactica', etiqueta: 'Programación didáctica' },
+  { valor: 'propuesta_pedagogica', etiqueta: 'Propuesta pedagógica (ESO y Bachillerato)' },
   { valor: 'memoria', etiqueta: 'Memoria final de curso' },
   { valor: 'pccf', etiqueta: 'Proyecto curricular del ciclo formativo' },
 ];

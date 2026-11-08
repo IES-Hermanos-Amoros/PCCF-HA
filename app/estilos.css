@@ -853,3 +853,17 @@ del > mark.quita { text-decoration-thickness: 2px; }
 #form-comentario .ayuda { line-height: 1.45; }
 #form-comentario textarea:disabled { opacity: .7; }
 #form-comentario button:disabled { opacity: .6; cursor: default; }
+
+/* ---------------------------------------------------------------- pruebas
+   Franja del modo de acceso sin enlace. Se quita con él: ver
+   app/_lib/rutas/acceso-libre.js. Deliberadamente llamativa. */
+.aviso-acceso-libre {
+  background: #7f1d1d;
+  color: #fff;
+  padding: .45rem 1rem;
+  font-size: .85rem;
+  text-align: center;
+  line-height: 1.4;
+}
+.aviso-acceso-libre a { color: #fff; text-decoration: underline; font-weight: 600; }
+.aviso-acceso-libre.aviso-acceso-apagado { background: #78350f; }

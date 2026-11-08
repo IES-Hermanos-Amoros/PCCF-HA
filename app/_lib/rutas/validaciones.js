@@ -54,6 +54,34 @@
 // Y NO SE AÑADE LA TABLA DE CONFIGURACIÓN DE REGLAS: eso es el E7. Lo único configurable hoy es el
 // convenio, y entra por una constante de este fichero que se lee en una línea.
 //
+// QUÉ NO APLICA A LA PROPUESTA PEDAGÓGICA DE ESO Y BACHILLERATO, Y POR QUÉ NO HAY QUE APAGAR NADA
+//
+// Las situaciones de aprendizaje de ESO y Bachillerato no van por resultados de aprendizaje sino por
+// COMPETENCIAS ESPECÍFICAS (docs/mockup-v2/README.md, «lo que falta»), así que las cuatro
+// comprobaciones que hablan de RA —`criterios_de_ra`, `suma_de_ra`, `ra_sin_situacion` y
+// `sa_sin_evaluacion`— no tienen de qué hablar en una propuesta pedagógica. Lo que sí aplica es
+// `sin_docente`: una materia sin profesorado asignado es el mismo problema que un módulo sin
+// profesorado, y se arregla en el mismo sitio.
+//
+// LO QUE NO SE HA HECHO ES APAGARLAS POR TIPO DE DOCUMENTO, y es una decisión, no un descuido: no
+// hace falta. Las cuatro se disparan solas si encuentran el campo del que viven, y en los cuatro
+// documentos reales del departamento ese campo NO EXISTE. Medido al importarlos (`camposPorTipo` del
+// informe del importador):
+//
+//   Propuesta de ESO 2025-26 y 2026-27            27 apartados · 3 materias · 22 texto_largo, 13 tabla
+//   Propuesta de Bachillerato 2025-26             21 apartados · 2 materias · 18 texto_largo,  8 tabla
+//   Propuesta de Bachillerato 2026-27             24 apartados · 3 materias · 21 texto_largo, 13 tabla
+//
+// Ni un `ponderacion_ra_ce`, ni un `ficha_situacion_aprendizaje`, ni un `auto.tabla_ra_ce`: las
+// tablas de los decretos de ESO y Bachillerato (competencias específicas, criterios, saberes
+// básicos) entran como tablas y no como ninguno de los estructurados de FP. Así que el panel de los
+// cuatro documentos sale con lo que tiene que salir —una materia sin docente, nada más— y no hay
+// ningún aviso que esconder. Las cuentas exactas están en test/estados.js.
+//
+// Y si algún día una propuesta trajera una tabla de ponderaciones, el aviso que saldría sería el
+// correcto: eso no es una propuesta de ESO, o la tabla está donde no debe. Apagar la regla por tipo
+// convertiría ese hallazgo en silencio, que es lo contrario de lo que este panel hace.
+//
 // QUIÉN LO VE
 //
 // Quien ve el documento, y nadie más: 401 sin identificar, 404 si es de otro departamento. No hay un

@@ -978,6 +978,53 @@ const DATOS_PD_DOCX = {
 const docxMemoria = () => exportarDocx({ plantilla: PLANTILLA_MEMORIA, datos: DATOS_MEMORIA, titulo: 'Memoria del departamento · 2026-27' });
 const docxPd = () => exportarDocx({ plantilla: PLANTILLA_PD_DOCX, datos: DATOS_PD_DOCX, titulo: 'Programación didáctica · DAW · 2026-27' });
 
+// Una propuesta pedagógica de ESO: apartados comunes y UN BLOQUE POR MATERIA, que es la forma que
+// tienen los cuatro documentos reales (27 apartados y 3 materias en los dos cursos de ESO; 21 y 2 en
+// Bachillerato 2025-26, 24 y 3 en 2026-27). La diferencia con la PD de FP no está en la forma —las
+// dos repiten un bloque por unidad— sino en lo que hay dentro: aquí NO hay ponderaciones de RA ni
+// fichas de situación de aprendizaje, porque las situaciones de ESO y Bachillerato van por
+// competencias específicas y no por resultados de aprendizaje (docs/mockup-v2/README.md). Eso es
+// exactamente lo que se mide al importar los reales: ni un `ponderacion_ra_ce`, ni un
+// `ficha_situacion_aprendizaje`, ni un `auto.tabla_ra_ce`; solo `texto_largo` y tablas.
+const MATERIAS_ESO = ['eso-trds', 'eso-digi', 'eso-videojuegos'];
+const MATERIAS_BACH = ['bach-inf1', 'bach-inf2', 'bach-prsi2'];
+
+const PLANTILLA_PROPUESTA = {
+  tipo: 'propuesta_pedagogica', origen: 'Propuesta_prueba.docx', version: null, generada: '2026-01-01T00:00:00.000Z',
+  secciones: [
+    { id: 'elementos-curriculares', titulo: 'Elementos curriculares de la etapa', nivel: 1, campos: [campoTexto], hijos: [
+      { id: 'elementos-curriculares/competencias-clave', titulo: 'Competencias clave y descriptores operativos', nivel: 2, campos: [campoTexto], hijos: [] },
+    ] },
+    { id: 'materias', titulo: 'Concreción curricular de las materias', nivel: 1, instancias: true,
+      etiqueta_instancia: 'materia', grupos: ['Concreción curricular de las materias'], campos: [], hijos: [
+        { id: 'materias/competencias-especificas', titulo: 'Competencias específicas', nivel: 3, campos: [campoTexto], hijos: [] },
+        { id: 'materias/situaciones-de-aprendizaje', titulo: 'Situaciones de aprendizaje', nivel: 3, campos: [campoTexto], hijos: [] },
+      ] },
+  ],
+};
+
+const datosPropuesta = (materias, curso) => ({
+  departamento: 'informatica',
+  documento: {
+    'elementos-curriculares': { texto: [{ type: 'p', text: 'Los elementos curriculares salen del decreto de la etapa.' }] },
+    'elementos-curriculares/competencias-clave': { texto: [{ type: 'p', text: 'Las ocho competencias clave con sus descriptores.' }] },
+  },
+  instancias: materias.map((id, i) => ({
+    titulo: Unidades.tituloDe(id, curso), num: `${i + 1}`, grupo: 'Concreción curricular de las materias', docentes: [],
+    valores: {
+      'materias/competencias-especificas': { texto: [{ type: 'p', text: `Competencias específicas de ${Unidades.tituloDe(id, curso)}.` }] },
+      'materias/situaciones-de-aprendizaje': { texto: [{ type: 'p', text: 'Las situaciones van por competencias específicas, no por RA.' }] },
+    },
+  })),
+  asignaciones: {},
+  compartidos: {},
+});
+
+const docxPropuesta = ({ materias = MATERIAS_ESO, curso = '2026-27' } = {}) => exportarDocx({
+  plantilla: PLANTILLA_PROPUESTA, datos: datosPropuesta(materias, curso),
+  titulo: `Propuesta pedagógica · ESO · ${curso}`,
+});
+
 // Un PCCF con la forma de los dos del departamento, y por eso NO lo escribe el exportador: sus
 // apartados numerados están escritos con estilos propios (`Estilo1`, `Estilo3`) que no declaran nivel
 // de esquema —ni Word los considera títulos—, y la estructura solo está en la tabla de contenidos que
@@ -1184,6 +1231,7 @@ prueba('un Word del que no sale ni un apartado se niega, y el 400 dice qué arre
   assert.ok(otro.mensaje.includes('programacion_didactica'), otro.mensaje);
   assert.ok(otro.mensaje.includes('memoria'), otro.mensaje);
   assert.ok(otro.mensaje.includes('pccf'), otro.mensaje);
+  assert.ok(otro.mensaje.includes('propuesta_pedagogica'), otro.mensaje);
 });
 
 prueba('una programación subida como memoria da 400 con la lista de módulos y no escribe nada', async () => {
@@ -1231,6 +1279,202 @@ prueba('la memoria importada pasa el circuito entero y el PDF la sigue', async (
 
   assert.deepStrictEqual(vistas, [true, true, false, true],
     'la marca de agua tiene que seguir al estado del documento en los dos sentidos');
+});
+
+// ================================================================ 6. la propuesta pedagógica de ESO y Bachillerato
+//
+// El cuarto tipo, y el que cierra el inventario del departamento. Se prueba con un documento
+// SINTÉTICO, por lo mismo que la memoria y el PCCF: los cuatro `.docx` reales no se versionan
+// (docs/entrada_ej/README.md), así que una prueba que dependiera de ellos no se podría ejecutar en
+// una máquina recién clonada. Lo que el sintético reproduce es la forma que se ha medido en los
+// reales: un bloque por materia, y dentro ni ponderaciones ni fichas de SA.
+
+prueba('la propuesta pedagógica se importa y sus materias se conocen por el catálogo', async () => {
+  const { repo, u } = await escenarioLimpio();
+  const res = await subir(u.jefa, await docxPropuesta(), { tipo: 'propuesta_pedagogica', ciclo: 'eso' });
+  assert.equal(res.status, 201, `la propuesta tendría que importarse: ${res.status}`);
+  const { documento, resumen } = await res.json();
+
+  assert.equal(documento.tipo, 'propuesta_pedagogica');
+  assert.equal(documento.estado, 'borrador', 'todo lo que se importa nace en borrador');
+  assert.equal(resumen.unidades, 3, 'las tres materias de ESO del documento');
+  assert.deepStrictEqual(resumen.forzadas, [], 'las tres están en el catálogo: no hay que forzar ninguna');
+
+  // Y se conocen por su TÍTULO EXACTO del curso, con confianza alta: es lo que se mide sobre los
+  // cuatro documentos reales, y lo que hace que el reparto sobreviva al curso siguiente.
+  assert.deepStrictEqual(resumen.conciliacion.map((c) => c.unidadId), MATERIAS_ESO);
+  for (const c of resumen.conciliacion) {
+    assert.equal(c.como, 'titulo_del_curso', `${c.titulo} se ha reconocido por ${c.como}`);
+    assert.equal(c.confianza, 'alta');
+    assert.equal(c.forzada, false);
+  }
+
+  const id = documento._id;
+
+  // El árbol: los apartados comunes y una unidad por materia, en el orden del documento.
+  const arbol = Arbol.aplanar((await (await arbolDe(u.jefa, id)).json()).arbol);
+  const unidades = arbol.filter((n) => n.tipo === 'unidad');
+  assert.deepStrictEqual(unidades.map((n) => n.unidadId), MATERIAS_ESO);
+  assert.deepStrictEqual(unidades.map((n) => n.titulo), MATERIAS_ESO.map((m) => Unidades.tituloDe(m, '2026-27')));
+  const titulos = arbol.filter((n) => n.tipo === 'apartado').map((n) => n.titulo);
+  assert.ok(titulos.includes('Elementos curriculares de la etapa'), titulos.join(' · '));
+  assert.ok(titulos.includes('Competencias específicas'), titulos.join(' · '));
+
+  // El PDF, con el nombre que le toca en la portada y con el contenido de las materias dentro.
+  const impreso = JSON.stringify(await definicionDe(u.jefa, id));
+  assert.ok(impreso.includes('Propuesta pedagógica'), 'la portada no dice que es una propuesta pedagógica');
+  assert.ok(impreso.includes('Las situaciones van por competencias específicas, no por RA.'), 'el contenido no llega al PDF');
+  assert.equal(conMarcaDeAgua(await definicionDe(u.jefa, id)), true, 'recién importada está en borrador');
+
+  // Y el Word.
+  const xml = await wordDe(u.jefa, id);
+  assert.ok(xml.includes('Concreción curricular de las materias'), 'el bloque de las materias no llega al Word');
+  assert.ok(xml.includes('Las ocho competencias clave con sus descriptores.'), 'el contenido no llega al Word');
+
+  assert.equal((await repo.documentos.obtener(id)).tipo, 'propuesta_pedagogica');
+});
+
+prueba('en una propuesta el ciclo es el ÁMBITO —eso o bach— y es ahí donde se buscan las materias', async () => {
+  // LA DECISIÓN QUE ESTA PRUEBA FIJA. ESO y Bachillerato no son ciclos formativos, pero `ciclo` no
+  // significa «de qué ciclo de FP es»: significa «entre qué unidades del catálogo hay que buscar».
+  // `core/conciliar.js` lo usa así desde que existe (filtra por `u.ciclo === ciclo || u.ambito ===
+  // ciclo`), así que en una propuesta va el `ambito` de core/unidades.js: `eso` o `bach`. Si alguien
+  // decide algún día que ahí va otra cosa, esta prueba se pone roja y tendrá que ser explícito.
+  const { u } = await escenarioLimpio();
+
+  // Sin ciclo, 400: la propuesta de ESO y la de Bachillerato son dos documentos del mismo tipo y el
+  // Word no dice de qué etapa es ninguno.
+  const sinCiclo = await esError(
+    await subir(u.jefa, await docxPropuesta(), { tipo: 'propuesta_pedagogica', ciclo: null }), 400, 'peticion');
+  assert.ok(sinCiclo.mensaje.includes('ciclo'), sinCiclo.mensaje);
+
+  // Con el ámbito de la etapa equivocada, 400 con la lista: las materias de ESO no se buscan entre
+  // las de Bachillerato. Es la prueba de que el ámbito manda de verdad y no es un adorno del
+  // formulario.
+  const etapaMala = await esError(
+    await subir(u.jefa, await docxPropuesta(), { tipo: 'propuesta_pedagogica', ciclo: 'bach' }), 400, 'peticion');
+  assert.equal(etapaMala.sinResolver.length, 3, 'ninguna materia de ESO debería encontrarse entre las de Bachillerato');
+
+  // Y da igual cómo se escriba: el ámbito se guarda en minúsculas, como el ciclo de la PD.
+  const bien = await subir(u.jefa, await docxPropuesta(), { tipo: 'propuesta_pedagogica', ciclo: 'ESO' });
+  assert.equal(bien.status, 201);
+  const cuerpoEso = await bien.json();
+  assert.equal(cuerpoEso.documento.ciclo, 'eso');
+
+  // La de Bachillerato, con el suyo: las tres materias del catálogo de `bach`.
+  const bach = await subir(u.jefa, await docxPropuesta({ materias: MATERIAS_BACH }), { tipo: 'propuesta_pedagogica', ciclo: 'bach' });
+  assert.equal(bach.status, 201);
+  const cuerpoBach = await bach.json();
+  assert.deepStrictEqual(cuerpoBach.resumen.conciliacion.map((c) => c.unidadId), MATERIAS_BACH);
+  assert.deepStrictEqual(cuerpoBach.resumen.forzadas, []);
+
+  // Y en la portada el ámbito se escribe como se lee: ESO es una sigla y se queda en mayúsculas,
+  // `bach` es una abreviatura y se escribe entero (app/_lib/rutas/comun.js, `NOMBRE_CICLO`). Es la
+  // portada de un documento que se imprime, y «BACH» ahí se lee como una errata.
+  const portadaBach = JSON.stringify(await definicionDe(u.jefa, cuerpoBach.documento._id));
+  assert.ok(portadaBach.includes('Propuesta pedagógica · Bachillerato · 2026-27'),
+    'la portada de la propuesta de Bachillerato no la nombra entera');
+  const portadaEso = JSON.stringify(await definicionDe(u.jefa, cuerpoEso.documento._id));
+  assert.ok(portadaEso.includes('Propuesta pedagógica · ESO · 2026-27'), 'ESO es una sigla y se queda así');
+});
+
+prueba('una materia que no está en el catálogo se niega con su nombre, y con forzar entra con el id del título', async () => {
+  // La regla es la misma que para un módulo de FP que no se reconoce: 400 con el nombre y el motivo,
+  // sin escribir nada, y `forzar` solo si quien sube el fichero lo decide a la vista de la lista.
+  //
+  // Esta prueba nació usando «Primer curso – PRSI I», que entonces no estaba en el catálogo. Ya
+  // está —marcada como histórica, porque se impartía en 2025-26 y hoy no—, así que hace falta una
+  // materia que de verdad no exista; si no, la prueba pasaría a comprobar lo contrario de lo que
+  // dice su nombre sin que nadie se enterase.
+  const { repo, u } = await escenarioLimpio();
+  const antes = (await repo.documentos.listar({})).length;
+
+  // Una materia que no está en el catálogo, al lado de dos que sí: el rechazo tiene que señalar solo
+  // a esa.
+  const datos = datosPropuesta(['bach-inf2', 'bach-prsi2'], '2026-27');
+  datos.instancias.unshift({
+    titulo: 'Primer curso – Materia que no existe', num: '1', grupo: 'Concreción curricular de las materias', docentes: [],
+    valores: {
+      'materias/competencias-especificas': { texto: [{ type: 'p', text: 'Competencias específicas de PRSI I.' }] },
+      'materias/situaciones-de-aprendizaje': { texto: [{ type: 'p', text: 'Las situaciones van por competencias específicas.' }] },
+    },
+  });
+  const buffer = await exportarDocx({
+    plantilla: PLANTILLA_PROPUESTA, datos, titulo: 'Propuesta pedagógica · Bachillerato · 2025-26',
+  });
+
+  const cuerpo = await esError(
+    await subir(u.jefa, buffer, { tipo: 'propuesta_pedagogica', ciclo: 'bach', curso: '2025-26' }), 400, 'peticion');
+  assert.equal(cuerpo.sinResolver.length, 1, 'solo una materia está fuera del catálogo');
+  assert.equal(cuerpo.sinResolver[0].titulo, 'Primer curso – Materia que no existe');
+  assert.equal((await repo.documentos.listar({})).length, antes, 'un 400 no puede dejar nada escrito');
+
+  // Con `forzar=1` entra, con el id derivado del título, y la respuesta dice CUÁL se ha importado así.
+  const forzada = await subir(u.jefa, buffer, { tipo: 'propuesta_pedagogica', ciclo: 'bach', curso: '2025-26', forzar: '1' });
+  assert.equal(forzada.status, 201);
+  const { resumen } = await forzada.json();
+  assert.equal(resumen.unidades, 3);
+  assert.deepStrictEqual(resumen.forzadas.map((f) => f.titulo), ['Primer curso – Materia que no existe']);
+  assert.deepStrictEqual(resumen.conciliacion.map((c) => c.unidadId), ['primer-curso-materia-que-no-existe', 'bach-inf2', 'bach-prsi2']);
+});
+
+prueba('las comprobaciones de RA y de fichas de SA no aplican a una propuesta; la del docente sí', async () => {
+  // QUÉ VALIDACIONES NO APLICAN, Y POR QUÉ NO HAY NADA QUE APAGAR. Las situaciones de aprendizaje de
+  // ESO y Bachillerato van por COMPETENCIAS ESPECÍFICAS y no por resultados de aprendizaje
+  // (docs/mockup-v2/README.md), así que `criterios_de_ra`, `suma_de_ra`, `ra_sin_situacion` y
+  // `sa_sin_evaluacion` no tienen de qué hablar. Y no hace falta desactivarlas por tipo: las cuatro
+  // se disparan solas cuando encuentran el campo del que viven, y en los cuatro documentos reales
+  // ese campo no existe (ni un `ponderacion_ra_ce`, ni un `ficha_situacion_aprendizaje`, ni un
+  // `auto.tabla_ra_ce`: solo `texto_largo` y tablas). Lo que SÍ aplica es `sin_docente`: una materia
+  // sin profesorado es el mismo problema que un módulo sin profesorado, y se arregla igual.
+  const { repo, u } = await escenarioLimpio();
+  const { documento } = await (await subir(u.jefa, await docxPropuesta(), { tipo: 'propuesta_pedagogica', ciclo: 'eso' })).json();
+  const id = documento._id;
+
+  const panel = await validacionesDe(u.estudios, id);
+  const reglas = [...new Set(panel.grupos.flatMap((g) => g.avisos).map((a) => a.regla))];
+  assert.deepStrictEqual(reglas, ['sin_docente'],
+    `la única comprobación que aplica a una propuesta es la del docente: ${reglas.join(' · ')}`);
+  assert.equal(panel.total, 3, 'una por materia, y ninguna de RA');
+  assert.deepStrictEqual(panel.cuenta, { error: 3, aviso: 0, info: 0 });
+  assert.equal(panel.impresos, 0, 'la cajita roja del PDF solo imprime las normativas, y aquí no hay ninguna');
+  assert.equal(panel.delOtroConvenio, 0, 'sin ponderaciones no hay convenio que decidir');
+  assert.equal(panel.grupos.length, 4, 'el grupo de los apartados comunes y uno por materia');
+  assert.equal(panel.puedeAprobarse, false, 'tres materias sin profesorado impiden aprobar');
+
+  // Repartidas las tres materias, el panel se queda vacío —no «aprobado a la fuerza»: vacío porque no
+  // hay nada más que comprobar— y la puerta de aprobación deja pasar.
+  for (const materia of MATERIAS_ESO) await repo.unidades.actualizar(id, materia, { docentes: [u.ana._id] });
+  const repartida = await validacionesDe(u.estudios, id);
+  assert.equal(repartida.total, 0, `una propuesta repartida no debería tener ningún aviso: ${JSON.stringify(repartida.cuenta)}`);
+  assert.equal(repartida.puedeAprobarse, true);
+
+  // Y el criterio de aceptación del E7, sobre el tipo nuevo: aprobar le quita la marca de agua.
+  await paso(u.jefa, id, 'revision');
+  assert.equal((await paso(u.estudios, id, 'aprobado')).marcaDeAgua, false);
+  assert.equal(conMarcaDeAgua(await definicionDe(u.jefa, id)), false);
+});
+
+prueba('una propuesta subida como memoria o como PCCF se sigue rechazando por sus bloques de materia', async () => {
+  // LA REGLA QUE NO SE TOCA. El tipo nuevo amplía la lista de los que SÍ llevan unidades
+  // (`CON_UNIDADES`: la PD por módulo y la propuesta por materia), y no la desarma: la memoria y el
+  // PCCF siguen sin llevarlas, y un bloque repetido en uno de ellos sigue dando 400 sin escribir
+  // nada. Es el error más probable de quien sube el fichero: dejarse el tipo sin cambiar.
+  const { repo, u } = await escenarioLimpio();
+  const antes = (await repo.documentos.listar({})).length;
+  const buffer = await docxPropuesta();
+
+  for (const tipo of ['memoria', 'pccf']) {
+    const cuerpo = await esError(await subir(u.jefa, buffer, { tipo, ciclo: 'eso' }), 400, 'peticion');
+    assert.equal(cuerpo.instancias.length, 3, 'el error tiene que decir cuáles son los bloques que ha visto');
+    assert.ok(cuerpo.instancias.includes(Unidades.tituloDe('eso-trds', '2026-27')), cuerpo.instancias.join(' · '));
+    assert.ok(/no lleva m[óo]dulos/.test(cuerpo.mensaje), cuerpo.mensaje);
+  }
+  assert.equal((await repo.documentos.listar({})).length, antes, 'un 400 no puede dejar nada escrito');
+
+  // Y el tipo nuevo sale en la lista de los que sí se admiten cuando se manda uno que no existe.
+  const otro = await esError(await subir(u.jefa, buffer, { tipo: 'propuesta' }), 400, 'peticion');
+  assert.ok(otro.mensaje.includes('propuesta_pedagogica'), otro.mensaje);
 });
 
 // ---------------------------------------------------------------- ejecución

@@ -96,7 +96,7 @@ título. Omitirlo significa «apartado común del documento».
 | `PATCH /api/personas/[id]` | `{ rol?, activo? }`. Nadie se sube de rango ni se da de baja a sí mismo | E2 |
 | `POST /api/personas/[id]/invitacion` | otro enlace para quien perdió el suyo; anula el anterior | E2 |
 | `GET /api/documentos` | lista, sin `plantilla` | E1 |
-| `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `curso`, `departamento`, `ciclo` (obligatorio salvo para `memoria`) y `forzar` opcional. Importa, concilia unidades y guarda. `tipo` es `programacion_didactica`, `memoria` o `pccf` (ver abajo). La importan `admin` y `jefe_departamento`, y solo en su departamento | E1·E7 |
+| `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `curso`, `departamento`, `ciclo` (obligatorio salvo para `memoria`) y `forzar` opcional. Importa, concilia unidades y guarda. `tipo` es `programacion_didactica`, `propuesta_pedagogica`, `memoria` o `pccf` (ver abajo). En la propuesta pedagógica el `ciclo` es el **ámbito**: `eso` o `bach`. La importan `admin` y `jefe_departamento`, y solo en su departamento | E1·E7 |
 | `GET /api/documentos/[id]` | el documento sin `plantilla` | E1 |
 | `GET /api/documentos/[id]/arbol` | el árbol de apartados y unidades, con el estado de cada nodo, el `origen` de cada apartado y el recuento `revision` (apartados, revisados, heredados y pendientes) | E1·E5 |
 | `POST /api/documentos/[id]/siguiente-curso` | crea el documento del curso siguiente a partir de este. Cuerpo opcional `{ curso }`, por omisión el siguiente al suyo. Copia la plantilla, las unidades con sus docentes, los apartados con su contenido y los textos compartidos; todos los apartados nacen `heredado` y el documento, en `borrador`, con `anteriorId`. 201 con el documento nuevo. La jefatura de departamento y el soporte, en su departamento. 409 si ese curso ya existe | E5 |
@@ -238,20 +238,29 @@ dejar documentos a medio importar en la lista.
 
 ## Qué tipos de documento se admiten
 
-Se admiten **`programacion_didactica`, `memoria` y `pccf`**. Lo que da 400 es un Word del que no sale
-ni un apartado, sea del tipo que sea.
+Se admiten **`programacion_didactica`, `propuesta_pedagogica`, `memoria` y `pccf`**: los cuatro
+documentos del departamento. Lo que da 400 es un Word del que no sale ni un apartado, sea del tipo que
+sea.
 
 Hasta el E7 solo entraba la PD, a propósito: el importador leía los otros dos, pero su camino hasta
 el PDF no estaba probado y era mejor negarse que guardar un documento que luego se exporta mal. El E7
 lo prueba con los documentos reales del departamento, y lo que se mide es esto:
 
-| Documento | Apartados | Módulos | Del texto del cuerpo | ¿Entra? |
+| Documento | Apartados | Unidades | Del texto del cuerpo | ¿Entra? |
 |---|---|---|---|---|
 | Memoria del departamento 2026-27 | 43 | 0 | 96 % | **sí** |
 | Memoria del departamento 2025-26 | 43 | 0 | 96 % | **sí** |
 | PCCF de DAW | 31 | 0 | 99 % | **sí** |
 | PCCF de SMR | 22 | 0 | 98 % | **sí** |
-| PD de DAW 2026-27 (referencia) | 57 | 11 | — | sí |
+| Propuesta pedagógica de ESO 2025-26 | 27 | 3 materias | — | **sí** |
+| Propuesta pedagógica de ESO 2026-27 | 27 | 3 materias | — | **sí** |
+| Propuesta pedagógica de Bachillerato 2025-26 | 21 | 2 materias | — | **sí, con `forzar`** |
+| Propuesta pedagógica de Bachillerato 2026-27 | 24 | 3 materias | — | **sí** |
+| PD de DAW 2026-27 (referencia) | 57 | 11 módulos | — | sí |
+
+La columna de unidades dice **módulos** en la PD y **materias** en la propuesta pedagógica: son la
+misma cosa del modelo (una fila de `unidades`, un id estable del catálogo, un reparto al
+profesorado), con el nombre que le da cada etapa.
 
 **La memoria entra entera.** 43 apartados, 34 tablas, ninguna unidad, y pasa el criterio del E1: la
 definición de pdfmake que da la base de datos es **idéntica** a la que da el importador sobre el mismo
@@ -280,16 +289,40 @@ dónde**: se arregla en Word, aplicando Título 1/2/3 a los apartados o poniendo
 baja el umbral ni se deduce la estructura del tamaño de la letra: una estructura adivinada no se nota
 al importar, se nota en junio al exportar.
 
-**Los módulos son de la PD.** Un PCCF es del ciclo y una memoria, del departamento entero: ninguno
-repite un bloque por módulo, y los tres documentos reales dan **cero instancias**. Así que las
-unidades —y con ellas la conciliación, el reparto al profesorado y el arrastre de asignaciones— no
-aplican ahí: el documento entra como un solo tomo de apartados comunes. Y si el importador **sí**
-encuentra un bloque repetido en un documento que no es una PD, la respuesta es 400 con la lista de lo
-que ha visto, sin escribir nada. Por dos motivos, y el primero es el que pasa de verdad: es el error
-más probable de quien sube el fichero —dejarse el tipo sin cambiar—, y una programación importada
-como memoria se guardaría sin protestar, con sus once módulos conciliados, mientras la memoria de
-verdad se queda sin subir. El segundo es que conciliar contra el catálogo de módulos algo que no son
-módulos sería adivinar, y aquí no se adivina.
+**La propuesta pedagógica de ESO y Bachillerato entra, y se llama así porque es lo que lleva escrito
+la portada.** Son cuatro documentos —ESO y Bachillerato, de los dos cursos— y se importaban bien
+desde antes de tener un tipo propio: lo único que les faltaba era el tipo (`docs/plan.md`, «lo que ha
+dejado el E7»). El prototipo los registra como `tipo: 'pd'` con `rama: 'eso-bach'`
+(`docs/mockup-v2/js/estructura.js`), pero ahí `'pd'` cubre también los dos ciclos de FP y lo que de
+verdad separa un documento de otro es el `ambito` (`eso` | `bach`). De ese vocabulario se toma justo
+eso —el ámbito, que aquí viaja en `ciclo`— y la palabra con la que el prototipo llama a sus
+unidades: **materias**.
+
+Sus materias concilian por el **título exacto del curso**, con confianza alta, y con una excepción:
+la propuesta de Bachillerato de 2025-26 trae «Primer curso – PRSI I», que **no está en
+`core/unidades.js`** —el catálogo se extrajo de los documentos de 2026-27, donde la materia de
+primero ya se llama «Informática I», y de PRSI solo quedó `bach-prsi2`—. Sin `forzar` esa
+importación da 400 con la lista, que es lo que tiene que hacer: el arreglo es del catálogo, no de la
+importación.
+
+Y hay una pérdida que el importador **avisa** y conviene conocer: en la propuesta de ESO, la materia
+«Programación, Inteligencia Artificial y Robótica (2º y 3º ESO)» no tiene la estructura de las
+demás —lleva dentro dos bloques propios, PIAR I y PIAR II, que el catálogo modela como unidades
+hijas— y el importador la ignora con un aviso en lugar de adivinar su forma. Lo mismo pasa con el
+bloque padre «Programación, redes y sistemas informáticos (PRSI)» de Bachillerato 2025-26, cuyos dos
+cursos sí entran, y con «Organización de los dos cursos» de Bachillerato 2026-27. El aviso viaja en
+`resumen.avisos` y la pantalla de subida lo enseña: no se guarda nada en silencio.
+
+**Las unidades son de la PD y de la propuesta.** Un PCCF es del ciclo y una memoria, del departamento
+entero: ninguno repite un bloque por unidad, y los tres documentos reales dan **cero instancias**. Así
+que las unidades —y con ellas la conciliación, el reparto al profesorado y el arrastre de
+asignaciones— no aplican ahí: el documento entra como un solo tomo de apartados comunes. Y si el
+importador **sí** encuentra un bloque repetido en un documento de uno de esos dos tipos, la respuesta
+es 400 con la lista de lo que ha visto, sin escribir nada. Por dos motivos, y el primero es el que
+pasa de verdad: es el error más probable de quien sube el fichero —dejarse el tipo sin cambiar—, y
+una programación importada como memoria se guardaría sin protestar, con sus once módulos conciliados,
+mientras la memoria de verdad se queda sin subir. El segundo es que conciliar contra el catálogo de
+módulos algo que no son módulos sería adivinar, y aquí no se adivina.
 
 **Qué comprobaciones no aplican a una memoria.** Todas las que son de un módulo: `criterios_de_ra` y
 `suma_de_ra` necesitan un campo de ponderaciones, que una memoria no tiene; `ra_sin_situacion` y
@@ -297,6 +330,17 @@ módulos sería adivinar, y aquí no se adivina.
 Así que `/validaciones` sale con un solo grupo —el de los apartados comunes— y sin un solo aviso. No
 es «aprobada a la fuerza»: es que no hay nada que comprobar, y por eso una memoria se puede aprobar
 en cuanto el departamento la da por buena.
+
+**Y qué no aplica a una propuesta pedagógica.** Las cuatro que hablan de resultados de aprendizaje,
+porque las situaciones de aprendizaje de ESO y Bachillerato **no van por resultados de aprendizaje
+sino por competencias específicas** (`docs/mockup-v2/README.md`). Pero no hay nada que apagar por
+tipo: las cuatro se disparan solas cuando encuentran el campo del que viven, y en los cuatro
+documentos reales ese campo no existe —ni un `ponderacion_ra_ce`, ni un
+`ficha_situacion_aprendizaje`, ni un `auto.tabla_ra_ce`: las tablas de los decretos de ESO y
+Bachillerato entran como tablas—. Así que el panel de una propuesta sale con lo único que sí aplica,
+`sin_docente`, una vez por materia: una materia sin profesorado es el mismo problema que un módulo
+sin profesorado. Apagar las reglas por tipo convertiría en silencio el día en que una propuesta
+trajera una tabla de ponderaciones, que es justo lo que habría que mirar.
 
 ## Por qué la importación exige el ciclo (y por qué a la memoria no)
 
@@ -309,6 +353,14 @@ módulos son ambiguos y `core/conciliar.js` los deja sin resolver antes que adiv
 Y el `curso` hace falta porque los títulos cambian de un curso a otro: el catálogo guarda la variante
 de cada curso para poder reconocer un módulo renombrado y no perder sus asignaciones cada septiembre.
 Es el motivo de que exista el id estable (`docs/plan.md` §2.1).
+
+**A la propuesta pedagógica sí, y en `ciclo` va un ámbito: `eso` o `bach`.** ESO y Bachillerato no son
+ciclos formativos, pero este campo no es «de qué ciclo de FP es»: es «entre qué unidades del catálogo
+hay que buscar». `core/conciliar.js` lo usa así desde que existe —filtra por `u.ciclo === ciclo ||
+u.ambito === ciclo`— y el desplegable de la pantalla de subida ya ofrecía ESO y Bachillerato al lado
+de DAW y SMR por ese mismo motivo. Y hace falta de verdad: la propuesta de ESO y la de Bachillerato
+son **dos documentos del mismo tipo**, el Word no dice de qué etapa es ninguno, y sin el ámbito las
+materias de una se buscarían también entre las de la otra.
 
 **A la memoria no se le pide el ciclo.** Es del departamento entero —ESO, Bachillerato y los dos
 ciclos de FP en el mismo documento—, así que exigirle uno sería obligar a quien la sube a elegir uno

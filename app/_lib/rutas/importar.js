@@ -11,7 +11,8 @@
 //      `ciclo`— y que el departamento sea el de quien importa (403) salvo para el admin. Un jefe de
 //      departamento no crea documentos en el departamento de al lado;
 //   3. el .docx: se lee con motor/importar-docx.js. Un fichero que no es un Word da 400. Y si el
-//      documento no es una PD pero trae bloques de módulo, 400: los módulos son de la PD (ver abajo);
+//      documento es de un tipo que no lleva unidades pero trae bloques de módulo, 400 (ver abajo,
+//      «las unidades son de la PD y de la propuesta»);
 //   4. la conciliación de cada módulo con el catálogo (core/conciliar.js), que necesita el ciclo y el
 //      curso: por eso el formulario los pide (docs/api.md, «Por qué la importación exige el ciclo»);
 //   5. los módulos que no se reconocen: sin `forzar` se responde 400 con la lista y no se escribe
@@ -62,14 +63,42 @@ const PUEDEN_IMPORTAR = ['admin', 'jefe_departamento'];
 // Y su camino hasta el PDF y hasta el Word, que es lo que faltaba por probar: el PCCF de SMR sale en
 // 20 páginas y el de DAW en 35, y el Word exportado vuelve a entrar por el importador con los mismos
 // apartados. Ninguno de los dos lleva bloques repetidos, así que entran como un solo tomo de
-// apartados comunes (ver abajo, «los módulos son de la PD»).
+// apartados comunes (ver abajo, «las unidades son de la PD y de la propuesta»).
 //
 // Lo que NO se ha hecho es bajar el umbral: la estructura no se adivina por el tamaño de la letra ni
 // por la negrita. O la dice el documento —en sus estilos o en su índice— o no se deduce, porque una
 // estructura adivinada no se nota al importar, se nota en junio al exportar. Un PCCF cuyo índice no
 // casara con el cuerpo volvería a dar 0 apartados, y entonces lo que hay que arreglar sigue estando
 // en el Word.
-const TIPOS = ['programacion_didactica', 'memoria', 'pccf'];
+//
+// ---------------------------------------------------------------- LA PROPUESTA PEDAGÓGICA DE ESO Y BACHILLERATO
+//
+// El cuarto tipo, y el que cierra el inventario del departamento: `propuesta_pedagogica`. El E7 ya
+// había medido que estos cuatro documentos «se importan sorprendentemente bien» y que lo único que
+// les faltaba era un tipo propio (docs/plan.md, «Lo que ha dejado el E7»). Esto es ese tipo.
+//
+// POR QUÉ SE LLAMA ASÍ. Porque es lo que lleva escrito la portada —«Propuesta Pedagógica ESO ·
+// Informática»— y lo que ya llaman así los dos sitios del repositorio que hablan de ellos:
+// docs/entrada_ej/README.md («las propuestas pedagógicas de ESO y Bachillerato») y docs/plan.md. El
+// prototipo las registra como `tipo: 'pd'` con `rama: 'eso-bach'` (docs/mockup-v2/js/estructura.js),
+// pero eso no es un nombre de tipo en competencia: allí `'pd'` cubre también los dos ciclos de FP y
+// lo que de verdad separa los documentos es el `ambito` ('eso' | 'bach'). Lo que se toma de ese
+// vocabulario es justo eso —el ámbito, que aquí viaja en `ciclo`— y la palabra con la que el
+// prototipo llama a sus unidades: MATERIAS, no módulos.
+//
+// Los números con los que se admite, medidos sobre los cuatro documentos del departamento:
+//
+//   Propuesta pedagógica de ESO 2025-26            27 apartados · 3 materias · 3 conciliadas
+//   Propuesta pedagógica de ESO 2026-27            27 apartados · 3 materias · 3 conciliadas
+//   Propuesta pedagógica de Bachillerato 2025-26   21 apartados · 2 materias · 2 (una, forzada)
+//   Propuesta pedagógica de Bachillerato 2026-27   24 apartados · 3 materias · 3 conciliadas
+//
+// Las conciliadas lo están por el TÍTULO EXACTO del curso, con confianza alta. La excepción es
+// «Primer curso – PRSI I» de la propuesta de Bachillerato de 2025-26: esa materia NO está en
+// core/unidades.js —el catálogo se extrajo de los documentos de 2026-27, donde la materia de primero
+// ya se llama «Informática I»— así que no concilia y hace falta `forzar`. No se arregla aquí: el
+// arreglo es del catálogo (ver scripts/cargar-reales.js).
+const TIPOS = ['programacion_didactica', 'memoria', 'pccf', 'propuesta_pedagogica'];
 
 // Los tipos que se rechazan con un motivo, en lugar de con un «todavía no». Hoy no hay ninguno: aquí
 // estuvo el PCCF mientras el importador no sabía leerlo. Se queda el mecanismo —y su 400 explicado—
@@ -83,8 +112,23 @@ const NO_ADMITIDOS = {};
 // `aFilas` lo guarda así. Para la PD y para cualquier documento de un ciclo sigue siendo obligatorio,
 // porque sin él la conciliación de los módulos es ambigua (docs/api.md, «Por qué la importación
 // exige el ciclo»).
+//
+// LA PROPUESTA PEDAGÓGICA TAMBIÉN LO EXIGE, Y EN ÉL VA UN ÁMBITO Y NO UN CICLO: `eso` o `bach`, que
+// son los valores del campo `ambito` de core/unidades.js. ESO y Bachillerato no son ciclos
+// formativos, pero este campo no es «de qué ciclo de FP es»: es «entre qué unidades del catálogo hay
+// que buscar». `core/conciliar.js` lo usa así desde que existe —filtra por `u.ciclo === ciclo ||
+// u.ambito === ciclo`— y el desplegable de app/_componentes/Subida.js ya ofrecía ESO y Bachillerato
+// al lado de DAW y SMR por ese mismo motivo. Y hace falta de verdad, no por simetría: la propuesta de
+// ESO y la de Bachillerato son DOS documentos del mismo tipo, el Word no dice de qué etapa es
+// ninguno, y sin el ámbito las materias de una se buscarían también entre las de la otra.
 const OBLIGATORIOS = ['archivo', 'tipo', 'curso', 'departamento'];
-const EXIGEN_CICLO = ['programacion_didactica', 'pccf'];
+const EXIGEN_CICLO = ['programacion_didactica', 'pccf', 'propuesta_pedagogica'];
+
+// Los tipos cuyo documento SÍ repite un bloque por unidad: la PD de FP repite un bloque por módulo y
+// la propuesta pedagógica, uno por materia (su apartado «Concreción curricular de las materias»). Los
+// demás —memoria y PCCF— no, y por eso un bloque repetido en ellos es casi siempre un tipo sin
+// cambiar (ver abajo, «las unidades son de la PD y de la propuesta»).
+const CON_UNIDADES = ['programacion_didactica', 'propuesta_pedagogica'];
 
 // Un campo de texto del formulario, sin espacios alrededor. Un `File` no es texto: si `archivo` llega
 // como texto plano, no hay fichero y se trata como si faltara.
@@ -215,14 +259,15 @@ async function guardarImportacion({
       { tipo, avisos: informe.avisos });
   }
 
-  // ---------------------------------------------------------------- LOS MÓDULOS SON DE LA PD
+  // ---------------------------------------------------------------- LAS UNIDADES SON DE LA PD Y DE LA PROPUESTA
   //
-  // Un documento que no es una programación didáctica NO repite un bloque por módulo: el PCCF es el
-  // proyecto del ciclo y la memoria es del departamento entero. Se ha comprobado con los documentos
-  // reales: la memoria del departamento y los dos PCCF dan **cero instancias**, así que las unidades
-  // —y por tanto la conciliación con el catálogo, el reparto al profesorado y el arrastre de
-  // asignaciones— simplemente no aplican ahí. No es que no funcionen: es que no hay nada que
-  // repartir, y el documento entra como un solo tomo de apartados comunes.
+  // Hay dos tipos que repiten un bloque por unidad (`CON_UNIDADES`): la programación didáctica, uno
+  // por módulo, y la propuesta pedagógica, uno por materia. Los otros dos no: el PCCF es el proyecto
+  // del ciclo y la memoria es del departamento entero. Se ha comprobado con los documentos reales: la
+  // memoria del departamento y los dos PCCF dan **cero instancias**, así que las unidades —y por
+  // tanto la conciliación con el catálogo, el reparto al profesorado y el arrastre de asignaciones—
+  // simplemente no aplican ahí. No es que no funcionen: es que no hay nada que repartir, y el
+  // documento entra como un solo tomo de apartados comunes.
   //
   // Así que si el importador SÍ encuentra un bloque repetido en uno de esos tipos, no se concilia
   // contra el catálogo de módulos: se para. Por dos motivos, y el primero es el que pasa de verdad:
@@ -239,7 +284,7 @@ async function guardarImportacion({
   //
   // No se escribe nada: el 400 llega antes de la primera escritura, como el de `sinResolver`.
   const instancias = Array.isArray(datos.instancias) ? datos.instancias : [];
-  if (tipo !== 'programacion_didactica' && instancias.length) {
+  if (!CON_UNIDADES.includes(tipo) && instancias.length) {
     return rechazo(`Este Word tiene ${instancias.length} bloques repetidos que parecen módulos, y un documento `
       + `de tipo «${tipo}» no lleva módulos: el PCCF es del ciclo y la memoria, del departamento entero. `
       + 'Lo más probable es que sea una programación didáctica y se haya quedado el tipo sin cambiar. '
@@ -332,4 +377,4 @@ async function guardarImportacion({
   return { documento, resumen };
 }
 
-module.exports = { POST, guardarImportacion, TIPOS, NO_ADMITIDOS, EXIGEN_CICLO };
+module.exports = { POST, guardarImportacion, TIPOS, NO_ADMITIDOS, EXIGEN_CICLO, CON_UNIDADES };

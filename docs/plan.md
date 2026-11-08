@@ -306,6 +306,28 @@ porque nadie las podía mirar de golpe. Conviene arreglarlas en el documento.
   panel de validaciones los distingue, pero **qué convenio vale es una decisión del departamento** y
   sigue pendiente.
 
+### Lo que ha dejado cargar los doce documentos reales
+
+- **Faltaba una materia en el catálogo, y era del curso pasado.** La propuesta de Bachillerato de
+  2025-26 trae «Primer curso – PRSI I», que no estaba en `core/unidades.js` porque el catálogo se
+  extrajo de los documentos de 2026-27, donde primero ya es «Informática I». Se ha añadido marcada
+  como `historica`: no sale en el árbol de un documento de hoy, pero la conciliación la encuentra,
+  que es lo que hace falta para importar la propuesta del curso en que sí se daba.
+
+  **Conviene confirmarlo con el departamento**: se ha supuesto que PRSI I es una materia propia del
+  currículo viejo y no el nombre antiguo de Informática I, porque en 2026-27 conviven Informática I,
+  Informática II y PRSI II —lo que parece una transición escalonada, no un renombrado—. Si fuera un
+  renombrado, lo correcto sería quitar `bach-prsi1` y darle a `bach-inf1` un
+  `titulos: { '2025-26': 'Primer curso – PRSI I' }`.
+- **En la propuesta de ESO se pierde una materia al importar.** «Programación, Inteligencia
+  Artificial y Robótica (2º y 3º ESO)» —la que lleva dentro PIAR I y PIAR II— no tiene la estructura
+  que el importador espera de un bloque repetido, y se ignora con un aviso. Por eso entran 3 de las 4
+  materias y solo un 73 % del texto, frente al 91 % de Bachillerato. El aviso se ve al importar y en
+  la pantalla de subida, así que no se pierde en silencio, pero **está sin resolver**.
+- **Los recuentos de SMR entre cursos no cuadran** y puede que no sea un fallo: 2025-26 trae 57
+  secciones y 222 apartados, y 2026-27, 56 y 212. Conviene mirar si el documento de este curso está a
+  medias o si de verdad se quitó algo.
+
 ### Lo que ha dejado el E7
 
 - **Los dos PCCF no usan estilos de título, y aun así entran.** Sus apartados numerados están
