@@ -405,6 +405,25 @@ const guardarLista = (persona, id, unidad, lista, updatedAt) => guardar(
 // core/estructurados.js por sí solo: qué acepta y qué rechaza, y con qué motivo. Está aquí y no en
 // test/core.js porque es la pieza de este evolutivo y cuando falle es esto lo que hay que mirar.
 
+prueba('la puerta de la rejilla acepta los tres fondos y rechaza el resto con el motivo', () => {
+  const rejilla = (celda) => ({ filas: [[celda]] });
+  const motivo = (celda) => Est.motivoDeRejilla(rejilla(celda), 'la tabla');
+  for (const fondo of ['cabecera', 'etiqueta', 'ninguno']) {
+    assert.equal(motivo({ text: 'a', fondo }), null, `«${fondo}» debería valer`);
+    assert.equal(motivo({ text: 'a', bold: true, fondo }), null);
+  }
+  assert.equal(motivo({ text: 'a' }), null, 'sin fondo vale: es lo que tiene todo lo importado');
+
+  const inventado = motivo({ text: 'a', fondo: 'rojo' });
+  assert.ok(/fondo/.test(inventado) && /«cabecera»/.test(inventado) && /«etiqueta»/.test(inventado) && /«ninguno»/.test(inventado), inventado);
+  for (const mal of [null, 123, true, '', '#D9E2F3', 'Cabecera', ['cabecera']]) {
+    assert.ok(/fondo/.test(motivo({ text: 'a', fondo: mal }) || ''), `fondo ${JSON.stringify(mal)} debería rechazarse`);
+  }
+  // Las demás claves siguen sin existir.
+  assert.ok(/no existe en una celda/.test(motivo({ text: 'a', color: 'red' })));
+  assert.ok(/no existe en una celda/.test(motivo({ text: 'a', fondo: 'etiqueta', fillColor: '#fff' })));
+});
+
 prueba('la puerta de las ponderaciones acepta lo que produce el importador', () => {
   assert.equal(Est.motivoPonderaciones(PONDERACIONES_CONVENIO, { raModulo: [1, 2] }), null);
   assert.equal(Est.motivoPonderaciones(PONDERACIONES_MAL, { raModulo: [1, 2] }), null);

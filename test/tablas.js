@@ -883,6 +883,107 @@ prueba('las tablas de la programación real se guardan tal cual las lee el impor
   assert.ok(vistas >= 20, `se esperaban las tablas de la PD real y solo hay ${vistas}`);
 });
 
+// ================================================================ 5. el fondo de la celda
+
+// Una tabla con cabecera y celdas en negrita dentro y fuera de la primera fila, sin ninguna `fondo`:
+// es la forma de TODAS las tablas guardadas y de todo lo que produce el importador.
+const AZUL = '#D9E2F3', GRIS_F = '#F2F2F2';
+const sinFondo = () => ({ filas: [
+  [c('A', { bold: true }), c('B', { bold: true }), c('C', { bold: true })],
+  [c('e1', { bold: true }), c('x'), c('y')],
+  [c('z'), c('e2', { bold: true }), c('w')],
+] });
+
+const plantillaFondo = () => ({ tipo: 'programacion_didactica', secciones: [{ id: 'x', titulo: 'X', nivel: 1, campos: [{ tipo: 'tabla', id: 't', etiqueta: 'T' }], hijos: [] }] });
+const datosFondo = (t) => ({ departamento: 'informatica', documento: { x: { t } }, instancias: [], asignaciones: {}, compartidos: {} });
+const tablaPdf = (t) => tablasDe(buildDocDefinition({ plantilla: plantillaFondo(), datos: datosFondo(t), instancias: [], titulo: 'T', subtitulo: 'S' })).find((x) => x.table.body.length === t.filas.length);
+const fondosPdf = (t) => tablaPdf(t).table.body.map((f) => f.map((x) => x.fillColor));
+const xmlDeWord = async (t) => {
+  const { exportarDocx } = require('../motor/exportar-docx');
+  const zip = await JSZip.loadAsync(await exportarDocx({ plantilla: plantillaFondo(), datos: datosFondo(t), titulo: 'T' }));
+  return zip.file('word/document.xml').async('string');
+};
+// El relleno de cada celda del Word, fila a fila (null si la celda no tiene <w:shd>).
+const fondosWord = (xml) => xml.split('<w:tr>').slice(1).map((fila) => fila.split('</w:tc>').filter((tc) => tc.includes('<w:tc>'))
+  .map((tc) => { const m = tc.match(/<w:shd [^>]*w:fill="([^"]*)"/); return m ? m[1] : null; }));
+
+prueba('sin «fondo» el fondo lo decide la negrita: azul en la cabecera, gris fuera, nada sin negrita', async () => {
+  const t = sinFondo();
+  assert.deepEqual(fondosPdf(t), [
+    [AZUL, AZUL, AZUL],
+    [GRIS_F, undefined, undefined],
+    [undefined, GRIS_F, undefined],
+  ]);
+  assert.deepEqual(fondosWord(await xmlDeWord(t)), [
+    ['D9E2F3', 'D9E2F3', 'D9E2F3'],
+    ['F2F2F2', null, null],
+    [null, 'F2F2F2', null],
+  ], 'el Word usa los códigos sin «#»');
+  // Sin cabecera (la primera fila no está entera en negrita), la negrita de la fila 0 es gris.
+  const sinCab = { filas: [[c('A', { bold: true }), c('B')], [c('x'), c('y', { bold: true })]] };
+  assert.deepEqual(fondosPdf(sinCab), [[GRIS_F, undefined], [undefined, GRIS_F]]);
+  assert.deepEqual(fondosWord(await xmlDeWord(sinCab)), [['F2F2F2', null], [null, 'F2F2F2']]);
+});
+
+prueba('una tabla sin «fondo» sale idéntica a la que se generaba cuando la clave no existía', async () => {
+  // La regla anterior, escrita aquí aparte y aplicada celda a celda.
+  const t = sinFondo();
+  const regla = (fila, celda) => (celda.bold ? (fila === 0 ? AZUL : GRIS_F) : undefined);
+  assert.deepEqual(fondosPdf(t), t.filas.map((f, i) => f.map((x) => regla(i, x))));
+  // Una celda sin negrita ni fondo no lleva ni `fillColor` ni `bold` en la definición.
+  const sin = tablaPdf(t).table.body[1][1];
+  assert.ok(!('fillColor' in sin) && !('bold' in sin));
+  // «fondo» explícito igual al derivado no cambia nada: ni la definición ni el Word.
+  const explicita = { filas: t.filas.map((f, i) => f.map((x) => ({ ...x, fondo: x.bold ? (i === 0 ? 'cabecera' : 'etiqueta') : 'ninguno' }))) };
+  assert.deepEqual(comparable(tablaPdf(explicita)), comparable(tablaPdf(t)));
+  assert.equal(await xmlDeWord(explicita), await xmlDeWord(t));
+});
+
+prueba('con «fondo» manda el nombre: sombrear sin negrita, negrita sin sombrear y azul fuera de la primera fila', async () => {
+  const t = { filas: [
+    [c('A', { bold: true }), c('B', { bold: true }), c('C', { bold: true })],
+    [c('sombra gris', { fondo: 'etiqueta' }), c('azul abajo', { fondo: 'cabecera' }), c('negrita sin fondo', { bold: true, fondo: 'ninguno' })],
+    [c('azul y negrita', { bold: true, fondo: 'cabecera' }), c('gris y negrita', { bold: true, fondo: 'etiqueta' }), c('nada')],
+  ] };
+  assert.deepEqual(fondosPdf(t), [
+    [AZUL, AZUL, AZUL],
+    [GRIS_F, AZUL, undefined],
+    [AZUL, GRIS_F, undefined],
+  ]);
+  const cuerpo = tablaPdf(t).table.body;
+  assert.ok(!cuerpo[1][0].bold, 'sombrear no pone negrita');
+  assert.equal(cuerpo[1][2].bold, true, 'quitar el fondo no quita la negrita');
+  assert.ok(!('fillColor' in cuerpo[1][2]));
+  const xml = await xmlDeWord(t);
+  assert.deepEqual(fondosWord(xml), [
+    ['D9E2F3', 'D9E2F3', 'D9E2F3'],
+    ['F2F2F2', 'D9E2F3', null],
+    ['D9E2F3', 'F2F2F2', null],
+  ]);
+  // En el Word la negrita sigue siendo la de la celda: la celda sombreada sin negrita no la lleva.
+  const run = (texto) => xml.slice(xml.lastIndexOf('<w:r>', xml.indexOf(`>${texto}<`)), xml.indexOf(`>${texto}<`));
+  assert.ok(!run('sombra gris').includes('<w:b/>'));
+  assert.ok(run('negrita sin fondo').includes('<w:b/>'));
+});
+
+prueba('la cabecera de la tabla no depende de «fondo»', async () => {
+  const base = sinFondo();
+  const cabeceras = async (t) => (await xmlDeWord(t)).split('<w:tblHeader/>').length - 1;
+  assert.equal(tablaPdf(base).table.headerRows, 1);
+  // Fila 0 en negrita pero con fondo «ninguno»: sigue siendo cabecera.
+  const ninguno = { filas: base.filas.map((f, i) => (i === 0 ? f.map((x) => ({ ...x, fondo: 'ninguno' })) : f)) };
+  assert.equal(tablaPdf(ninguno).table.headerRows, 1);
+  assert.equal(await cabeceras(ninguno), 1);
+  // Fila 0 sin negrita pero con fondo «cabecera»: no es cabecera.
+  const falsa = { filas: [[c('A', { fondo: 'cabecera' }), c('B', { fondo: 'cabecera' })], [c('x', { bold: true }), c('y')]] };
+  assert.equal(tablaPdf(falsa).table.headerRows, 0);
+  assert.equal(await cabeceras(falsa), 0);
+  // Otra fila con fondo «cabecera» no hace cabecera a nadie más.
+  const abajo = { filas: base.filas.map((f, i) => (i === 2 ? f.map((x) => ({ ...x, fondo: 'cabecera' })) : f)) };
+  assert.equal(tablaPdf(abajo).table.headerRows, 1);
+  assert.equal(await cabeceras(abajo), 1);
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {

@@ -9,7 +9,7 @@
 //                                  fundamental }], filas? }   ·  `multiple`: una lista de esas
 //   ficha_situacion_aprendizaje  el modelo de core/sa.js        ·  `multiple`: una lista de esas
 //   el repetidor que las agrupa  { items: [ { titulo, ficha: [ficha], texto? } ] }
-//   tabla                        { filas: [[celda, …], …] }, celda { text, colspan?, rowspan?, bold? }
+//   tabla                        { filas: [[celda, …], …] }, celda { text, colspan?, rowspan?, bold?, fondo? }
 //   tabla_clave_valor            { pares: [{ etiqueta, valor }] }   ·  son las tablas que se crean en la
 //                                aplicación (core/campos.js); también guardan las importadas
 //
@@ -168,10 +168,16 @@
 
   // ---------------------------------------------------------------- la tabla importada
 
-  // Las celdas que produce el importador y que `rejilla()` del motor sabe colocar. Son
-  // cuatro claves y ninguna más: una de regalo viaja hasta pdfmake dentro del objeto de la
-  // celda y cambia la tabla sin que nadie lo haya pedido.
-  const CLAVES_CELDA = ['text', 'colspan', 'rowspan', 'bold'];
+  // Las celdas que `rejilla()` del motor sabe colocar. Son cinco claves y ninguna más: una de
+  // regalo viaja hasta pdfmake dentro del objeto de la celda y cambia la tabla sin que nadie lo
+  // haya pedido. El importador escribe las cuatro primeras; «fondo» solo la escribe el editor.
+  const CLAVES_CELDA = ['text', 'colspan', 'rowspan', 'bold', 'fondo'];
+
+  // Los fondos que una celda puede pedir, por NOMBRE y no por color: así el PDF y el Word pintan
+  // lo mismo con la misma paleta del centro. Sin la clave, el fondo lo decide la negrita
+  // (motor/render-generico.js y motor/exportar-docx.js), que es lo que tienen todas las celdas ya
+  // guardadas y las importadas.
+  const FONDOS_CELDA = ['cabecera', 'etiqueta', 'ninguno'];
 
   function motivoDeFilas(filas, donde) {
     if (!Array.isArray(filas)) return `${donde} no es una lista de filas.`;
@@ -182,13 +188,14 @@
       for (let j = 0; j < fila.length; j += 1) {
         const celda = fila[j];
         const suyo = `la celda ${j + 1} de la fila ${i + 1} de ${donde}`;
-        if (!esObjeto(celda)) return `${suyo} no es un objeto { text, colspan, rowspan, bold }.`;
+        if (!esObjeto(celda)) return `${suyo} no es un objeto { text, colspan, rowspan, bold, fondo }.`;
         const extra = sobran(celda, CLAVES_CELDA);
         if (extra.length) return `${suyo} lleva ${comillas(extra)}, que no existe en una celda.`;
         if (typeof celda.text !== 'string') return `${suyo} no tiene «text», o no es una cadena.`;
         if (celda.colspan !== undefined && !esEntero(celda.colspan, 1)) return `${suyo} tiene un «colspan» que no es un número entero de 1 en adelante.`;
         if (celda.rowspan !== undefined && !esEntero(celda.rowspan, 1)) return `${suyo} tiene un «rowspan» que no es un número entero de 1 en adelante.`;
         if (celda.bold !== undefined && typeof celda.bold !== 'boolean') return `${suyo} tiene «bold» y no es true ni false.`;
+        if (celda.fondo !== undefined && !FONDOS_CELDA.includes(celda.fondo)) return `${suyo} tiene un «fondo» que no vale: los fondos son ${comillas(FONDOS_CELDA)}.`;
       }
     }
     return null;
