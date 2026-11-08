@@ -21,7 +21,17 @@
 //
 // Se copia lo que describe el contenido del departamento, que es lo que el curso nuevo arranca con
 // él: la plantilla y su versión, las unidades con sus docentes, los apartados con sus valores tal
-// cual, los textos compartidos y el reparto de apartados comunes (`asignaciones`).
+// cual, los textos compartidos, el reparto de apartados comunes (`asignaciones`) y —desde el E7— las
+// COMPROBACIONES del documento, con su registro de quién las cambió.
+//
+// LAS COMPROBACIONES SE COPIAN, Y ES LA DECISIÓN QUE IMPORTA DE ESTE EVOLUTIVO: el criterio del
+// centro no se reinicia cada septiembre. Si no viajaran, cada curso nuevo volvería al convenio de
+// serie y a las ocho comprobaciones activas, y la jefatura de estudios tendría que volver a decidir
+// en septiembre lo que ya decidió —y, peor, sin enterarse: un documento que el curso pasado se podía
+// aprobar aparecería de pronto con avisos nuevos sin que nadie hubiera cambiado nada—. Es el mismo
+// motivo por el que viaja el reparto de los módulos. El registro de cambios va dentro del campo, así
+// que el curso nuevo nace sabiendo con qué criterio se mide y quién lo decidió, igual que hereda el
+// registro de cambios de la estructura dentro de `plantilla`.
 //
 // No se copia lo que pertenece al curso que se cierra:
 //
@@ -86,6 +96,9 @@ function filasDelSiguiente(origen, { curso, unidades, apartados, compartidos }) 
     plantillaVersion: origen.plantillaVersion === undefined ? null : origen.plantillaVersion,
     anteriorId: origen._id,
     asignaciones: copia(origen.asignaciones || {}),
+    // `null` y no `{}` cuando no hay nada configurado: así el documento nuevo queda igual que uno
+    // recién importado y `normalizarConfig` le da lo de serie (core/validaciones.js).
+    comprobaciones: origen.comprobaciones ? copia(origen.comprobaciones) : null,
     origen: null,
   };
 

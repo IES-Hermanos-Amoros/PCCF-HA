@@ -26,7 +26,7 @@
 const { buildDocDefinition } = require('../../../motor/render-generico');
 const {
   conErrores, abrirDocumento, leerParaElMotor, tituloDelTomo, nombreDeArchivo,
-  estadoPedido, unidadPedida, SUBTITULO,
+  estadoPedido, unidadPedida, comprobacionesDe, SUBTITULO,
 } = require('./comun');
 
 // Toda la ruta menos la impresión. Devuelve { fallo } o { definicion, documento, unidad }.
@@ -51,6 +51,16 @@ async function definicionDe(peticion, parametros) {
     titulo: tituloDelTomo(documento, unidad),
     subtitulo: SUBTITULO,
     estado,
+    // EL CONVENIO DE PONDERACIÓN ES EL DEL DOCUMENTO, y es lo que mantiene en pie el criterio de
+    // aceptación del E4: los avisos de la cajita roja tienen que coincidir uno a uno con los del
+    // panel de comprobaciones, y el panel lo lee del mismo sitio (`comprobacionesDe`). Si aquí se
+    // dejara el estricto clavado, un departamento que decidiera el otro convenio vería desaparecer
+    // 22 avisos del panel y seguirían saliendo en el papel.
+    //
+    // Que esto no es «lógica de pintado» de la ruta —lo que la cabecera prohíbe— se ve en que no
+    // DECIDE nada: lee una decisión del documento y la pasa. Un documento sin configurar manda el
+    // estricto, que es el de siempre, así que su PDF sigue siendo idéntico al del importador.
+    convenioCe: comprobacionesDe(documento).convenioCe,
   });
   return { definicion, documento, unidad };
 }

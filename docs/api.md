@@ -108,7 +108,7 @@ título. Omitirlo significa «apartado común del documento».
 | `GET /api/documentos/[id]/unidades` | el reparto: las unidades con sus docentes, las personas que pueden llevarlas y **cuántas unidades no tiene nadie** | E2 |
 | `PUT /api/documentos/[id]/unidades/[unidad]/docentes` | cambia quién lleva esa unidad. Cuerpo: `{ docentes: [id] }`, la lista completa | E2 |
 | `PATCH /api/documentos/[id]/apartado?seccion=&unidad=` | guarda esa rama. Cuerpo: `{ valores, esperaUpdatedAt }`, con **solo los campos que se han tocado**. Acepta texto, ponderaciones y fichas de situación de aprendizaje; los demás tipos todavía no. Devuelve 409 si no cuadra la versión | E3 |
-| `GET /api/documentos/[id]/validaciones` | los avisos agrupados por unidad, con quién lleva cada una, el recuento y si el documento se puede aprobar | E4 |
+| `GET /api/documentos/[id]/validaciones` | los avisos agrupados por unidad, con quién lleva cada una, el recuento y si el documento se puede aprobar. Mide con **las comprobaciones que tenga configuradas el documento** (`/comprobaciones`): lleva el `convenioCe` con el que ha contado los criterios y las `desactivadas`, porque un panel sin avisos porque todo está bien y uno sin avisos porque alguien apagó las comprobaciones son la misma pantalla y no son lo mismo | E4·E7 |
 | `GET /api/documentos/[id]/coordinacion` | la matriz **unidad × bloque**: una fila por módulo o materia con quién lo lleva, una columna por bloque (que viaja **una vez**, no una por unidad) y en cada cruce cómo va esa rama: `estado` —los cinco del árbol, con `errores`— más los recuentos de los que sale (`apartados`, `conContenido`, `revisados`, `errores`, `avisos`) y el `destino` al que lleva el clic. **No lleva contenido**: ni un `valores`. El estado sale de lo que ya se sirve —`relleno` y `origen` de `/arbol`, y los avisos del MISMO cálculo que `/validaciones`, que viajan también como `cuenta` y `puedeAprobarse`—, así que no puede discrepar de ninguna de las dos. Un documento sin unidades responde `modo: 'comun'`: una fila por apartado de primer nivel y la jefatura del departamento como responsable. La ve quien ve el documento | E7 |
 | `GET /api/documentos/[id]/comentarios?seccion=&unidad=` | el hilo de ese apartado, del más antiguo al más reciente, con el nombre y el rol de cada autor (nunca su correo) y `puedeComentar` | E7 |
 | `POST /api/documentos/[id]/comentarios?seccion=&unidad=` | comenta ese apartado. Cuerpo `{ texto }`, recortado y de 2000 caracteres como máximo; el autor sale de la sesión y **nunca del cuerpo**. 201 con el comentario. **Comenta todo el que ve el documento**, no solo quien puede editarlo: quien pregunta es justamente quien no puede escribir ahí —la jefatura de estudios aprueba y no edita nada, y un docente necesita avisar en el módulo de otro—. Por eso las dos rutas del hilo **no dan 403**: 401 sin sesión, 404 si el documento, la sección o la unidad no son suyos (un apartado retirado tampoco lo es) y 400 si el enlace o el cuerpo están mal. Los comentarios **no se copian** al arrastrar el curso | E7 |
@@ -119,6 +119,8 @@ título. Omitirlo significa «apartado común del documento».
 | `POST /api/documentos/[id]/estructura/apartado/retirar?seccion=` | **retira sin borrar**: el apartado y su subárbol dejan de salir en el árbol, en el apartado y en el PDF, y su contenido se conserva entero. Por eso no es un `DELETE`. Cuerpo opcional `{ esperaPlantillaVersion }` | E6 |
 | `POST /api/documentos/[id]/estructura/apartado/restaurar?seccion=` | devuelve al documento un apartado retirado, con todo lo que tenía escrito. Primero el padre, si también está retirado | E6 |
 | `GET /api/documentos/[id]/estado` | en qué estado está el documento, si su PDF lleva `marcaDeAgua` y las `transiciones` que salen de ahí, cada una con su `accion`, `quien` la mueve y un `puede` resuelto para quien pregunta. La ve quien ve el documento, y la lista es la misma para todos: lo que cambia es el `puede`, porque el cliente refleja el candado y no vuelve a escribir las reglas de rol. **No lleva la cuenta de errores**: está en `/validaciones`, que la pantalla de aprobación pide igualmente | E7 |
+| `GET /api/documentos/[id]/comprobaciones` | **qué se le comprueba a este documento y con qué convenio.** Una fila por comprobación con su código, su título, su `clase` (`normativa` o `centro`), si es `fija` y **`porque` lo es**, lo que tiene puesto (`activa`, `severidad`), lo de serie (`severidadPorOmision`) y si el panel la busca de verdad hoy (`enElPanel`, con `motivo` cuando no). Lleva además el `convenioCe` del documento y los dos `convenios` con qué es cada uno, el registro de `cambios` —quién y cuándo— y el `updatedAt` con el que se escribe. La ve quien ve el documento; `puedeConfigurar` dice si los controles van habilitados | E7 |
+| `PATCH /api/documentos/[id]/comprobaciones` | la cambia. Cuerpo **parcial**: `{ convenioCe?, reglas?, esperaUpdatedAt? }`, con `reglas` como `{ <codigo>: { activa?, severidad? } }`. **La configura la jefatura de estudios y el soporte** (ver abajo): 403 para quien ve el documento y no es quien aprueba. 400 si se pide desactivar o cambiar una de las dos **normativas** —con el motivo dentro—, si el código o la severidad no existen o si no se manda nada que cambiar; 409 `conflicto` si el documento ha cambiado desde que se leyó. 200 con la tabla entera y `aplicados`, lo que ha cambiado en esta petición; pedir lo que ya estaba es un 200 con `aplicados: []` que **no escribe ni deja fila en el historial** | E7 |
 | `POST /api/documentos/[id]/estado` | cambia el estado. Cuerpo: `{ estado, esperaUpdatedAt? }`. 200 con el estado nuevo, el `anterior`, la `accion` y `marcaDeAgua`. **Solo las flechas del circuito**, y las mueve quien responde de cada tramo (ver abajo): 403 si no es quien la mueve, 400 si esa flecha no existe —con los `destinos` que sí— o si el documento ya está en ese estado, 409 `con_errores` al aprobar con errores abiertos y 409 `conflicto` si el documento ha cambiado desde que se leyó | E7 |
 
 ### Los estados del documento: `borrador → revisión → aprobado`
@@ -185,6 +187,66 @@ no lleva nadie, se arreglan en el reparto), `criterios_de_ra` 10 y `suma_de_ra` 
 verdad, en el apartado de ponderaciones) y `cien_dentro_del_ra` 22 (la decisión pendiente). Son tres
 cosas distintas, en tres pantallas distintas y de tres personas distintas, y por eso el rechazo no da
 un solo número.
+
+### Qué comprobaciones se le aplican a un documento, y quién lo decide
+
+Hasta el E7 las comprobaciones estaban escritas a mano y no se podían tocar desde ninguna parte, y
+eso dejó de ser una incomodidad del panel: **la programación de DAW no se puede aprobar**, con 45
+errores de los que 11 son módulos sin docente, 12 son ponderaciones descuadradas de verdad y **22 no
+son errores** sino el otro convenio de ponderación de los criterios.
+
+Lo que se configura son **dos cosas distintas**, y confundirlas sería el error:
+
+**1. El convenio de ponderación de los criterios** (`convenioCe`). No es activar ni desactivar una
+regla: es decir **cuál de los dos convenios legítimos** usa el centro —`peso_del_ra`, los criterios
+suman el peso de su RA, o `peso_del_ra_o_cien`, que acepta además que sumen 100 % dentro del RA—. Con
+el laxo esos 22 avisos dejan de salir porque **son correctos**, no porque se hayan silenciado. Es la
+diferencia entre decidir y tapar, y por eso viaja aparte de la tabla de reglas y con la explicación
+de qué es cada uno: elegir entre dos reglas legítimas no es marcar una casilla.
+
+**2. Las comprobaciones de criterio del centro**, con `{ activa, severidad }`: `sin_docente`,
+`ra_sin_situacion`, `sa_sin_evaluacion`, `apartado_vacio`, `heredado_sin_revisar` y
+`copia_desactualizada`. Son criterio del centro, así que el centro las decide: apagar una la quita
+del panel, y bajarle la severidad a `aviso` hace que **deje de impedir la aprobación**.
+
+**Las dos normativas no se tocan.** `criterios_de_ra` y `suma_de_ra` salen del real decreto del
+título, no del criterio del centro: ni se desactivan ni se les baja la severidad, y pedirlo es un 400
+con el motivo. Lo que sí se decide sobre la segunda es el **convenio**, que es el punto 1: cambiar el
+convenio no es bajarle la severidad a la regla. La negativa está en dos capas, no solo en la ruta: si
+alguien mete a mano en la base de datos una normativa apagada, el cálculo la vuelve a encender.
+
+**La cambia la jefatura de estudios**, que es quien aprueba, y el soporte (`core/permisos.js` →
+`puedeConfigurarComprobaciones`). Cambiar esto **mueve el listón** de lo que se puede aprobar, así que
+lo decide quien decide si se ha superado; si lo configurara el departamento, la puerta de aprobación
+la abriría quien quiere pasar por ella. Es la primera vez que la jefatura de estudios escribe algo, y
+no contradice que no edite nada: no toca el contenido, decide con qué se mide. El resto la ve en modo
+lectura.
+
+**Se guarda en el documento** (`documentos.comprobaciones`). La aprobación es por documento, y una
+memoria no tiene las mismas comprobaciones aplicables que una programación. **El arrastre al curso
+siguiente se la lleva**: el criterio del centro no se reinicia cada septiembre, y si no viajara, un
+documento que el curso pasado se podía aprobar aparecería en septiembre con avisos nuevos sin que
+nadie hubiera cambiado nada.
+
+**Queda constancia de quién y cuándo**, dentro del propio campo, que es el precedente de
+`plantilla.cambios` del E6: el registro viaja con lo que se copia, así que el curso nuevo nace
+sabiendo con qué criterio se mide y quién lo decidió. Una entrada por cosa cambiada, con el instante,
+el id, y el nombre y el rol **de ese momento** —tomados de la sesión y nunca del cuerpo—, y de qué a
+qué. Lo que se guarda es solo lo que **se aparta de lo de serie**, así que un documento que nadie ha
+configurado no tiene el campo y se comporta exactamente como antes del E7.
+
+**El generador usa el mismo convenio que el panel**, y no es un detalle: el criterio de aceptación
+del E4 es que los avisos del panel coincidan uno a uno con los de la cajita roja del PDF, así que
+`/pdf` lo lee del documento igual que `/validaciones`. Lo que **no** cambia el PDF es apagar una
+comprobación de criterio del centro o bajarle la severidad: la cajita roja solo imprime las dos
+normativas. En la PD real, cambiar al convenio laxo baja los errores de **45 a 23** —11 módulos sin
+docente, 10 criterios descuadrados y 2 sumas de RA— y los avisos impresos de 34 a 12, los mismos en
+el panel y en el papel.
+
+**Tres comprobaciones se pueden configurar y hoy no cambian nada**: `apartado_vacio`,
+`heredado_sin_revisar` y `copia_desactualizada` existen en `core/validaciones.js` y el panel no las
+busca todavía. No se calla: cada fila lo dice con `enElPanel: false` y un `motivo`, porque una casilla
+que no hace nada tiene que decir que no hace nada.
 
 `estado` **en la URL de `/pdf` y `/docx` es otra escala**: es cómo se imprime el tomo, y solo tiene
 dos valores, `borrador` (con marca de agua) o `aprobado`. Por omisión, el del documento, y un documento

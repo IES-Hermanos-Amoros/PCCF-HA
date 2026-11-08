@@ -147,6 +147,24 @@
     return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
   }
 
+  // Quién configura las COMPROBACIONES de un documento: qué comprobaciones de criterio del centro
+  // se le aplican, con qué severidad, y con qué convenio se cuentan las ponderaciones de los
+  // criterios (core/validaciones.js).
+  //
+  // LA JEFATURA DE ESTUDIOS, que es quien aprueba, y el soporte. Es la propuesta de docs/plan.md §7
+  // y tiene su lógica: cambiar esto MUEVE EL LISTÓN de lo que se puede aprobar —desactivar una
+  // comprobación o bajarle la severidad hace aprobable un documento que antes no lo era—, así que
+  // quien pone el listón tiene que ser quien decide si se ha superado. Si lo configurara el
+  // departamento, la puerta de aprobación la abriría quien quiere pasar por ella.
+  //
+  // Y es la primera regla de este fichero en la que la jefatura de estudios PUEDE ESCRIBIR algo. No
+  // contradice que no edite nada: no toca el contenido del documento, decide con qué se mide. El
+  // resto lo ve en modo lectura, que es lo que la ruta sirve con `puedeConfigurar`.
+  function puedeConfigurarComprobaciones(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_estudios';
+  }
+
   // ------------------------------------------------- búsqueda en la plantilla
 
   // Los ids de sección son rutas con '/', igual que los que produce el
@@ -214,6 +232,7 @@
     estaActivo,
     puedeRepartirUnidades,
     puedeCambiarEstructura,
+    puedeConfigurarComprobaciones,
   };
 
   // Vale como <script> en el mockup, como `require` en el motor y en las

@@ -13,7 +13,22 @@ const { ErrorConflicto, ErrorDuplicado } = require('./errores');
 // pone solo el repositorio. Si un llamador pudiera escribir updatedAt, podría falsear el token de conflicto y el
 // control de concurrencia dejaría de proteger nada.
 const CAMPOS = {
-  documento: ['tipo', 'ciclo', 'curso', 'departamento', 'estado', 'plantilla', 'plantillaVersion', 'anteriorId', 'asignaciones', 'origen'],
+  // `comprobaciones` se añade en el E7: qué comprobaciones se le aplican a ESTE documento y con qué
+  // convenio de ponderación se cuentan los criterios, con el registro de quién lo cambió y cuándo
+  // dentro (core/validaciones.js).
+  //
+  // VA EN EL DOCUMENTO Y NO EN UNA COLECCIÓN APARTE por tres razones, y las tres son del dominio:
+  // la aprobación es POR DOCUMENTO, así que el listón de lo que se puede aprobar es del documento;
+  // una memoria no tiene las mismas comprobaciones aplicables que una programación, así que una
+  // configuración del centro entera sería una configuración que no vale para la mitad de los
+  // documentos; y el arrastre al curso siguiente copia campos del documento, que es justo lo que
+  // tiene que pasar —el criterio del centro no se reinicia cada septiembre—.
+  //
+  // UN CAMPO Y NO TRES (`convenio`, `reglas`, `cambios`) porque los tres se leen y se escriben
+  // juntos siempre, y porque así el arrastre se los lleva sin tener que acordarse de los tres: es
+  // la misma decisión que puso el registro de cambios de la estructura DENTRO de `plantilla`
+  // (core/plantilla.js, «el registro viaja dentro de plantilla a propósito»).
+  documento: ['tipo', 'ciclo', 'curso', 'departamento', 'estado', 'plantilla', 'plantillaVersion', 'anteriorId', 'asignaciones', 'origen', 'comprobaciones'],
   unidad: ['titulo', 'num', 'grupo', 'docentes'],
   apartado: ['valores', 'origen', 'revisadoPor', 'revisadoEn'],
   compartido: ['bloque', 'seccion', 'comun', 'responsable', 'modo', 'version'],

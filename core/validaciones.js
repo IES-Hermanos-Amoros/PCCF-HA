@@ -87,6 +87,47 @@
 //
 // Los avisos tienen la forma { severidad: 'error' | 'aviso' | 'info', titulo, detalle }. El campo
 // `destino` lo pone quien busca el apartado (el mockup), no esta capa.
+//
+// ================================================================ LO QUE SE PUEDE CONFIGURAR (E7)
+//
+// Hasta aquí las siete comprobaciones estaban escritas a mano y no se podían tocar desde ninguna
+// parte. La propuesta de docs/plan.md §7 —«una tabla de reglas { activa, severidad } por documento
+// que mantenga la jefatura de estudios»— está implementada desde abajo, y lo primero que hace falta
+// para no equivocarla es separar DOS COSAS QUE NO SON LA MISMA:
+//
+//   1. EL CONVENIO DE PONDERACIÓN DE LOS CRITERIOS (`convenioCe`). No es activar ni desactivar una
+//      regla: es decir cuál de los DOS CONVENIOS LEGÍTIMOS usa el centro (ver más arriba). Con el
+//      laxo, los 22 avisos de la PD de DAW que reparten 100 % dentro del RA dejan de ser avisos
+//      porque SON CORRECTOS, no porque se hayan silenciado. Es la diferencia entre decidir y tapar.
+//
+//   2. LAS COMPROBACIONES DE CRITERIO DEL CENTRO, que sí llevan `{ activa, severidad }`: las seis
+//      de la lista de arriba. Son del criterio del centro, así que el centro las decide.
+//
+// LAS DOS NORMATIVAS NO SE TOCAN. Que los RA sumen 100 % y que los criterios repartan el peso de su
+// RA salen del real decreto del título, no del criterio del centro: ni se desactivan ni se les baja
+// la severidad, y pedirlo es un 400 con el motivo. Lo que sí se decide sobre la segunda es el
+// CONVENIO, que es el punto 1 y entra por otra puerta.
+//
+// POR QUÉ EL CATÁLOGO ESTÁ AQUÍ Y NO EN LA RUTA
+//
+// Por lo mismo que las reglas: si la ruta tuviera su propia lista de qué se puede configurar, el día
+// que se añada una comprobación habría que acordarse de dos sitios, y el que se olvidara sería el
+// que decide si se puede aprobar un documento. Aquí vive QUÉ HAY y QUÉ SE PUEDE HACER CON CADA UNA;
+// la ruta se ocupa de quién lo cambia y de dónde se guarda.
+//
+// `aplicarConfig` es el único sitio donde la configuración surte efecto: recibe los avisos ya
+// marcados con su `regla` —eso lo hace quien busca— y quita los de las comprobaciones apagadas y
+// reescribe la severidad de las que la tengan cambiada. Las normativas pasan de largo siempre, lo
+// que tiene una consecuencia que importa y que se comprueba en las pruebas: desactivar una
+// comprobación de criterio NO PUEDE CAMBIAR EL PDF, porque la cajita roja solo imprime las dos
+// normativas.
+//
+// LO QUE SE GUARDA ES LO QUE SE APARTA DE LO DE SERIE
+//
+// `comprimirConfig` deja fuera todo lo que coincide con el valor por omisión, así que un documento
+// que nadie ha configurado no guarda nada y se comporta EXACTAMENTE como antes de este evolutivo.
+// Quien quiera saber qué se decidió y cuándo lo lee en el registro de cambios, que es lo que da
+// constancia; la configuración guardada dice en qué se aparta este documento de lo de serie.
 
 (function (global) {
   'use strict';
@@ -237,6 +278,253 @@
     }];
   }
 
+  // ---------------------------------------------------------------- el catálogo de comprobaciones
+
+  // Las tres severidades posibles. `info` no bloquea la aprobación igual que `aviso`, y está para
+  // una comprobación que se quiere seguir viendo sin que pese en el recuento de lo que falta.
+  const SEVERIDADES = Object.freeze(['error', 'aviso', 'info']);
+
+  // Las dos clases de comprobación, que es lo que decide si se puede configurar o no.
+  const NORMATIVA = 'normativa';
+  const CENTRO = 'centro';
+
+  // EL CATÁLOGO. Una fila por comprobación, en el orden en el que se enseñan, con el código estable
+  // que ya usan los avisos (`regla` en app/_lib/rutas/validaciones.js y en el 409 de /estado), su
+  // clase, su severidad de serie y —cuando es fija— POR QUÉ lo es, en castellano y para enseñar tal
+  // cual: la pantalla no tiene que saberse la normativa, y el 400 que niega el cambio tampoco.
+  const REGLAS = Object.freeze([
+    {
+      regla: 'criterios_de_ra',
+      titulo: 'Los criterios de un RA reparten el peso de su RA',
+      clase: NORMATIVA,
+      fija: true,
+      severidad: 'error',
+      porque: 'Es normativa: el reparto de las ponderaciones sale del real decreto del título y no del criterio del centro. Lo que sí decide el centro es el convenio con el que se reparte.',
+    },
+    {
+      regla: 'suma_de_ra',
+      titulo: 'La suma de las ponderaciones de los RA es 100 %',
+      clase: NORMATIVA,
+      fija: true,
+      severidad: 'error',
+      porque: 'Es normativa: sale del real decreto del título y no del criterio del centro.',
+    },
+    {
+      regla: 'sin_docente',
+      titulo: 'Unidad sin docente asignado',
+      clase: CENTRO,
+      fija: false,
+      severidad: 'error',
+      porque: null,
+    },
+    {
+      regla: 'ra_sin_situacion',
+      titulo: 'RA que no trabaja ninguna situación de aprendizaje',
+      clase: CENTRO,
+      fija: false,
+      severidad: 'aviso',
+      porque: null,
+    },
+    {
+      regla: 'sa_sin_evaluacion',
+      titulo: 'Situación de aprendizaje que no dice en qué evaluación va',
+      clase: CENTRO,
+      fija: false,
+      severidad: 'aviso',
+      porque: null,
+    },
+    {
+      regla: 'apartado_vacio',
+      titulo: 'Apartado vacío',
+      clase: CENTRO,
+      fija: false,
+      severidad: 'aviso',
+      porque: null,
+    },
+    {
+      regla: 'heredado_sin_revisar',
+      titulo: 'Heredado del curso anterior, sin revisar',
+      clase: CENTRO,
+      fija: false,
+      severidad: 'aviso',
+      porque: null,
+    },
+    {
+      regla: 'copia_desactualizada',
+      titulo: 'Copia desvinculada de un texto compartido que ha cambiado',
+      clase: CENTRO,
+      fija: false,
+      severidad: 'aviso',
+      porque: null,
+    },
+  ]);
+
+  const CODIGOS = Object.freeze(REGLAS.map((r) => r.regla));
+  const DEL_CATALOGO = new Map(REGLAS.map((r) => [r.regla, r]));
+  const reglaDelCatalogo = (codigo) => DEL_CATALOGO.get(codigo) || null;
+
+  // Los dos convenios, con el texto que explica cuál es cuál. Está aquí y no en la pantalla por lo
+  // mismo que `porque`: quien elige tiene que leer lo que elige, y esa frase no puede depender de
+  // qué pantalla la escriba.
+  const CONVENIOS = Object.freeze([
+    {
+      valor: CONVENIOS_CE.PESO_DEL_RA,
+      titulo: 'Los criterios reparten el peso de su RA',
+      explicacion: 'Un RA que pondera 15 % tiene criterios que suman 15. Es el convenio estricto y el de serie: distingue un reparto relativo de una errata, porque unos criterios que suman 100 donde el RA pondera 30 no se pueden confundir con nada.',
+    },
+    {
+      valor: CONVENIOS_CE.PESO_DEL_RA_O_CIEN,
+      titulo: 'Se acepta además que los criterios sumen 100 % dentro del RA',
+      explicacion: 'Se admiten los dos repartos: el peso del RA, o 100 % dentro del RA con el peso real saliendo de multiplicar. Es el convenio laxo. Lo que cuesta: con un RA que pondera 30 y unos criterios que suman 100, ya no se distingue el reparto relativo de quien escribió 100 por equivocación.',
+    },
+  ]);
+
+  // ---------------------------------------------------------------- la configuración de un documento
+
+  // La configuración EFECTIVA, con las ocho comprobaciones resueltas y el convenio decidido. Lo que
+  // llega es lo guardado en el documento, que puede ser `undefined` —nadie lo ha tocado— o llevar
+  // solo lo que se apartó de lo de serie.
+  //
+  // Un valor guardado que no se entiende se trata como el de serie en lugar de lanzar: en la
+  // escritura se valida y se rechaza con un 400, así que aquí solo puede llegar algo raro de una
+  // base de datos editada a mano, y lo seguro entonces es comportarse como un documento sin
+  // configurar y no dejar el documento sin panel ni sin puerta de aprobación.
+  function normalizarConfig(guardado) {
+    const g = guardado && typeof guardado === 'object' && !Array.isArray(guardado) ? guardado : {};
+    const convenioCe = g.convenioCe === CONVENIOS_CE.PESO_DEL_RA_O_CIEN
+      ? CONVENIOS_CE.PESO_DEL_RA_O_CIEN
+      : CONVENIOS_CE.PESO_DEL_RA;
+
+    const puestas = g.reglas && typeof g.reglas === 'object' && !Array.isArray(g.reglas) ? g.reglas : {};
+    const reglas = {};
+    for (const r of REGLAS) {
+      const puesto = puestas[r.regla];
+      // Una normativa no se configura ni aunque alguien haya metido algo a mano en la base de datos.
+      if (r.fija || !puesto || typeof puesto !== 'object' || Array.isArray(puesto)) {
+        reglas[r.regla] = { activa: true, severidad: r.severidad };
+        continue;
+      }
+      reglas[r.regla] = {
+        activa: typeof puesto.activa === 'boolean' ? puesto.activa : true,
+        severidad: SEVERIDADES.includes(puesto.severidad) ? puesto.severidad : r.severidad,
+      };
+    }
+    return { convenioCe, reglas };
+  }
+
+  // Lo que hay que guardar de una configuración efectiva: solo lo que se aparta de lo de serie (ver
+  // la cabecera). Devuelve `null` si no se aparta en nada, para no dejar en el documento un campo
+  // que dice lo mismo que no tenerlo.
+  function comprimirConfig(config) {
+    const c = normalizarConfig(config);
+    const fuera = {};
+    if (c.convenioCe !== CONVENIOS_CE.PESO_DEL_RA) fuera.convenioCe = c.convenioCe;
+    const reglas = {};
+    for (const r of REGLAS) {
+      if (r.fija) continue;
+      const puesto = c.reglas[r.regla];
+      if (puesto.activa && puesto.severidad === r.severidad) continue;
+      reglas[r.regla] = { activa: puesto.activa, severidad: puesto.severidad };
+    }
+    if (Object.keys(reglas).length) fuera.reglas = reglas;
+    return Object.keys(fuera).length ? fuera : null;
+  }
+
+  // EL ÚNICO SITIO DONDE LA CONFIGURACIÓN SURTE EFECTO. Recibe los avisos ya marcados con su
+  // `regla` y devuelve los que quedan, con la severidad que toca:
+  //
+  //   · una comprobación de criterio apagada no deja ni un aviso;
+  //   · una con la severidad cambiada deja los suyos con la nueva, así que bajarla a `aviso` deja de
+  //     impedir la aprobación (`puedeAprobarse` cuenta errores);
+  //   · las dos normativas pasan de largo, hagan lo que hagan: ni se apagan ni cambian de severidad.
+  //
+  // Un aviso de una regla que no está en el catálogo pasa tal cual: si algún día alguien busca algo
+  // nuevo y se olvida de añadirlo aquí, el efecto es que su aviso se sigue viendo, no que desaparezca.
+  function aplicarConfig(config, avisos) {
+    const c = config && config.reglas ? config : normalizarConfig(config);
+    const out = [];
+    for (const aviso of (avisos || [])) {
+      const r = reglaDelCatalogo(aviso && aviso.regla);
+      if (!r || r.fija) { out.push(aviso); continue; }
+      const puesto = c.reglas[r.regla];
+      if (!puesto.activa) continue;
+      out.push(puesto.severidad === aviso.severidad ? aviso : { ...aviso, severidad: puesto.severidad });
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- cambiar la configuración
+
+  // Lo que resulta de pedir un cambio sobre la configuración que hay. Devuelve `{ motivo }` —en
+  // castellano, para el 400— o `{ config, guardar, cambios }`:
+  //
+  //   config    la configuración efectiva que queda
+  //   guardar   lo que hay que escribir en el documento (`null` si vuelve a lo de serie)
+  //   cambios   lo que ha cambiado DE VERDAD, una entrada por cosa. Es lo que se apunta en el
+  //             registro, y por eso se calcula aquí: pedir el convenio que ya estaba no es un cambio
+  //             y no puede dejar una fila en el historial que no dice nada.
+  //
+  // La petición es PARCIAL a propósito: lleva solo lo que se quiere cambiar. Mandar la tabla entera
+  // obligaría a la pantalla a reenviar valores que no ha tocado, y dos jefaturas configurando a la
+  // vez se pisarían ajustes que ninguna de las dos quiso cambiar. El 409 de `esperaUpdatedAt`
+  // protege lo demás (lo hace la ruta).
+  function fusionarConfig(guardado, peticion) {
+    const base = normalizarConfig(guardado);
+    const p = peticion && typeof peticion === 'object' && !Array.isArray(peticion) ? peticion : {};
+    const siguiente = { convenioCe: base.convenioCe, reglas: {} };
+    for (const codigo of CODIGOS) siguiente.reglas[codigo] = { ...base.reglas[codigo] };
+    const cambios = [];
+
+    if (p.convenioCe !== undefined && p.convenioCe !== null) {
+      if (!CONVENIOS.some((c) => c.valor === p.convenioCe)) {
+        return { motivo: `«${p.convenioCe}» no es un convenio de ponderación de los criterios: usa ${CONVENIOS.map((c) => c.valor).join(' o ')}.` };
+      }
+      if (p.convenioCe !== base.convenioCe) {
+        siguiente.convenioCe = p.convenioCe;
+        cambios.push({ que: 'convenio', antes: base.convenioCe, despues: p.convenioCe });
+      }
+    }
+
+    const pedidas = p.reglas;
+    if (pedidas !== undefined && pedidas !== null) {
+      if (typeof pedidas !== 'object' || Array.isArray(pedidas)) {
+        return { motivo: '«reglas» tiene que ser un objeto con una entrada por comprobación: { sin_docente: { activa, severidad } }.' };
+      }
+      for (const codigo of Object.keys(pedidas)) {
+        const r = reglaDelCatalogo(codigo);
+        if (!r) {
+          return { motivo: `«${codigo}» no es una comprobación de este documento. Las que hay: ${CODIGOS.join(', ')}.` };
+        }
+        const puesto = pedidas[codigo];
+        if (!puesto || typeof puesto !== 'object' || Array.isArray(puesto)) {
+          return { motivo: `La comprobación «${codigo}» se configura con un objeto { activa, severidad }.` };
+        }
+        // LA NEGATIVA DE LAS DOS NORMATIVAS, con el motivo dentro: un 400 que solo diga «no se
+        // puede» deja a quien lo lee creyendo que es un fallo de la aplicación.
+        if (r.fija) {
+          return { motivo: `«${r.titulo}» no se puede desactivar ni cambiar de severidad. ${r.porque}` };
+        }
+        if (puesto.activa !== undefined && typeof puesto.activa !== 'boolean') {
+          return { motivo: `«activa» de «${codigo}» tiene que ser true o false.` };
+        }
+        if (puesto.severidad !== undefined && !SEVERIDADES.includes(puesto.severidad)) {
+          return { motivo: `«${puesto.severidad}» no es una severidad: usa ${SEVERIDADES.join(', ')}.` };
+        }
+        const antes = base.reglas[codigo];
+        const despues = {
+          activa: puesto.activa === undefined ? antes.activa : puesto.activa,
+          severidad: puesto.severidad === undefined ? antes.severidad : puesto.severidad,
+        };
+        siguiente.reglas[codigo] = despues;
+        if (despues.activa !== antes.activa || despues.severidad !== antes.severidad) {
+          cambios.push({ que: 'regla', regla: codigo, antes, despues });
+        }
+      }
+    }
+
+    return { config: siguiente, guardar: comprimirConfig(siguiente), cambios };
+  }
+
   // ---------------------------------------------------------------- sobre una lista de avisos
 
   const cuenta = (avisos) => (avisos || []).reduce((c, a) => { c[a.severidad] = (c[a.severidad] || 0) + 1; return c; },
@@ -247,7 +535,19 @@
 
   const api = {
     CONVENIOS_CE,
+    CONVENIOS,
+    comprobarConvenio,
     CIEN_DENTRO_DEL_RA,
+    SEVERIDADES,
+    NORMATIVA,
+    CENTRO,
+    REGLAS,
+    CODIGOS,
+    reglaDelCatalogo,
+    normalizarConfig,
+    comprimirConfig,
+    aplicarConfig,
+    fusionarConfig,
     porcentaje,
     sumaPesos,
     cuadraCriterios,

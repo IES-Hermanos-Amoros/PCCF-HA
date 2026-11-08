@@ -20,19 +20,26 @@
 // puedan comparar uno a uno— y la NUMERACIÓN de cada nodo («4.2» es el mismo «4.2» del PDF impreso y
 // de la barra lateral, que es como la gente se refiere a un apartado en una reunión).
 //
-// EL CONVENIO DE LOS CRITERIOS ES EL DEL MOTOR, A PROPÓSITO
+// EL CONVENIO DE LOS CRITERIOS ES EL DEL DOCUMENTO, Y EL MOTOR USA EL MISMO
 //
-// El motor imprime con el convenio ESTRICTO (`peso_del_ra`: los criterios suman el peso de su RA) y
-// el prototipo acepta los dos. Este panel usa el estricto, porque con cualquier otro sus avisos
-// dejarían de coincidir con los del PDF y el criterio del evolutivo no se cumpliría.
+// Hasta el E7 este panel llevaba el convenio ESTRICTO en una constante de este fichero, porque es el
+// que imprimía el motor y el criterio de aceptación del E4 es que los dos listados coincidan uno a
+// uno. Desde el E7 el convenio es del DOCUMENTO (`documento.comprobaciones.convenioCe`), y la
+// coincidencia se sigue cumpliendo porque el generador lo recibe del mismo sitio: /pdf se lo pasa a
+// `buildDocDefinition` leyéndolo del documento, igual que aquí. Un documento sin configurar usa el
+// estricto, así que su panel y su PDF son exactamente los de antes.
 //
 // Lo que eso cuesta, y cómo se paga: en la PD de DAW, de los 34 avisos que imprime hoy el PDF, 22 no
 // son erratas sino el otro convenio (los criterios suman 100 % dentro del RA) y 10 son descuadres de
-// verdad (14,94 % donde debería haber 15 %). La decisión de qué convenio vale es del departamento y
-// está sin tomar. Así que no se esconden: el aviso de los que suman exactamente 100 % lo DICE con
-// esas palabras en su `detalle` y lleva `convenio: 'cien_dentro_del_ra'`, y la respuesta trae el
-// recuento (`delOtroConvenio`) para que el panel pueda separar «esto habrá que decidirlo» de «aquí
-// hay una errata». La severidad no cambia: bajarla sería decidir el convenio por la puerta de atrás.
+// verdad (14,94 % donde debería haber 15 %). Mientras el documento siga con el convenio estricto no
+// se esconden: el aviso de los que suman exactamente 100 % lo DICE con esas palabras en su `detalle`
+// y lleva `convenio: 'cien_dentro_del_ra'`, y la respuesta trae el recuento (`delOtroConvenio`) para
+// que el panel pueda separar «esto habrá que decidirlo» de «aquí hay una errata».
+//
+// Y CAMBIAR EL CONVENIO NO ES BAJARLE LA SEVERIDAD. Con el laxo esos 22 dejan de ser avisos porque
+// SON CORRECTOS: es uno de los dos repartos legítimos. Lo decide la jefatura de estudios en
+// /comprobaciones, queda apuntado con su nombre y su fecha, y el PDF cambia con el panel. Bajarle la
+// severidad a la regla sigue sin poderse: es normativa (core/validaciones.js).
 //
 // QUÉ COMPRUEBA Y QUÉ NO
 //
@@ -51,8 +58,12 @@
 // del E5; y `copiasDesactualizadas` necesita apartados desvinculados de un texto compartido, y
 // desvincular todavía no existe en la API, así que la lista sería siempre vacía.
 //
-// Y NO SE AÑADE LA TABLA DE CONFIGURACIÓN DE REGLAS: eso es el E7. Lo único configurable hoy es el
-// convenio, y entra por una constante de este fichero que se lee en una línea.
+// Esas tres SÍ SE PUEDEN CONFIGURAR desde el E7 —están en el catálogo de core/validaciones.js, con
+// las demás de criterio del centro— y la configuración se guarda y se arrastra al curso siguiente
+// igual que el resto. Lo que pasa es que este panel no las busca todavía, así que configurarlas no
+// cambia nada hoy. Eso no se calla: /comprobaciones lo dice regla por regla con `enElPanel` y
+// `motivo` (ver `FUERA_DEL_PANEL`, más abajo), para que la pantalla no ofrezca un interruptor que
+// parezca roto.
 //
 // QUÉ NO APLICA A LA PROPUESTA PEDAGÓGICA DE ESO Y BACHILLERATO, Y POR QUÉ NO HAY QUE APAGAR NADA
 //
@@ -108,11 +119,22 @@ const Val = require('../../../core/validaciones');
 const E = require('../../../core/estructurados');
 const {
   conErrores, abrirDocumento, seccionesConCampo, raDeTablas, tituloDelTomo, TIPO_RA_CE,
+  comprobacionesDe,
 } = require('./comun');
 
-// El convenio con el que se cuentan los criterios. Es el del PDF (ver la cabecera). Cambiarlo es
-// cambiar esta línea, no una decisión escondida en dos ficheros.
-const CONVENIO_CE = Val.CONVENIOS_CE.PESO_DEL_RA;
+// LAS COMPROBACIONES QUE ESTE PANEL BUSCA DE VERDAD, por su código estable. Las otras tres del
+// catálogo de core/validaciones.js se quedan fuera (ver la cabecera), y aquí consta POR QUÉ cada
+// una, porque /comprobaciones lo sirve tal cual: una casilla que no hace nada tiene que decir que no
+// hace nada, o quien la mueva creerá que la aplicación no le hace caso.
+const REGLAS_DEL_PANEL = Object.freeze([
+  'criterios_de_ra', 'suma_de_ra', 'sin_docente', 'ra_sin_situacion', 'sa_sin_evaluacion',
+]);
+
+const FUERA_DEL_PANEL = Object.freeze({
+  apartado_vacio: 'Lo contesta ya la barra lateral con el `relleno` de cada nodo de /arbol: repetirlo aquí serían treinta avisos por documento que la pantalla ya pinta, y ahogarían las dos cosas para las que existe el panel.',
+  heredado_sin_revisar: 'Necesita el `origen: heredado` de cada apartado, que el panel no lee todavía: lo enseña la vista de revisión del E5, apartado por apartado.',
+  copia_desactualizada: 'Necesita apartados desvinculados de un texto compartido, y desvincular todavía no existe en la API: la lista sería siempre vacía.',
+});
 
 // La misma clave plana que usa core/arbol.js para la matriz (sección × unidad): el \u0000 impide que
 // dos claves distintas se confundan, porque ningún id lleva un carácter nulo.
@@ -139,7 +161,7 @@ const fichasDe = (valor) => (Array.isArray(valor) ? valor : (valor ? [valor] : [
 //     el motor imprime la rejilla en crudo y el campo ya no es un reparto completo;
 //   · la suma de los RA solo se comprueba si el campo tiene VARIAS tablas: una tabla suelta suele
 //     ser un fragmento y sumarla daría un error falso. Ese filtro es de aquí; la regla, de core/.
-function avisosDePonderaciones(valor, destino, impreso) {
+function avisosDePonderaciones(valor, destino, impreso, convenioCe) {
   if (valor === undefined || valor === null) return [];
   const tablas = Array.isArray(valor) ? valor : [valor];
   const out = [];
@@ -150,7 +172,7 @@ function avisosDePonderaciones(valor, destino, impreso) {
     pesos.push(p.ponderacion);
     const pesosCe = (p.ce || []).map((c) => c.ponderacion);
     out.push(...marcar(
-      Val.avisosCriteriosDeRa({ ra: p.ra, peso: p.ponderacion, pesosCe }, CONVENIO_CE),
+      Val.avisosCriteriosDeRa({ ra: p.ra, peso: p.ponderacion, pesosCe }, convenioCe),
       'criterios_de_ra', destino, impreso,
     ));
   }
@@ -163,6 +185,11 @@ function avisosDePonderaciones(valor, destino, impreso) {
 // Todo el panel menos la respuesta. Recibe el documento ya abierto —con los apartados retirados ya
 // podados por `abrirDocumento`— y devuelve el objeto que sirve el GET.
 async function informeDe({ documento, repo }) {
+  // LA CONFIGURACIÓN DE ESTE DOCUMENTO, resuelta una vez. Un documento sin configurar devuelve lo de
+  // serie —convenio estricto y las ocho comprobaciones activas con su severidad de siempre—, así que
+  // el camino de abajo es el de antes del E7 letra por letra.
+  const config = comprobacionesDe(documento);
+
   // Sin reordenar: el orden de `unidades.listar()` es el del documento y el del tomo del PDF.
   const unidades = await repo.unidades.listar(documento._id);
   const apartados = await repo.apartados.listar(documento._id);
@@ -256,7 +283,7 @@ async function informeDe({ documento, repo }) {
     for (const juego of juegos) {
       for (const campo of info.campos) {
         if (campo.tipo === E.TIPO_PONDERACION) {
-          grupo.avisos.push(...avisosDePonderaciones(juego[campo.id], destino, impreso));
+          grupo.avisos.push(...avisosDePonderaciones(juego[campo.id], destino, impreso, config.convenioCe));
         } else if (campo.tipo === E.TIPO_FICHA) {
           for (const ficha of fichasDe(juego[campo.id])) grupo.fichas.push({ ficha, destino });
         }
@@ -288,14 +315,24 @@ async function informeDe({ documento, repo }) {
     }
   }
 
-  const salida = [comunes, ...grupos.values()].map((g) => ({
-    unidadId: g.unidadId,
-    titulo: g.titulo,
-    num: g.num,
-    responsables: g.responsables,
-    cuenta: Val.cuenta(g.avisos),
-    avisos: g.avisos,
-  }));
+  // LA CONFIGURACIÓN SE APLICA AQUÍ Y EN UN SOLO SITIO: se quitan los avisos de las comprobaciones
+  // apagadas y se reescribe la severidad de las que la tengan cambiada (`aplicarConfig` de
+  // core/validaciones.js). Tiene que ser ANTES de `cuenta` y de `puedeAprobarse`, porque la gracia de
+  // bajarle la severidad a una comprobación es justamente que deje de impedir la aprobación.
+  //
+  // Las dos normativas pasan de largo, así que esto NO PUEDE CAMBIAR EL PDF: la cajita roja solo
+  // imprime esas dos. Lo comprueba test/reglas.js.
+  const salida = [comunes, ...grupos.values()].map((g) => {
+    const avisos = Val.aplicarConfig(config, g.avisos);
+    return {
+      unidadId: g.unidadId,
+      titulo: g.titulo,
+      num: g.num,
+      responsables: g.responsables,
+      cuenta: Val.cuenta(avisos),
+      avisos,
+    };
+  });
 
   const todos = salida.flatMap((g) => g.avisos);
 
@@ -303,7 +340,12 @@ async function informeDe({ documento, repo }) {
     documentoId: documento._id,
     // Qué convenio se ha usado para contar los criterios. Viaja en la respuesta porque cambia lo que
     // se ve, y quien lea el panel tiene que poder saber con qué regla se ha medido.
-    convenioCe: CONVENIO_CE,
+    convenioCe: config.convenioCe,
+    // Y qué comprobaciones están apagadas en este documento, por su código. Viaja por el mismo
+    // motivo: un panel con cero avisos porque todo está bien y uno con cero avisos porque alguien
+    // apagó las comprobaciones son la misma pantalla, y no son lo mismo. La tabla entera, con quién
+    // la cambió, está en /comprobaciones.
+    desactivadas: Val.CODIGOS.filter((c) => !config.reglas[c].activa),
     cuenta: Val.cuenta(todos),
     total: todos.length,
     // Los que van a salir en la cajita roja del PDF, y cuántos de ellos son el otro convenio y no
@@ -328,4 +370,4 @@ const GET = conErrores(async (peticion, parametros) => {
   );
 });
 
-module.exports = { GET, informeDe };
+module.exports = { GET, informeDe, REGLAS_DEL_PANEL, FUERA_DEL_PANEL };

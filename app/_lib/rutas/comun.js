@@ -14,6 +14,7 @@
 
 const C = require('../../../core/permisos');
 const Plantilla = require('../../../core/plantilla');
+const Val = require('../../../core/validaciones');
 const { aMotor } = require('../../../core/documento');
 const { obtenerRepositorio } = require('../repositorio');
 const { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO } = require('../usuario');
@@ -182,6 +183,20 @@ const sinPlantilla = (documento) => {
   delete copia.plantilla;
   return copia;
 };
+
+// ---------------------------------------------------------------- las comprobaciones del documento
+
+// QUÉ COMPROBACIONES SE LE APLICAN A ESTE DOCUMENTO, y con qué convenio se cuentan las ponderaciones
+// de los criterios. La regla de qué se puede configurar está en core/validaciones.js; esto es la
+// lectura, y está aquí porque la piden TRES rutas y tienen que leer lo mismo:
+//
+//   /validaciones    el panel de comprobaciones, y por tanto la puerta de aprobación de /estado
+//   /pdf             el generador, para que la cajita roja use el MISMO convenio que el panel
+//   /comprobaciones  la pantalla que lo configura
+//
+// Si cada una lo leyera a su manera, el panel y el PDF podrían medir con reglas distintas, que es
+// justo lo que el criterio de aceptación del E4 prohíbe.
+const comprobacionesDe = (documento) => Val.normalizarConfig(documento && documento.comprobaciones);
 
 // ---------------------------------------------------------------- permisos
 
@@ -455,6 +470,7 @@ module.exports = {
   texto,
   abrirDocumento,
   abrirPersona,
+  comprobacionesDe,
   sinPlantilla,
   plantillaVigente,
   puedeEditarApartado,

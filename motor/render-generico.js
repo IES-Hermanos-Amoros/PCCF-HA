@@ -5,8 +5,19 @@ const { resolverCompartidos } = require('./compartidos');
 const { filasDeFicha, esSemantica } = require('./ficha-sa');
 const Val = require('../core/validaciones');
 
-// El convenio con el que se imprime. Es el estricto: los criterios de un RA reparten su peso. El
-// mockup usa el laxo; la decisión de cuál vale es del departamento (ver core/validaciones.js).
+// El convenio con el que se imprime SI NADIE DICE OTRO. Es el estricto: los criterios de un RA
+// reparten su peso (ver core/validaciones.js).
+//
+// DESDE EL E7 ENTRA POR PARÁMETRO (`convenioCe` de `buildDocDefinition`), y no por capricho: el
+// criterio de aceptación del E4 es que los avisos del panel de comprobaciones coincidan UNO A UNO
+// con los de la cajita roja del PDF. Si el panel pasa a usar el convenio que tiene configurado el
+// documento y aquí siguiera clavado, los dos listados dejarían de coincidir en cuanto un
+// departamento decidiera el otro convenio. Así que el convenio es del documento y los dos lados lo
+// leen del mismo sitio.
+//
+// La omisión es el estricto a propósito: un documento sin configurar —y cualquiera de los otros
+// llamadores, que son los guiones y las pruebas del motor— tiene que dar exactamente el mismo PDF
+// que antes de este evolutivo.
 const CONVENIO_IMPRESO = Val.CONVENIOS_CE.PESO_DEL_RA;
 
 const AZUL = '#1F3864', AZUL_CLARO = '#D9E2F3', GRIS = '#666666', GRIS_BORDE = '#BFBFBF', GRIS_FONDO = '#F2F2F2', ROJO = '#C00000', VERDE = '#2E7D32';
@@ -87,7 +98,7 @@ function pintarRaCe(v) {
   if (!v || !v.ra || !v.ra.length) return tablaGenerica(v && v.filas);
   return { table: { headerRows: 1, widths: ['*', '*'], body: [[th('Resultados de aprendizaje'), th('Criterios de evaluación')], ...v.ra.map((r) => [{ text: [{ text: `RA${r.num}. `, bold: true }, r.texto] }, { stack: r.ce.map((ce) => ({ text: `${ce.letra}) ${ce.texto}`, margin: [0, 0, 0, 2] })) }])] }, layout, margin: [0, 0, 0, 10] };
 }
-function pintarPonderaciones(lista, avisos) {
+function pintarPonderaciones(lista, avisos, convenioCe) {
   const tablas = Array.isArray(lista) ? lista : [lista];
   const out = []; const pesosRA = []; let estructurado = true;
   for (const p of tablas) {
@@ -96,8 +107,8 @@ function pintarPonderaciones(lista, avisos) {
     // Búsqueda aquí (los RA y sus CE del campo), regla en core/: el texto del aviso es el que se imprime.
     const pesosCe = p.ce.map((c) => c.ponderacion);
     const sumaCE = Val.sumaPesos(pesosCe);
-    const ok = Val.cuadraCriterios(p.ponderacion, pesosCe, CONVENIO_IMPRESO);
-    avisos.push(...Val.avisosCriteriosDeRa({ ra: p.ra, peso: p.ponderacion, pesosCe }, CONVENIO_IMPRESO).map((a) => a.titulo));
+    const ok = Val.cuadraCriterios(p.ponderacion, pesosCe, convenioCe);
+    avisos.push(...Val.avisosCriteriosDeRa({ ra: p.ra, peso: p.ponderacion, pesosCe }, convenioCe).map((a) => a.titulo));
     out.push({ table: { headerRows: 1, widths: ['*', 70], body: [
       [th(`Resultado de aprendizaje ${p.ra}`), th('Ponderación', { alignment: 'center' })],
       [{ text: p.texto }, { text: pct(p.ponderacion), alignment: 'center', bold: true }],
@@ -142,7 +153,7 @@ function pintarCampo(campo, valor, ctx) {
   switch (campo.tipo) {
     case 'texto_largo': return bloques(valor);
     case 'auto.tabla_ra_ce': return [pintarRaCe(valor)];
-    case 'ponderacion_ra_ce': return pintarPonderaciones(valor, ctx.avisos);
+    case 'ponderacion_ra_ce': return pintarPonderaciones(valor, ctx.avisos, ctx.convenioCe);
     case 'auto.ficha_modulo': case 'tabla_clave_valor': return [pintarClaveValor(valor)];
     case 'derivado.resumen_situaciones': return ctx.resumenCalculado ? [para('Tabla resumen calculada a partir de las fichas de situación de aprendizaje.', { italics: true, color: GRIS, fontSize: 8.5 }), ctx.resumenCalculado] : [tablaGenerica(valor.filas)];
     // Una SA creada o editada en la aplicación no tiene tabla importada: se
@@ -183,11 +194,16 @@ function pintarSeccion(sec, valores, numero, ctx) {
   return out;
 }
 
-function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo, subtitulo, estado = 'borrador' }) {
+function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo, subtitulo, estado = 'borrador', convenioCe = CONVENIO_IMPRESO }) {
   const datos = resolverCompartidos(datosConRefs);
   const borrador = estado !== 'aprobado';
   const seleccion = instancias === 'todas' ? datos.instancias : datos.instancias.filter((x, i) => (instancias || []).includes(i) || (instancias || []).includes(x.titulo));
-  const ctx = { avisos: [] };
+  // El convenio viaja en el contexto porque lo necesita `pintarPonderaciones`, que está a tres
+  // llamadas de aquí. Y se comprueba antes de pintar nada: un convenio que no existe se para en seco
+  // en lugar de imprimir un tomo entero medido con una regla que nadie ha elegido. Si no se mirara
+  // aquí, el primer apartado de ponderaciones lanzaría a mitad del documento.
+  Val.comprobarConvenio(convenioCe);
+  const ctx = { avisos: [], convenioCe };
   const cuerpo = [];
   plantilla.secciones.forEach((sec, i) => {
     const numero = String(i + 1);
