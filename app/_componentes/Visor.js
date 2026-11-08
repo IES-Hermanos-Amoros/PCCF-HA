@@ -108,6 +108,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ApartadoEditable from './ApartadoEditable';
 import Arbol from './Arbol';
+import Ayuda from './Ayuda';
 import BarraSuperior from './BarraSuperior';
 import Cambios, { BotonValidar } from './Cambios';
 import Comentarios from './Comentarios';
@@ -1145,9 +1146,13 @@ export default function Visor({
                   {`${revisadosAhora} de ${revision.apartados} apartados revisados para este curso`}
                   {resumen ? ` · ${rellenosAhora} con contenido` : ''}
                 </span>
+                {/* POR QUÉ EL PROGRESO DICE 1 % EN SEPTIEMBRE. Es la
+                    explicación de un dato que sorprende cada vez que se ve, así
+                    que no se pliega: se acorta. El resto —de dónde viene cada
+                    punto— está en la ayuda de la leyenda, abajo. */}
                 <span className="ayuda">
-                  Cuenta lo que alguien ha mirado para este curso, no lo que tiene texto: un apartado
-                  heredado del curso pasado está pendiente aunque esté lleno.
+                  Cuenta lo revisado para este curso, no lo que tiene texto: lo heredado está
+                  pendiente aunque esté lleno.
                 </span>
               </>
             ) : (
@@ -1168,16 +1173,29 @@ export default function Visor({
                 sigue fuera: sale de cruzar los avisos del panel de validaciones
                 con cada nodo, y /arbol no los manda. Un ! que no aparece cuando
                 hay un error es peor que no tener !. */}
-            <ul className="leyenda">
-              <li><i className="glifo glifo-validado" aria-hidden="true">✓</i> revisado</li>
-              <li><i className="glifo glifo-completo" aria-hidden="true" /> con contenido</li>
-              <li><i className="glifo glifo-incompleto" aria-hidden="true" /> incompleto</li>
-              <li><i className="glifo glifo-vacio" aria-hidden="true" /> vacío</li>
-            </ul>
-            <span className="ayuda">
-              El punto dice si el apartado está hecho y bien. De dónde viene —si es del curso
-              pasado— lo dice la cabecera del apartado y la vista Cambios.
-            </span>
+            {/* La leyenda dice qué es cada forma —eso es el dato— y el botón de
+                al lado, de dónde sale cada punto, que es siempre igual. La
+                barra lateral tiene 330 px y no le sobra ni una línea: el botón
+                cabe al final de la leyenda sin añadir ninguna. */}
+            <div className="pie-leyenda">
+              <ul className="leyenda">
+                <li><i className="glifo glifo-validado" aria-hidden="true">✓</i> revisado</li>
+                <li><i className="glifo glifo-completo" aria-hidden="true" /> con contenido</li>
+                <li><i className="glifo glifo-incompleto" aria-hidden="true" /> incompleto</li>
+                <li><i className="glifo glifo-vacio" aria-hidden="true" /> vacío</li>
+              </ul>
+              <Ayuda sobre="los puntos del árbol y el progreso">
+                <p>
+                  El punto de cada apartado dice <strong>si está hecho y bien</strong>, no de dónde
+                  viene. Que sea del curso pasado lo dicen la cabecera del apartado y su vista{' '}
+                  <strong>Cambios</strong>.
+                </p>
+                <p>
+                  El punto de un bloque o de un módulo resume lo que tiene dentro: solo cuenta como
+                  revisado cuando lo está todo.
+                </p>
+              </Ayuda>
+            </div>
           </div>
         </aside>
 

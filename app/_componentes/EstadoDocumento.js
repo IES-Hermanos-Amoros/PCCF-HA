@@ -69,6 +69,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Ayuda from './Ayuda';
 import { pedir } from './api';
 import { NOMBRE_ESTADO_DOC } from './etiquetas';
 
@@ -296,6 +297,26 @@ export default function EstadoDocumento({ documentoId, onIr }) {
       <header className="tarjeta-cab">
         <h2>Estado del documento</h2>
         <span className={CHIP[estado.estado] || 'chip'}>{nombre(estado.estado)}</span>
+
+        {/* El circuito de estados es el ejemplo de prosa de referencia: siempre
+            igual, y en cuanto se ha movido un documento una vez se sabe. Lo que
+            NO está aquí es lo que hace cada flecha, que sigue debajo de su
+            botón: eso es el aviso de lo que va a pasar al pulsarla.
+            Va pegado al título y no al final de la fila porque la pastilla de
+            la marca de agua lleva `margin-left: auto` y se lo llevaría al otro
+            extremo de la cabecera. */}
+        <Ayuda sobre="el circuito del documento">
+          <p>
+            El circuito es <strong>borrador → revisión → aprobado</strong>, y cada tramo lo mueve
+            quien responde de él: el departamento lo manda a revisión y la jefatura de estudios lo
+            aprueba.
+          </p>
+          <p>
+            <strong>Aprobar no cierra la edición</strong>: un documento aprobado se sigue pudiendo
+            cambiar. Lo que cambia al aprobarlo es la marca de agua del PDF y del Word.
+          </p>
+        </Ayuda>
+
         {/* La marca de agua es el criterio de aceptación del evolutivo y lo que
             de verdad cambia al aprobar, así que se dice aquí y no en una ayuda:
             es la diferencia que se ve al exportar. */}
@@ -303,12 +324,6 @@ export default function EstadoDocumento({ documentoId, onIr }) {
           {estado.marcaDeAgua ? 'el PDF sale con marca de BORRADOR' : 'el PDF sale sin marca de agua'}
         </span>
       </header>
-
-      <p className="suave">
-        El circuito del documento es <strong>borrador → revisión → aprobado</strong>, y cada tramo lo
-        mueve quien responde de él: el departamento lo manda a revisión y la jefatura de estudios lo
-        aprueba. Aprobar no cierra la edición: un documento aprobado se sigue pudiendo cambiar.
-      </p>
 
       {/* Lo que acaba de pasar, donde se pulsó y en voz alta. */}
       {hecho ? (

@@ -49,6 +49,7 @@
 'use client';
 
 import { useLayoutEffect, useRef, useState } from 'react';
+import Ayuda from './Ayuda';
 import { NIVEL_EDITOR, aMarcas, aTramos, aplicar, marcar } from './bloques-cliente';
 import { Compartido, Tabla, Tramos } from './Valores';
 
@@ -139,12 +140,25 @@ function BarraFormato({ donde, onMarca, onAnadir, refBoton }) {
       {/* Sobre qué va a actuar la barra. El `aria-live` es lo que hace que la
           respuesta a «¿a quién le pega esto?» llegue también sin mirar. */}
       <span className="tb-donde" aria-live="polite">{donde}</span>
-      <span className="ayuda">
-        Marcan lo seleccionado, o la palabra donde esté el cursor. Atajos{' '}
-        <kbd>Ctrl</kbd>+<kbd>B</kbd> y <kbd>Ctrl</kbd>+<kbd>I</kbd>, o <kbd>Alt</kbd>+<kbd>N</kbd>{' '}
-        y <kbd>Alt</kbd>+<kbd>C</kbd> (<kbd>Ctrl</kbd>+<kbd>N</kbd> no: es del navegador y abre una
-        ventana nueva). Enlaces todavía no: el PDF no los pinta.
-      </span>
+      {/* Lo que hacen los botones y los atajos es prosa de referencia: siempre
+          igual, y una vez la sabes no la necesitas. A la vista ocupa una línea
+          de la barra en cada apartado que se abre, en todos los apartados de
+          los once módulos. Los atajos siguen anunciados en el `title` y en el
+          `aria-keyshortcuts` de cada botón, que es donde los busca quien los
+          usa. */}
+      <Ayuda sobre="la barra de formato">
+        <p>
+          <strong>N</strong> y <strong>C</strong> marcan lo seleccionado, o la palabra donde esté el
+          cursor. Atajos <kbd>Ctrl</kbd>+<kbd>B</kbd> y <kbd>Ctrl</kbd>+<kbd>I</kbd>, o{' '}
+          <kbd>Alt</kbd>+<kbd>N</kbd> y <kbd>Alt</kbd>+<kbd>C</kbd> (<kbd>Ctrl</kbd>+<kbd>N</kbd> no:
+          es del navegador y abre una ventana nueva).
+        </p>
+        <p>
+          <strong>+ párrafo</strong> y <strong>+ lista</strong> añaden un bloque debajo del que esté
+          señalado, que es el que dice la pastilla de al lado. Enlaces todavía no: el PDF no los
+          pinta.
+        </p>
+      </Ayuda>
     </div>
   );
 }
@@ -603,9 +617,9 @@ export default function EditorBloques({ bloques, compartidos, onCambio }) {
               return (
                 <div key={i}>
                   <Compartido cid={b.ref} compartidos={compartidos} />
+                  {/* Por qué este bloque no tiene campo donde escribir. */}
                   <p className="ayuda">
-                    Se escribe una vez para todas las unidades: editarlo y desvincularlo llegan con
-                    la pantalla de textos compartidos.
+                    No se edita desde aquí: se escribe una vez para todas las unidades.
                   </p>
                 </div>
               );

@@ -38,6 +38,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Ayuda from './Ayuda';
 import BarraSuperior from './BarraSuperior';
 import { pedir } from './api';
 import { useSesion } from './sesion-cliente';
@@ -167,6 +168,28 @@ function Alta({ departamento, alAlta }) {
       <header className="tarjeta-cab">
         <h2>Dar de alta a alguien</h2>
         <span className="suave">se crea la persona y sale su enlace de acceso</span>
+
+        {/* Para qué sirve cada campo y qué rol se puede poner: siempre igual, y
+            el servidor lo dice con su mensaje si alguien se pasa. Lo que se
+            queda junto a los campos es el dato —que al correo no se le manda
+            nada, y en qué departamento se crea—, porque eso se pregunta cada
+            vez que se da de alta a un compañero. */}
+        <Ayuda sobre="dar de alta a alguien">
+          <p>
+            El <strong>correo</strong> no se usa para escribirle: sirve para no dar de alta dos
+            veces a la misma persona y para que el día que haya correo el enlace salga solo.
+            Mientras no lo haya, el enlace lo hace llegar a mano quien da de alta.
+          </p>
+          <p>
+            <strong>Nadie da de alta por encima de su propio rango.</strong> Si eliges un rol más
+            alto que el tuyo, el servidor se niega y lo dice.
+          </p>
+          <p>
+            Al dar de alta sale un <strong>enlace de un solo uso</strong>, y solo sale esa vez: de
+            la invitación se guarda únicamente su hash. Si se pierde, se genera otro con «volver a
+            invitar».
+          </p>
+        </Ayuda>
       </header>
 
       <form onSubmit={enviar}>
@@ -184,10 +207,7 @@ function Alta({ departamento, alAlta }) {
             onChange={(ev) => setEmail(ev.target.value)}
             required
           />
-          <span className="ayuda">
-            No se le manda nada: sirve para no dar de alta dos veces a la misma persona y para que
-            el día que haya correo el enlace salga solo.
-          </span>
+          <span className="ayuda">No se le manda nada.</span>
         </div>
 
         <div className="linea-estructura">
@@ -195,9 +215,10 @@ function Alta({ departamento, alAlta }) {
           <select id="alta-rol" value={rol} onChange={(ev) => setRol(ev.target.value)}>
             {ROLES_EN_ORDEN.map((r) => <option key={r} value={r}>{ROLES[r] || r}</option>)}
           </select>
+          {/* En qué departamento se crea es un dato de esta pantalla, no una
+              regla general: se queda a la vista. */}
           <span className="ayuda">
-            Nadie da de alta por encima de su propio rango: si eliges uno más alto que el tuyo, el
-            servidor se niega y lo dice. La persona se crea en tu departamento
+            Se crea en tu departamento
             {departamento ? <> (<code>{departamento}</code>)</> : null}.
           </span>
         </div>
@@ -376,14 +397,14 @@ export default function Personas() {
           </div>
         ) : null}
 
+        {/* Por qué no hay botones, en una línea: es un dato del rol de quien
+            mira, no prosa de referencia. */}
         {personas && personas.length && !puedeGestionar ? (
           <div className="nota">
             <div>
-              <strong>Estás viendo el censo, no gestionándolo.</strong>
-              <p className="suave" style={{ margin: '4px 0 0' }}>
-                Dar de alta, cambiar un rol o dar de baja lo hacen la jefatura del departamento y el
-                soporte. Lo decide el servidor en cada petición, no esta pantalla.
-              </p>
+              <strong>Estás viendo el censo, no gestionándolo.</strong>{' '}
+              Dar de alta, cambiar un rol o dar de baja lo hacen la jefatura del departamento y el
+              soporte.
             </div>
           </div>
         ) : null}
@@ -399,6 +420,27 @@ export default function Personas() {
                   ? `${pendientes} ${pendientes === 1 ? 'persona tiene' : 'personas tienen'} un enlace sin usar`
                   : 'nadie tiene enlaces pendientes'}
               </span>
+
+              {/* Cómo se entra, y qué arrastra cada acción del censo: es lo que
+                  no cambia nunca. Lo que sí se queda en la tabla es qué
+                  significa «enlace sin usar», porque es un dato que está en
+                  pantalla y sorprende cada vez que se ve. */}
+              <Ayuda sobre="el censo del departamento">
+                <p>
+                  <strong>Así se entra en la aplicación:</strong> no hay registro ni contraseñas. La
+                  jefatura da de alta a cada persona, sale un enlace de acceso de un solo uso, y con
+                  ese enlace se abre la sesión del navegador. El enlace caduca.
+                </p>
+                <p>
+                  <strong>Cambiar un rol no cierra su sesión</strong>: el rol nuevo vale a partir de
+                  la siguiente petición. <strong>Dar de baja sí la cierra</strong>, y además anula
+                  los enlaces que tuviera pendientes.
+                </p>
+                <p>
+                  A quien está de baja no se le puede mandar un enlace, porque no abriría nada: hay
+                  que activarla primero, y entonces necesita un enlace nuevo.
+                </p>
+              </Ayuda>
             </header>
 
             <div className="tabla-scroll">
@@ -578,10 +620,7 @@ export default function Personas() {
                               <div className="ayuda">no puedes darte de baja a ti mismo</div>
                             ) : null}
                             {!p.activo ? (
-                              <div className="ayuda">
-                                a quien está de baja no se le manda un enlace: no abriría nada.
-                                Actívala primero.
-                              </div>
+                              <div className="ayuda">actívala antes de mandarle un enlace</div>
                             ) : null}
                             {suyo ? (
                               <div className={suyo.tipo === 'mal' ? 'ayuda rojo' : 'ayuda bien'}>
@@ -597,10 +636,13 @@ export default function Personas() {
               </table>
             </div>
 
+            {/* Qué quiere decir la pastilla «enlace sin usar», que es el dato
+                de esta tabla por el que se pregunta en septiembre. Lo que
+                arrastra cambiar un rol o dar de baja está en la ayuda de la
+                cabecera, y el botón de baja ya lo dice en su `title`. */}
             <p className="ayuda">
-              «Enlace sin usar» quiere decir que esa persona tiene una invitación pendiente y
-              todavía no la ha canjeado: mientras siga así, no ha entrado. Cambiar un rol no cierra
-              su sesión; dar de baja sí, y además anula sus enlaces.
+              «Enlace sin usar» quiere decir que tiene una invitación pendiente y todavía no ha
+              entrado.
             </p>
           </section>
         ) : null}

@@ -60,6 +60,7 @@
 
 import { Fragment, useState } from 'react';
 import Val from '../../core/validaciones';
+import Ayuda from './Ayuda';
 import { Tabla, Tramos } from './Valores';
 
 // El convenio de la interfaz, el mismo que el panel de validaciones. Ver la
@@ -210,6 +211,24 @@ export default function Ponderaciones({ valor, etiqueta, editable, onCambio }) {
     <section className="tarjeta">
       <header className="tarjeta-cab">
         <h2>{etiqueta || 'Ponderaciones'}</h2>
+        {/* El modelo de ponderación es prosa de referencia: los dos convenios
+            son los mismos en todos los módulos de todos los documentos. Lo que
+            se queda a la vista, abajo, es si esta tabla se puede editar y por
+            qué, que cambia de apartado a apartado. */}
+        <Ayuda sobre="cómo se ponderan los criterios">
+          <p>
+            Las sumas se calculan <strong>mientras escribes</strong>, con la misma regla que el
+            panel de validaciones (<code>core/validaciones.js</code>) y que la cajita roja del PDF.
+          </p>
+          <p>
+            Los <strong>resultados de aprendizaje suman 100 %</strong>. Los criterios de cada uno
+            reparten el peso de su RA —o 100 % dentro del RA, que es el otro convenio que usa el
+            documento—. Con cuál de los dos se mide este documento lo dice el panel de{' '}
+            <strong>validaciones</strong>, que es quien lo cuenta; aquí solo se suma lo que hay
+            escrito.
+          </p>
+        </Ayuda>
+
         {sumaVale ? (
           <span className={'total' + (cuadraTotal ? ' bien' : ' mal')}>
             {'total de los RA ' + Val.porcentaje(total)}
@@ -249,17 +268,15 @@ export default function Ponderaciones({ valor, etiqueta, editable, onCambio }) {
         </div>
       ) : null}
 
-      <p className="ayuda">
-        La suma de cada resultado de aprendizaje y el total se calculan mientras escribes, con la
-        misma regla que el panel de validaciones (<code>core/validaciones.js</code>). Los
-        resultados de aprendizaje suman 100 %, y los criterios de cada uno reparten el peso de su RA
-        —o 100 % dentro del RA, que es el otro convenio que usa el documento y que el departamento
-        todavía no ha decidido cuál vale—.
-        {editable ? '' : ' Este apartado no lo puedes editar: los pesos se ven, pero no se cambian.'}
-        {editable && !seEdita
-          ? ' Aquí no se cambian: este campo trae una tabla que el importador no supo leer por resultados de aprendizaje, y el servidor no acepta el campo mientras esté. Se arregla reimportando el módulo.'
-          : ''}
-      </p>
+      {/* Por qué esta tabla no se puede tocar: es un dato de este apartado y de
+          este rol, no una regla general, así que se queda a la vista. */}
+      {!editable || !seEdita ? (
+        <p className="ayuda">
+          {editable
+            ? 'Aquí no se cambian: este campo trae una tabla que el importador no supo leer por resultados de aprendizaje, y el servidor no acepta el campo mientras esté. Se arregla reimportando el módulo.'
+            : 'Este apartado no lo puedes editar: los pesos se ven, pero no se cambian.'}
+        </p>
+      ) : null}
 
       {sueltas.map((p, i) => (
         <div key={i}>

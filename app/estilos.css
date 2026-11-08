@@ -933,3 +933,72 @@ del > mark.quita { text-decoration-thickness: 2px; }
 }
 .estado-rechazo .metricas { margin: 0 0 12px; }
 .estado-rechazo .lista-avisos li > div { gap: 3px; }
+
+/* ===================================================== la ayuda plegada
+   Tres cosas tenían la misma pinta en toda la aplicación: el aviso de lo que va
+   a pasar si pulsas, la explicación de un dato que está en pantalla, y la prosa
+   de referencia que es siempre igual. La tercera se pliega aquí, detrás de un
+   botón junto al título; las otras dos se quedan visibles. El porqué de cada
+   grupo está en `app/_componentes/Ayuda.js`, que es el único componente que usa
+   estas clases.                                                              */
+
+/* El botón. Pequeño y redondo, del tamaño del texto de la cabecera: tiene que
+   caber en la fila del título sin empujar nada, porque si robara una línea no
+   habríamos ganado nada frente a tener el párrafo a la vista. */
+.btn-ayuda {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  /* `position: relative` NO es decoración: dentro del botón va el texto que lee
+     el lector de pantalla, que es un `.sr` absoluto. Sin un ancestro posicionado
+     se coloca respecto a `.workspace`, se sale por debajo del panel que sí tiene
+     barra propia y la ventana entera acaba con un desplazamiento vertical que no
+     debería tener. Se ve en ventana estrecha, a partir de unos 420 px. */
+  position: relative;
+  width: 18px; height: 18px; padding: 0;
+  border: 1px solid var(--borde); border-radius: 999px;
+  background: var(--panel-2); color: var(--suave);
+  font-size: 11px; font-weight: 700; line-height: 1;
+}
+.btn-ayuda:hover { color: var(--acento); border-color: var(--acento); }
+/* Abierto se nota, para que se sepa de dónde ha salido el panel. */
+.btn-ayuda[aria-expanded="true"] {
+  background: var(--azul-suave); color: var(--azul); border-color: var(--acento);
+}
+[data-tema="oscuro"] .btn-ayuda[aria-expanded="true"] { color: var(--texto); }
+
+/* El panel. Filo DISCONTINUO y fondo de panel-2, como `.vista-previa`: es lo
+   que lo separa de `.nota`, que lleva filo macizo y es la forma que en esta
+   aplicación significa «aviso». Pide el ancho entero, así que dentro de
+   `.tarjeta-cab`, de `.toolbar` o de `.linea-estructura` —los tres son flex con
+   `wrap`— cae debajo de la fila del título en lugar de estrecharla. */
+.ayuda-panel {
+  flex: 1 1 100%; width: 100%; margin: 8px 0 0;
+  padding: 9px 11px; border: 1px dashed var(--borde); border-radius: 8px;
+  background: var(--panel-2); color: var(--suave);
+  font-size: 12px; line-height: 1.6; font-weight: 400;
+}
+/* El `hidden` del elemento no basta cuando la regla de arriba pone `flex`: hay
+   que devolverle el `display: none` que le da el navegador. Es el mismo caso
+   que `.menu-ir-lista[hidden]`. */
+.ayuda-panel[hidden] { display: none; }
+.ayuda-panel p { margin: 0 0 7px; }
+.ayuda-panel p:last-child { margin-bottom: 0; }
+.ayuda-panel ul { margin: 0 0 7px; padding-left: 18px; }
+.ayuda-panel ul:last-child { margin-bottom: 0; }
+.ayuda-panel strong { color: var(--texto); font-weight: 600; }
+/* Dentro de la cabecera de una tarjeta el título va en 14px y el panel en 12:
+   sin esto heredaría el `letter-spacing` del `h2`. */
+.tarjeta-cab .ayuda-panel { letter-spacing: normal; }
+/* En la barra lateral del visor el ancho es de 330 px y no hay cabecera de
+   tarjeta: el panel va pegado a la línea del progreso. */
+.sidebar-pie .ayuda-panel { margin-top: 7px; }
+/* La leyenda de la barra lateral y su botón de ayuda, en la misma fila: la
+   leyenda ya es un flex con `wrap`, pero el botón tiene que quedar fuera del
+   <ul> —un <button> y un <div> no son hijos válidos de una lista— y el panel,
+   debajo de todo. */
+.pie-leyenda { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 8px; }
+/* La leyenda tiene que poder encogerse por debajo de su anchura cómoda —en 330
+   px no caben sus cuatro casos en una fila—, porque si no el botón se va a una
+   línea suya y la barra lateral no tiene ninguna de sobra. Encogida, envuelve
+   dentro y el botón se queda arriba a la derecha. */
+.pie-leyenda .leyenda { flex: 1 1 0; min-width: 0; margin: 10px 0 0; }
+.pie-leyenda .btn-ayuda { margin-top: 10px; }

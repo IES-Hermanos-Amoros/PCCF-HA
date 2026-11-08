@@ -37,6 +37,7 @@
 'use client';
 
 import { Fragment } from 'react';
+import Ayuda from './Ayuda';
 
 // ---------------------------------------------------------------- texto con formato
 
@@ -141,6 +142,15 @@ function Ponderaciones({ lista }) {
     <section className="tarjeta">
       <header className="tarjeta-cab">
         <h2>Ponderaciones</h2>
+        {/* Delante de la pastilla del total, que lleva `margin-left: auto` y se
+            llevaría el botón al otro extremo de la cabecera. */}
+        <Ayuda sobre="estas ponderaciones">
+          <p>
+            Comprobar que las sumas cuadran es trabajo del panel de{' '}
+            <strong>validaciones</strong>, que usa la misma regla que la cajita roja del PDF: esta
+            tabla solo las enseña.
+          </p>
+        </Ayuda>
         <span className="total">los resultados de aprendizaje suman {redondo} %</span>
       </header>
       <table className="tabla tabla-pond">
@@ -176,10 +186,10 @@ function Ponderaciones({ lista }) {
           })}
         </tbody>
       </table>
-      <p className="ayuda">
-        Las sumas salen de la tabla; comprobar que cuadran es trabajo del panel de validaciones, que
-        usa la misma regla que la cajita roja del PDF.
-      </p>
+      {/* Las filas de suma son calculadas, no escritas: eso es lo que hay que
+          decir del dato. Quién comprueba que cuadran está en la ayuda de la
+          cabecera. */}
+      <p className="ayuda">Las filas de suma salen de la tabla; no están escritas en el documento.</p>
     </section>
   );
 }

@@ -41,6 +41,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Ayuda from './Ayuda';
 import { pedir } from './api';
 import { GLIFO, NOMBRE_ESTADO, codigoDeUnidad } from './etiquetas';
 
@@ -248,6 +249,32 @@ export default function Coordinacion({ documentoId, onIr, onComprobaciones }) {
     <section className="tarjeta">
       <header className="tarjeta-cab">
         <h2>Por dónde va cada {etiqueta}</h2>
+        {/* Cómo se lee la matriz es prosa de referencia: no cambia con los
+            datos y a la vista son dos párrafos, uno arriba y otro debajo de la tabla,
+            en una pantalla que ya es ancha de por sí. */}
+        <Ayuda sobre="cómo se lee esta matriz">
+          <p>
+            {/* Sin artículo delante de `etiqueta`: el servidor manda «módulo»
+                o «unidad» según el documento, y «una módulo» no se puede
+                escribir. */}
+            Una fila por cada {etiqueta} y una celda por cada bloque de apartados. Lo que dice cada
+            color y cada forma está en la leyenda de abajo, y es lo mismo que dice el punto de la
+            barra lateral del documento.
+          </p>
+          <p>
+            El estado de cada celda <strong>resume la rama entera</strong>: «incompleto» quiere
+            decir que dentro queda algún apartado sin escribir, y un bloque solo cuenta como
+            revisado cuando lo está todo lo que tiene dentro. Un apartado heredado del curso pasado
+            está pendiente aunque esté lleno de texto; se repasa en la vista{' '}
+            <strong>Cambios</strong> de cada apartado.
+          </p>
+          <p>
+            Los errores son los del panel de <strong>Validaciones</strong>, contados por el mismo
+            cálculo. Un error que no es de ningún apartado —que no lo lleve nadie— sale al lado del
+            nombre de la fila y no en una celda.
+          </p>
+        </Ayuda>
+
         <span className="suave">
           {plural(resumen.unidades, etiqueta, etiqueta + 's')}
           {' · '}
@@ -271,12 +298,14 @@ export default function Coordinacion({ documentoId, onIr, onComprobaciones }) {
 
       <p className="suave">
         Quién lleva cada {etiqueta} y cómo va cada bloque. Se hace clic en una celda y te lleva al
-        apartado. Lo que dice cada color y cada forma está en la leyenda de abajo; es lo mismo que
-        dice el punto de la barra lateral, y los errores son los del panel de comprobaciones.
+        apartado.
       </p>
 
       {metricas}
 
+      {/* El dato y su consecuencia, en una línea: no es prosa de referencia
+          —solo sale cuando pasa— y es lo que explica por qué un docente no
+          puede escribir en esos apartados. */}
       {resumen.sinDocentes ? (
         <div className="nota nota-lock">
           <div>
@@ -284,14 +313,12 @@ export default function Coordinacion({ documentoId, onIr, onComprobaciones }) {
               {resumen.sinDocentes === 1
                 ? `Hay 1 ${etiqueta} que no lleva nadie.`
                 : `Hay ${resumen.sinDocentes} ${etiqueta}s que no lleva nadie.`}
-            </strong>
-            <p className="suave" style={{ margin: '4px 0 0' }}>
-              Sus apartados no los puede editar ningún docente: solo la jefatura del departamento.{' '}
-              <a className="enlace" href={`/reparto/${encodeURIComponent(documentoId)}`}>
-                Repartir las unidades
-              </a>
-              .
-            </p>
+            </strong>{' '}
+            Sus apartados solo los puede editar la jefatura del departamento.{' '}
+            <a className="enlace" href={`/reparto/${encodeURIComponent(documentoId)}`}>
+              Repartir las unidades
+            </a>
+            .
           </div>
         </div>
       ) : null}
@@ -418,16 +445,10 @@ export default function Coordinacion({ documentoId, onIr, onComprobaciones }) {
         </table>
       </div>
 
+      {/* La leyenda se queda: dice qué significa cada forma, que es un dato de
+          la pantalla. Lo que explicaba cómo se calcula cada celda está en la
+          ayuda de la cabecera, porque es siempre igual. */}
       <Leyenda />
-
-      <p className="ayuda">
-        El estado de cada celda resume la rama entera: «incompleto» quiere decir que dentro queda
-        algún apartado sin escribir, y un bloque solo cuenta como revisado cuando lo está todo lo que
-        tiene dentro. Un apartado heredado del curso pasado está pendiente aunque esté lleno de texto
-        (vista <strong>Cambios</strong> de cada apartado). Los errores son los del panel de{' '}
-        <strong>Validaciones</strong>, contados por el mismo cálculo: un error de la unidad —que no la
-        lleve nadie— sale al lado de su nombre y no en una celda, porque no es de ningún apartado.
-      </p>
     </section>
   );
 }

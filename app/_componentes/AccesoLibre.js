@@ -71,9 +71,10 @@ export default function AccesoLibre() {
           verdad</strong>: de verdad la jefatura da de alta a cada persona y manda un enlace de un
           solo uso. Esta pantalla se quita cuando terminen las pruebas.
         </p>
+        {/* Lo que pasa al pulsar «Entrar» no se pliega: llegaría tarde. */}
         <p className="ayuda">
-          Las personas son inventadas: el profesorado del departamento no está en el repositorio.
-          Cambiar de persona aquí cierra la sesión anterior del navegador.
+          Las personas son inventadas. Cambiar de persona aquí cierra la sesión anterior del
+          navegador.
         </p>
 
         {fallo && fallo.estado !== 404 && (

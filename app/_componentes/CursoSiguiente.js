@@ -28,6 +28,7 @@
 'use client';
 
 import { useState } from 'react';
+import Ayuda from './Ayuda';
 import { pedir } from './api';
 import { CURSO_RE, cursoSiguiente, urlSiguienteCurso } from './arrastre-cliente';
 
@@ -98,14 +99,28 @@ export default function CursoSiguiente({ documentoId, documento, documentos, rol
       <header className="tarjeta-cab">
         <h2>Empezar el curso siguiente</h2>
         <span className="suave">en septiembre no se escribe de cero: se revisa lo del año pasado</span>
+
+        {/* Qué se copia y qué es estar «heredado»: prosa de referencia, siempre
+            igual. Lo que no se pliega es lo que va a pasar al pulsar el botón,
+            que se queda justo encima de él. */}
+        <Ayuda sobre="empezar el curso siguiente">
+          <p>
+            Se copia <strong>todo</strong>: la misma estructura, los mismos módulos con su
+            profesorado y todos los apartados tal como están.
+          </p>
+          <p>
+            Allí cada apartado nace <strong>heredado</strong> —viene del curso pasado y nadie lo ha
+            mirado—, y por eso el progreso del documento nuevo empieza en 0 % aunque esté lleno de
+            texto: el progreso cuenta revisión y no relleno. Se revisan en la vista{' '}
+            <strong>Cambios</strong> de cada apartado.
+          </p>
+        </Ayuda>
       </header>
 
+      {/* Lo que va a pasar al pulsar: no se pliega. */}
       <p className="suave">
-        Crea el documento de otro curso con <strong>el contenido de este, intacto</strong>: la misma
-        estructura, los mismos módulos con su profesorado y todos los apartados tal como están. La
-        diferencia es que allí cada apartado nace <strong>heredado</strong> —viene del curso pasado y
-        nadie lo ha mirado— y el progreso empieza en 0 %, porque el progreso cuenta revisión y no
-        relleno. Este documento no se toca.
+        Crea el documento de otro curso con <strong>el contenido de este, intacto</strong>.{' '}
+        <strong>Este documento no se toca.</strong>
       </p>
 
       <div className="linea-estructura">
@@ -129,10 +144,10 @@ export default function CursoSiguiente({ documentoId, documento, documentos, rol
         <p className="rojo">El curso se escribe como <code>2027-28</code>.</p>
       ) : null}
 
+      {/* Por qué el botón está apagado: la explicación de lo que se ve. */}
       {!puedeElRol ? (
         <p className="ayuda">
-          Lo hace la jefatura del departamento: es quien decide cuándo se cierra un curso y se
-          empieza el siguiente. Con tu rol el servidor lo rechazaría.
+          Lo hace la jefatura del departamento: con tu rol el servidor lo rechazaría.
         </p>
       ) : null}
 

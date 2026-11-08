@@ -142,6 +142,32 @@ El usuario ve los errores **antes** de exportar (hoy aparecen en una cajita roja
 - Autoguardado por sección (debounce de 1–2 s) con `PATCH` de **solo esa rama**; nunca el documento completo.
 - UI optimista + `updatedAt` para detectar conflictos.
 
+### 3.6 Texto de ayuda: qué se pliega y qué no
+
+Esta herramienta la usa gente que siempre es principiante: el departamento toca su
+programación dos o tres veces al año. Por eso hay mucho texto explicativo, y por eso hace
+falta una regla: si todo el texto pesa lo mismo, se lee una vez y a partir de ahí se salta
+entero, incluido el que importaba.
+
+Cada texto cae en uno de tres grupos, y el grupo decide dónde va:
+
+| Grupo | Qué es | Dónde va |
+|---|---|---|
+| **Aviso de consecuencia** | Lo que va a pasar si pulsas: «esto sale en los once módulos», «retirar no borra», «se perderá lo escrito» | **Visible, con su peso.** No se pliega nunca: un aviso que llega tarde es peor que el ruido |
+| **Explicación de un dato en pantalla** | Por qué el progreso dice 1 %, qué es «enlace sin usar», por qué el botón está apagado | **Visible, en una línea corta.** El dato sorprende cada vez que se ve; lo que sobra es la longitud, no la explicación |
+| **Prosa de referencia** | Siempre cierta, no cambia con los datos, y una vez la sabes no la necesitas: el circuito de estados, el modelo de la plantilla, cómo funciona el reparto | **Plegada** detrás del botón de `app/_componentes/Ayuda.js` |
+
+`<Ayuda sobre="…">` pone un botón `?` en la fila del título —sin robar una línea— y el panel cae
+debajo, dentro de `.tarjeta-cab`, `.toolbar` o `.linea-estructura`, que son flex con `wrap`.
+
+La preferencia es **una sola para toda la aplicación** (`localStorage`, clave
+`ayuda-a-la-vista`): desplegar una despliega todas y así se queda hasta que se cierre. Es un
+modo de lectura, no un pliegue por tarjeta — quien quiere la ayuda a la vista no quiere
+abrirla pantalla por pantalla.
+
+Esconder de más es el error contrario, y es peor, porque no se nota hasta que alguien se
+equivoca. Ante la duda, el texto se queda visible y se acorta.
+
 ---
 
 ## 4. Roadmap

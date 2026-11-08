@@ -58,6 +58,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Sa from '../../core/sa';
+import Ayuda from './Ayuda';
 import { Tabla } from './Valores';
 import { pedir } from './api';
 import { urlApartado } from './autoguardado';
@@ -483,10 +484,14 @@ function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
       <details className="tarjeta" id="previa-sa" open>
         <summary>La ficha como va a salir impresa</summary>
         <Tabla filas={filasDe(ficha)} etiqueta={ETQ_PREVIA} nota={null} />
+        {/* Que lo de arriba es lo que se imprime es el dato de esta previa, y se
+            queda; de dónde sale la maquetación, en la ayuda. Aviso de
+            consecuencia aparte: si la tabla viene del Word, el primer cambio la
+            remonta, y eso se dice ANTES de tocarla. */}
         <p className="ayuda">
           {ficha.filas
-            ? 'Esta es la tabla tal como vino del Word. En cuanto cambies algo, la ficha pasa a montarse desde sus campos con la maquetación del documento (core/sa.js), que es lo que imprime el PDF: puede cambiar de reparto de columnas.'
-            : 'Montada desde los campos de la ficha con core/sa.js, la misma función que usa el generador de PDF. Lo que ves aquí es lo que sale impreso.'}
+            ? 'Esta es la tabla tal como vino del Word. En cuanto cambies algo se remonta desde los campos de la ficha, y puede cambiar el reparto de columnas.'
+            : 'Esto es lo que sale impreso.'}
         </p>
       </details>
     </>
@@ -612,6 +617,22 @@ export default function Situaciones({
       <section className="tarjeta">
         <header className="tarjeta-cab">
           <h2 tabIndex={-1} ref={tituloLista}>Situaciones de aprendizaje</h2>
+          {/* Cómo se monta e imprime una ficha: siempre igual, en todos los
+              módulos. */}
+          <Ayuda sobre="las situaciones de aprendizaje">
+            <p>
+              La previa de cada ficha se monta con <code>core/sa.js</code>, la misma función que usa
+              el generador de PDF: <strong>lo que se ve en la previa es lo que sale impreso</strong>.
+            </p>
+            <p>
+              Las fichas se numeran por su <strong>posición en la lista</strong>, que es la que usa
+              el documento impreso: mover una ficha cambia su número.
+            </p>
+            <p>
+              Las fichas se guardan en el apartado donde el Word las trae, que no siempre es este:
+              cuando están en otro, aquí se ven y se cuentan, pero se cambian allí.
+            </p>
+          </Ayuda>
           <span className="chip">{lista.length + (lista.length === 1 ? ' situación' : ' situaciones')}</span>
           <span className="chip">{m.sesiones + ' sesiones'}</span>
           {m.sinSituacion.length ? (
@@ -629,8 +650,8 @@ export default function Situaciones({
           <div className="nota nota-lock">
             <div>
               Las {lista.length} fichas de este módulo están en el apartado{' '}
-              <strong>{hermano.titulo}</strong>, que es donde el Word las trae. Aquí se ven y se
-              cuentan; para cambiarlas se abre ahí, que es donde se guardan.
+              <strong>{hermano.titulo}</strong>. Aquí se ven y se cuentan; para cambiarlas se abre
+              ahí.
               {onIr ? (
                 <div className="ayuda">
                   <button

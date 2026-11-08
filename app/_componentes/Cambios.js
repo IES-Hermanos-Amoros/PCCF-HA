@@ -51,6 +51,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Ayuda from './Ayuda';
 import { pedir } from './api';
 import {
   columnaAhora, columnaAntes, emparejar, esComparable, lineasDeValor, mismoValor,
@@ -239,9 +240,10 @@ function CampoSinDiff({ campo, valorAntes, valorAhora }) {
           : <span className="chip chip-incompleto">ha cambiado</span>}
         <span className="suave">tipo «{campo.tipo}»</span>
       </header>
+      {/* Por qué esta tarjeta solo dice «ha cambiado» y no enseña el diff: es
+          la explicación del dato que hay en pantalla. */}
       <p className="ayuda">
-        Esto no es texto —es una tabla, un reparto de pesos o una ficha—, así que no se compara
-        palabra por palabra: un diff de una tabla no se lee. Lo que se dice es si cambió.
+        No es texto, así que no se compara palabra por palabra: solo se dice si cambió.
       </p>
     </section>
   );
@@ -273,12 +275,12 @@ export default function Cambios({
 
   if (!esApartado) {
     return (
-      <div className="nota">
-        <div>
-          Elige un apartado concreto para compararlo con el curso anterior. Los nodos que solo
-          agrupan —un módulo, un bloque— no tienen contenido propio que comparar.
-        </div>
-      </div>
+      /* Es una explicación, no un aviso: en cuanto deja de llevar el filo de
+         `.nota` deja de parecer que algo ha ido mal. */
+      <p className="suave">
+        Elige un apartado concreto para compararlo con el curso anterior: un módulo o un bloque
+        solo agrupa, y no tiene contenido propio que comparar.
+      </p>
     );
   }
 
@@ -314,15 +316,21 @@ export default function Cambios({
         <header className="tarjeta-cab">
           <h2>{anterior.motivo === 'sin_curso_anterior' ? 'Este documento no viene de otro curso' : 'Nada que comparar'}</h2>
           <span className="chip chip-origen">{NOMBRE_ORIGEN[apartado.origen] || 'sin procedencia'}</span>
+
+          {/* Cómo empieza el arrastre entre cursos: prosa de referencia, y en
+              esta tarjeta no hay nada más que leer, así que plegarla no deja la
+              pantalla muda —el mensaje del servidor sigue arriba—. */}
+          {anterior.motivo === 'sin_curso_anterior' ? (
+            <Ayuda sobre="el arrastre entre cursos">
+              <p>
+                El arrastre empieza al <strong>crear el documento del curso siguiente</strong> desde
+                la portada de este: entonces cada apartado del nuevo sabe de cuál viene, y esta
+                pantalla tiene las dos versiones que comparar.
+              </p>
+            </Ayuda>
+          ) : null}
         </header>
         <p>{anterior.mensaje}</p>
-        {anterior.motivo === 'sin_curso_anterior' ? (
-          <p className="ayuda">
-            El arrastre empieza al crear el documento del curso siguiente desde la portada de este:
-            entonces cada apartado del nuevo sabe de cuál viene y esta pantalla tiene las dos
-            versiones que comparar.
-          </p>
-        ) : null}
         {anterior.motivo === 'sin_contenido' ? (
           <p className="ayuda">
             Lo que hay escrito en este curso es todo nuevo: no hay nada del curso pasado que haya
@@ -351,14 +359,29 @@ export default function Cambios({
           {apartado.revisadoEn ? (
             <span className="suave">dado por bueno el {new Date(apartado.revisadoEn).toLocaleDateString('es-ES')}</span>
           ) : null}
+
+          {/* Cómo se lee una comparación: siempre igual, en todos los apartados
+              y en todos los módulos, y a la vista son cinco líneas encima del diff. Lo
+              que se queda a la vista es qué curso es cada columna, que cambia
+              con el documento. */}
+          <Ayuda sobre="cómo se lee esta comparación">
+            <p>
+              Lo que se quitó va <del><mark className="quita">tachado y en rojo</mark></del>; lo
+              nuevo, <ins><mark className="pon">subrayado y en verde</mark></ins>. Se compara
+              palabra por palabra, y cada pareja de líneas dice además en texto cuántas se han
+              quitado y cuántas se han puesto, para que no haga falta distinguir los colores.
+            </p>
+            <p>
+              Por omisión sale el apartado entero, que es como se repasa; con el filtro puesto,
+              solo las líneas que hay que mirar.
+            </p>
+          </Ayuda>
         </header>
 
+        {/* Qué curso es cada columna: es el dato, y cambia de documento a
+            documento. */}
         <p className="suave">
-          A la izquierda, {cursoAntes}; a la derecha, {cursoAhora}. Lo que se quitó va{' '}
-          <del><mark className="quita">tachado y en rojo</mark></del>; lo nuevo,{' '}
-          <ins><mark className="pon">subrayado y en verde</mark></ins>. Se compara palabra por
-          palabra, y cada pareja de líneas dice en texto cuántas se han quitado y cuántas se han
-          puesto, para que no haga falta distinguir los colores.
+          A la izquierda, {cursoAntes}; a la derecha, {cursoAhora}.
         </p>
 
         {/* La misma barra de filtros del reparto: un apartado de la programación
@@ -374,10 +397,6 @@ export default function Cambios({
             />
             Ver solo las líneas que han cambiado
           </label>
-          <span className="ayuda">
-            Por omisión sale el apartado entero, que es como se repasa; con esto puesto, solo lo
-            que hay que mirar.
-          </span>
         </div>
 
         {/* El botón, al pie de la comparación: es el sitio donde se decide, con
@@ -413,11 +432,18 @@ export default function Cambios({
               ? <span className="chip chip-incompleto">{fichas.cambiadas} {fichas.cambiadas === 1 ? 'ficha cambiada' : 'fichas cambiadas'}</span>
               : <span className="chip chip-validado">iguales que el curso pasado</span>}
             <span className="suave">{fichas.antes} el curso pasado · {fichas.ahora} este curso</span>
+            <Ayuda sobre="cómo se comparan las fichas">
+              <p>
+                Se comparan <strong>por su posición en la lista</strong>, que es la que numera el
+                documento impreso: la primera con la primera, la segunda con la segunda. Si se
+                intercalara una ficha nueva en medio, las de detrás saldrían como cambiadas.
+              </p>
+            </Ayuda>
           </header>
+          {/* Por qué no hay diff de las fichas: la explicación del dato. */}
           <p className="ayuda">
-            Las fichas no se comparan párrafo a párrafo: son formularios, y un diff de palabras de
-            una ficha entera no se leería. Se comparan por su posición en la lista, que es la que
-            numera el documento impreso.
+            Las fichas son formularios y no se comparan párrafo a párrafo: solo se dice cuántas han
+            cambiado.
           </p>
         </section>
       ) : null}

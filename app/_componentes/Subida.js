@@ -37,6 +37,7 @@
 'use client';
 
 import { useState } from 'react';
+import Ayuda from './Ayuda';
 import { pedir } from './api';
 import Unidades from '../../core/unidades';
 
@@ -134,6 +135,22 @@ export default function Subida({ departamentoPorOmision, rol, habilitado, alImpo
       <header className="tarjeta-cab">
         <h2>Subir una programación en Word</h2>
         <span className="suave">se deduce su estructura y se guarda apartado por apartado</span>
+
+        {/* Por qué hay que rellenar a mano el ciclo y el curso: no cambia nunca
+            y a la vista son dos líneas largas entre los campos del
+            formulario. */}
+        <Ayuda sobre="subir una programación">
+          <p>
+            El <strong>ciclo</strong> y el <strong>curso académico</strong> no se pueden deducir del
+            Word y hay que decirlos: el ciclo hace falta para reconocer los módulos, porque hay
+            títulos que se repiten entre ciclos, y el curso es lo que permite reconocer un módulo
+            renombrado el curso siguiente sin perder sus asignaciones.
+          </p>
+          <p>
+            Leer el Word, deducir la estructura y conciliar los módulos tarda unos segundos: un
+            documento de 1,3 MB son unos cinco.
+          </p>
+        </Ayuda>
       </header>
 
       <form onSubmit={(ev) => { ev.preventDefault(); enviar(false); }}>
@@ -162,10 +179,7 @@ export default function Subida({ departamentoPorOmision, rol, habilitado, alImpo
           <select id="ciclo" value={ciclo} onChange={(ev) => setCiclo(ev.target.value)} required>
             {CICLOS.map((c) => <option key={c} value={c}>{NOMBRES_CICLO[c] || c.toUpperCase()}</option>)}
           </select>
-          <span className="ayuda">
-            No se puede deducir del Word, y hace falta para reconocer los módulos: hay títulos que se
-            repiten entre ciclos.
-          </span>
+          <span className="ayuda">no está en el Word</span>
         </div>
 
         <div className="linea-estructura">
@@ -178,10 +192,7 @@ export default function Subida({ departamentoPorOmision, rol, habilitado, alImpo
             title="Con el formato 2026-27"
             required
           />
-          <span className="ayuda">
-            Tampoco está en el Word, y es lo que permite reconocer un módulo renombrado el curso
-            siguiente sin perder sus asignaciones.
-          </span>
+          <span className="ayuda">tampoco está en el Word</span>
         </div>
 
         <div className="linea-estructura">
@@ -198,20 +209,20 @@ export default function Subida({ departamentoPorOmision, rol, habilitado, alImpo
           <button className="btn-primario" type="submit" disabled={!habilitado || !puedeElRol || enviando}>
             {enviando ? 'Importando…' : 'Importar'}
           </button>
+          {/* Por qué el botón está apagado: la explicación de lo que se ve, así
+              que se queda, en una línea. */}
           {!habilitado ? (
-            <span className="ayuda">Hace falta haber entrado: el servidor no acepta una subida sin saber quién la hace.</span>
+            <span className="ayuda">Hace falta haber entrado: el servidor no acepta una subida anónima.</span>
           ) : null}
           {habilitado && !puedeElRol ? (
             <span className="ayuda">
-              Importar un documento lo hace la jefatura de departamento (o el soporte): un docente
-              edita sus módulos, no crea el documento.
+              Importar un documento lo hace la jefatura de departamento, o el soporte.
             </span>
           ) : null}
+          {/* Cuánto tarda, mientras tarda: sin esto parece que se ha
+              colgado. */}
           {enviando ? (
-            <span className="ayuda">
-              Leer el Word, deducir la estructura y conciliar los módulos tarda unos segundos: un
-              documento de 1,3 MB son unos cinco.
-            </span>
+            <span className="ayuda">tarda unos segundos: se lee el Word y se concilian los módulos</span>
           ) : null}
         </div>
 

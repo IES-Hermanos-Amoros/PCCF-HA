@@ -50,6 +50,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Val from '../../core/validaciones';
+import Ayuda from './Ayuda';
 import { pedir } from './api';
 
 // Cómo se lee cada severidad. `info` es donde caen las decisiones pendientes
@@ -192,29 +193,40 @@ export default function Validaciones({ documentoId, onIr }) {
             lo que de verdad se pregunta desde fuera, para no decir dos veces lo
             mismo una debajo de otra. */}
         <h2>Lo que falta por arreglar</h2>
+        {/* Qué es este panel y de dónde salen los avisos: prosa de referencia,
+            siempre igual. A la vista son dos párrafos encima de los recuentos,
+            que es lo que de verdad se viene a mirar. */}
+        <Ayuda sobre="estas comprobaciones">
+          <p>
+            Son las <strong>mismas comprobaciones que salen en la cajita roja al final del
+            PDF</strong>, pero antes de exportar: agrupadas por quién tiene que arreglarlas y con
+            enlace al apartado que falla.
+          </p>
+          <p>
+            Los avisos de <strong>decisión de convenio</strong> son los criterios que reparten
+            100 % dentro de su resultado de aprendizaje, que es el otro convenio de ponderación que
+            usa el documento. Salen con las palabras, la severidad y el recuento que les pone el
+            servidor (<code>core/validaciones.js</code>), que los distingue con su marca{' '}
+            <code>convenio</code>: esta pantalla no los esconde ni los recuenta por su cuenta,
+            porque con qué convenio se mide un documento no lo decide una pantalla.
+            {cuerpo.convenioCe ? (
+              <>
+                {' '}Medido con el convenio <code>{cuerpo.convenioCe}</code>, el mismo con el que se
+                imprime el PDF: por eso estos avisos coinciden uno a uno con los de su cajita roja.
+              </>
+            ) : null}
+          </p>
+        </Ayuda>
         {aprobable
           ? <span className="total bien">se puede aprobar</span>
           : <span className="total mal">{plural(cuenta.error || 0, 'error sin resolver', 'errores sin resolver')}</span>}
       </header>
 
+      {/* La diferencia entre un error y un aviso es lo que explica los números
+          de abajo y por qué el documento no se puede aprobar: se queda. */}
       <p className="suave">
-        Las mismas comprobaciones que salen en la cajita roja al final del PDF, pero antes de
-        exportar: agrupadas por quién tiene que arreglarlas y con enlace al apartado que falla. Los
-        errores impiden aprobar el documento; los avisos, no.
-      </p>
-      <p className="ayuda">
-        Hay avisos que no son fallos sino <strong>decisiones pendientes del departamento</strong>:
-        los criterios que reparten 100 % dentro de su resultado de aprendizaje, que es el otro
-        convenio de ponderación que usa el documento. Salen con las palabras, la severidad y el
-        recuento que les pone el servidor (<code>core/validaciones.js</code>), que los distingue con
-        su marca <code>convenio</code>; esta pantalla no los esconde ni los recuenta por su cuenta,
-        porque cuál de los dos convenios vale no lo decide una pantalla.
-        {cuerpo.convenioCe ? (
-          <>
-            {' '}Medido con el convenio <code>{cuerpo.convenioCe}</code>, el mismo con el que se
-            imprime el PDF: por eso estos avisos coinciden uno a uno con los de su cajita roja.
-          </>
-        ) : null}
+        Los <strong>errores</strong> impiden aprobar el documento; los <strong>avisos</strong>, no.
+        Hay avisos que no son fallos, sino el otro reparto de pesos que el documento admite.
       </p>
 
       <div className="metricas">

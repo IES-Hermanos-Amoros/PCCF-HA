@@ -55,6 +55,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Ayuda from './Ayuda';
 import BarraSuperior from './BarraSuperior';
 import { pedir } from './api';
 import { useSesion } from './sesion-cliente';
@@ -297,6 +298,9 @@ export default function Reparto({ documentoId }) {
           </div>
         ) : null}
 
+        {/* El dato y lo que acarrea, en una línea. Por qué pasa —el Word no
+            dice quién da cada módulo— está en la ayuda de la tabla: es siempre
+            igual y no hace falta tenerlo delante cada vez. */}
         {resumen && resumen.sinDocentes ? (
           <div className="nota nota-lock">
             <div>
@@ -304,39 +308,34 @@ export default function Reparto({ documentoId }) {
                 {resumen.sinDocentes === 1
                   ? 'Hay una unidad que no lleva nadie.'
                   : `Hay ${resumen.sinDocentes} unidades que no lleva nadie.`}
-              </strong>
-              <p className="suave" style={{ margin: '4px 0 0' }}>
-                Sus apartados no los puede editar ningún docente: solo la jefatura del
-                departamento. Recién importado un documento le pasa a todas, porque el Word no dice
-                quién da cada módulo.
-              </p>
+              </strong>{' '}
+              Sus apartados solo los puede editar la jefatura del departamento.
             </div>
           </div>
         ) : null}
 
+        {/* Este bloque es el `aria-describedby` de cada casilla apagada, así que
+            lo que diga se lee en cada una: cuanto más corto, mejor. Quién
+            reparte y por qué está en la ayuda de la tabla. */}
         {datos && !puedeRepartir ? (
           <div className="nota" id={MOTIVO_NO_REPARTE}>
             <div>
-              <strong>Puedes ver el reparto, pero no cambiarlo.</strong>
-              <p className="suave" style={{ margin: '4px 0 0' }}>
-                Reparten las unidades la jefatura del departamento y el soporte, que es quien
-                reparte la carga. La jefatura de estudios ve todos los departamentos pero no edita
-                nada, y un docente edita sus módulos pero no se los asigna.
-                {yo ? <> Tu rol es {ROLES[yo.rol] || yo.rol}.</> : null}
-              </p>
+              <strong>Puedes ver el reparto, pero no cambiarlo.</strong>{' '}
+              Reparten las unidades la jefatura del departamento y el soporte.
+              {yo ? <> Tu rol es {ROLES[yo.rol] || yo.rol}.</> : null}
             </div>
           </div>
         ) : null}
 
+        {/* Aquí no hay tabla y por tanto no hay ayuda plegada donde meter el
+            porqué: este bloque es todo lo que se ve, así que lleva el dato, la
+            regla y la salida, en dos líneas. */}
         {datos && personas.length === 0 ? (
           <div className="nota nota-lock">
             <div>
-              <strong>No hay nadie a quien asignar unidades.</strong>
-              <p className="suave" style={{ margin: '4px 0 0' }}>
-                Solo pueden llevar una unidad las personas activas del departamento del documento
-                que dan clase (docentes y jefatura de departamento). Da de alta a alguien en{' '}
-                <a className="enlace" href="/personas">personas del departamento</a>.
-              </p>
+              <strong>No hay nadie a quien asignar unidades.</strong>{' '}
+              Solo pueden llevar una unidad las personas activas del departamento que dan clase.{' '}
+              <a className="enlace" href="/personas">Dar de alta a alguien</a>.
             </div>
           </div>
         ) : null}
@@ -350,6 +349,32 @@ export default function Reparto({ documentoId }) {
                   ? `${unidades.length} ${unidades.length === 1 ? 'unidad' : 'unidades'}`
                   : `${visibles} de ${unidades.length} unidades`}
               </span>
+
+              {/* Cómo funciona el reparto —que se manda la lista entera, y por
+                  qué la jefatura es columna— no cambia nunca y una vez se sabe
+                  no hace falta. Lo que sí se queda abajo, a la vista, es qué es
+                  el número de cada columna, que es un dato de la tabla. */}
+              <Ayuda sobre="cómo funciona el reparto">
+                <p>
+                  Al marcar o desmarcar <strong>se manda la lista completa</strong> de quién lleva
+                  esa unidad, no «añade a este»: así dos jefaturas repartiendo a la vez no acaban
+                  con un reparto que no quiso ninguna de las dos.
+                </p>
+                <p>
+                  Son columna las personas <strong>activas del departamento del documento que dan
+                  clase</strong>: docentes y jefatura de departamento. La jefatura de departamento
+                  también, porque también da clase.
+                </p>
+                <p>
+                  Repartir lo hacen la jefatura del departamento y el soporte, que es quien reparte
+                  la carga. La jefatura de estudios ve todos los departamentos pero no edita nada, y
+                  un docente edita sus módulos pero no se los asigna.
+                </p>
+                <p>
+                  Una unidad que no lleva nadie no es un fallo de la herramienta: recién importado
+                  un documento le pasa a todas, porque el Word no dice quién da cada módulo.
+                </p>
+              </Ayuda>
             </header>
 
             <div className="filtros">
@@ -517,12 +542,10 @@ export default function Reparto({ documentoId }) {
               </div>
             )}
 
+            {/* Qué es el número de la cabecera de cada columna: es el dato que
+                se mira al repartir y sorprende cada vez, así que se queda. */}
             <p className="ayuda">
-              El número de cada columna es cuántas unidades lleva esa persona en este documento. Al
-              marcar o desmarcar se manda la lista completa de quién lleva esa unidad, no «añade a
-              este»: así dos jefaturas repartiendo a la vez no acaban con un reparto que no quiso
-              ninguna de las dos. La jefatura de departamento también es columna, porque también da
-              clase.
+              El número de cada columna es cuántas unidades lleva esa persona en este documento.
             </p>
           </section>
         ) : null}

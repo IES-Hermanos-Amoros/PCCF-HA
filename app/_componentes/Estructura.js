@@ -50,6 +50,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Ayuda from './Ayuda';
 import {
   cambiarEstructura, hermanosDe, todasLasUnidades, unidadDelCamino,
 } from './estructura-cliente';
@@ -243,39 +244,64 @@ export default function Estructura({
         {nodo.num
           ? <span className="chip chip-cod">{nodo.num}</span>
           : <span className="chip chip-vacio">sin numerar</span>}
+
+        {/* LA PROSA DE REFERENCIA DE ESTA TARJETA, PLEGADA. Es lo que se sabe de
+            memoria en cuanto se usa una vez: el modelo de la plantilla, cómo se
+            numera y qué pasa con el identificador. Lo que NO está aquí son los
+            avisos de consecuencia: esos siguen abajo, a la vista y en el momento
+            de pulsar. */}
+        <Ayuda sobre="la estructura del documento">
+          <p>
+            <strong>Renombrar no cambia el identificador</strong> (<code>{nodo.seccion}</code>): el
+            título es solo la etiqueta, y el contenido, los comentarios y los enlaces que alguien
+            tenga guardados siguen apuntando aquí.
+          </p>
+          <p>
+            <strong>La numeración la pone el documento</strong> por la posición del apartado al
+            imprimirse —el «3.2.4» de la barra lateral es el del PDF—, así que mover un apartado le
+            cambia el número. Hay apartados que no se numeran, como las fichas de una situación de
+            aprendizaje: aquí se enseña el número que mande el servidor, y si no manda ninguno,
+            ninguno.
+          </p>
+          {enTodas ? (
+            <p>
+              <strong>Los apartados de un módulo son una plantilla.</strong> Este bloque no es solo
+              de {unidad ? `«${unidad.titulo}»` : 'esta unidad'}: {enTodas} repiten las mismas
+              secciones con su propio contenido, así que el título y el orden son comunes y no hay
+              forma de cambiarlos en uno solo. El contenido no se toca:
+              cada {comoSeLlaman || 'unidad'} conserva el suyo.
+            </p>
+          ) : null}
+          <p>
+            Un apartado nuevo nace vacío, dentro de este y al final, con un campo de texto para
+            escribir. El identificador lo pone el servidor a partir del título, una sola vez: si
+            luego se renombra, el identificador se queda.
+          </p>
+        </Ayuda>
       </header>
 
+      {/* El dato de la cabecera dice «sin numerar» y eso sorprende cada vez, así
+          que la explicación se queda a la vista; lo que se ha ido a la ayuda es
+          el porqué largo. */}
       {!nodo.num ? (
         <p className="ayuda">
-          Este apartado sale sin número, y no es un fallo: la numeración la pone el documento por la
-          posición del apartado al imprimirse —el «3.2.4» de la barra lateral es el del PDF— y hay
-          apartados que no se numeran, como las fichas de una situación de aprendizaje. Aquí se
-          enseña el número que mande el servidor, y si no manda ninguno, ninguno.
+          Sale sin número y no es un fallo: la numeración la pone el documento al imprimirse.
         </p>
       ) : null}
 
-      {/* LA ADVERTENCIA DE LOS ONCE MÓDULOS, ANTES DE TOCAR NADA */}
+      {/* QUE ESTE APARTADO ES DE LOS ONCE MÓDULOS SE DICE ANTES DE TOCAR NADA,
+          porque desde dentro de un módulo no se ve: la pantalla dice
+          «Evaluación y calificación» de «Lenguajes de marcas» y parece que se
+          está tocando solo ese. Lo que se queda aquí es el dato —una línea—; el
+          modelo que lo explica está en la ayuda de la cabecera, y el aviso de la
+          retirada sigue abajo, en su confirmación. */}
       {enTodas ? (
         <div className="nota nota-lock">
           <div>
             <strong>Esto es la plantilla de {enTodas}.</strong>{' '}
-            {deUnidades ? (
-              <>
-                Este apartado no es solo de
-                {unidad ? ` «${unidad.titulo}»` : ' esta unidad'}: es una sección que {enTodas}{' '}
-                repiten con su propio contenido. Lo que cambies aquí —el título, el orden, lo que
-                añadas o lo que retires— sale en {enTodas} a la vez, y no hay forma de cambiarlo en
-                uno solo.
-              </>
-            ) : (
-              <>
-                Lo que añadas aquí nace en {enTodas} a la vez, porque los apartados de este bloque
-                son la plantilla que cada unidad repite con su propio contenido.
-              </>
-            )}
-            <div className="ayuda">
-              El contenido no se toca: cada {comoSeLlaman || 'unidad'} conserva el suyo.
-            </div>
+            {deUnidades
+              ? <>Lo que cambies aquí —título, orden, añadir o retirar— sale en {enTodas} a la vez.</>
+              : <>Lo que añadas aquí nace en {enTodas} a la vez.</>}
           </div>
         </div>
       ) : null}
@@ -312,11 +338,9 @@ export default function Estructura({
           <button className="btn-ghost" type="submit" disabled={ocupado || !nuevo.trim()}>
             {enviando === 'anadir' ? 'Añadiendo…' : 'Añadir'}
           </button>
-          <span className="ayuda">
-            Nace dentro de este apartado, vacío, al final y con un campo de texto para escribir. El
-            identificador lo pone el servidor a partir del título, una sola vez: si luego se
-            renombra, el identificador se queda.
-          </span>
+          {/* Dónde aparece lo que se añade, que es lo que hay que saber antes
+              de pulsar. El identificador y lo demás, en la ayuda de arriba. */}
+          <span className="ayuda">Nace dentro de este apartado, vacío y al final.</span>
         </form>
       ) : (
         <p className="ayuda">
@@ -383,11 +407,12 @@ export default function Estructura({
         </p>
       ) : null}
 
-      {/* QUE RETIRAR NO BORRA SE DICE AQUÍ, NO EN UN AVISO QUE SALGA DESPUÉS */}
+      {/* QUE RETIRAR NO BORRA SE DICE AQUÍ, NO EN UN AVISO QUE SALGA DESPUÉS, y
+          por eso no se pliega: si se escondiera, el aviso llegaría tarde. Lo
+          que se ha ido a la ayuda de la cabecera es lo de renombrar, que no se
+          lleva nada por delante y se sabe en cuanto se ve el identificador. */}
       <p className="suave">
-        Renombrar <strong>no cambia el identificador</strong> (<code>{nodo.seccion}</code>): el
-        contenido, los comentarios y los enlaces que alguien tenga guardados siguen apuntando aquí.
-        Y <strong>retirar no borra nada</strong>: el apartado deja de salir en el documento y en el
+        <strong>Retirar no borra nada</strong>: el apartado deja de salir en el documento y en el
         PDF, su contenido se queda guardado, y se recupera desde{' '}
         <button className="enlace" type="button" onClick={() => onIr && onIr(null, null)}>
           la portada del documento
@@ -476,9 +501,11 @@ export function ApartadosRetirados({
         <h2>Apartados retirados</h2>
         <span className="suave">{lista.length}</span>
       </header>
+      {/* Qué es estar retirado, que es el dato de esta tarjeta: se queda a la
+          vista, en una línea. */}
       <p className="suave">
-        <strong>No se han borrado.</strong> Su contenido sigue guardado tal como estaba; lo único que
-        pasa es que no salen en el documento ni en el PDF. Al restaurarlos vuelven con su texto.
+        <strong>No se han borrado.</strong> No salen en el documento ni en el PDF, su contenido
+        sigue guardado, y al restaurarlos vuelven con su texto.
       </p>
       <ul className="lista-retirados">
         {lista.map((x) => (
