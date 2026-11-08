@@ -9,6 +9,20 @@
 // lleva las vistas que existen, y con el E7 son las cuatro del prototipo:
 // Contenido · Cambios · Validaciones · Coordinación (la lista la pone Visor.js).
 //
+// Y AHORA TAMBIÉN LLEVA NAVEGACIÓN, QUE ERA LO ÚNICO QUE NO TENÍA
+//
+// Hasta ahora esta barra no tenía ni un enlace a otra pantalla: a `/personas` y a
+// `/reparto/<id>` solo se llegaba desde la portada, así que estando dentro de un
+// documento no había forma de ir a ninguna de las dos. El menú «Ir a»
+// (MenuIr.js) lo arregla, y va **plegado** porque la barra ya está llena: una
+// fila de enlaces que crece con el rol la parte en dos líneas justo para quien
+// más cosas puede hacer. Qué destinos tiene los decide el servidor; `aqui` es
+// solo para marcar en cuál estás.
+//
+// Sin sesión no se pinta: el menú pregunta al servidor qué puede hacer quien
+// mira, y sin sesión la respuesta a todo es 401. Lo que hace falta ahí es la
+// pantalla que explica cómo se entra, y de eso ya se encarga `Identidad`.
+//
 // DONDE ESTABA EL DESPLEGABLE DE PERSONA AHORA ESTÁ QUIÉN ERES
 //
 // En el E1 había un `<select>` con todo el censo: se elegía con quién trabajar y
@@ -29,6 +43,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import MenuIr from './MenuIr';
 import { cerrarSesion } from './sesion-cliente';
 import { ROLES } from './etiquetas';
 
@@ -111,7 +126,7 @@ function Identidad({ persona }) {
 }
 
 export default function BarraSuperior({
-  subtitulo, persona, onCajon, documentos, documentoId, exportar, vistas, vista, onVista,
+  subtitulo, persona, onCajon, documentos, documentoId, exportar, vistas, vista, onVista, aqui,
 }) {
   return (
     <header className="topbar">
@@ -130,6 +145,11 @@ export default function BarraSuperior({
           <span>{subtitulo || 'Departamento de Informática'}</span>
         </div>
       </Link>
+
+      {/* La navegación, plegada y justo al lado de la marca: quien busca otra
+          pantalla mira a la izquierda, que es donde está el camino de vuelta.
+          Solo con sesión: ver la cabecera de este fichero. */}
+      {persona ? <MenuIr documentoId={documentoId} aqui={aqui} onVista={onVista} /> : null}
 
       {documentos && documentos.length ? (
         <>

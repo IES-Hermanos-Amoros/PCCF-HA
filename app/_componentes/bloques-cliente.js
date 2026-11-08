@@ -17,7 +17,6 @@
 //     paquete del navegador por una sola puerta;
 //   · y las dos preguntas que se hace la interfaz y no el modelo: si un valor de
 //     la plantilla es una lista de bloques —o sea, si este editor sabe editarlo—
-//     y cómo se enseña el JSON que se guardaría.
 //
 // EL ESTADO ES EL ARRAY DE BLOQUES Y EL TEXTO SE ESCRIBE EN <textarea>
 //
@@ -44,10 +43,6 @@ export const {
   // decide sigue siendo el servidor.
   motivoAlGuardar,
 } = Bloques;
-
-// Lo que se guardaría en la base de datos, tal cual. Se quedó en la interfaz
-// —el prototipo lo tiene en su `bloques.js`— porque es pintado, no modelo.
-export const aJSON = (valores) => JSON.stringify(valores, null, 2);
 
 // ¿Esto es un bloque? Se mira la forma y no `campo.tipo` por lo mismo que
 // Valores.js reparte por la forma: los tipos de campo los deduce el importador

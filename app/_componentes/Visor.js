@@ -40,6 +40,14 @@
 // sustituyen al contenido en lugar de meterse al lado, y no llevan panel derecho
 // ni botón de validar: lo que se está haciendo ahí es repasar lo que falta.
 //
+// Y EN *VALIDACIONES* VA ADEMÁS EL ESTADO DEL DOCUMENTO
+//
+// `borrador → revisión → aprobado`, con las transiciones que puede hacer quien
+// mira (EstadoDocumento.js). Va ahí y no en la barra porque es donde está
+// mirando quien decide: el `puedeAprobarse` del panel es la misma puerta que el
+// servidor comprueba al aprobar, y cuando el rechazo llega con los errores
+// separados en tres grupos, los avisos de los que habla están justo debajo.
+//
 // Y EL PANEL DERECHO, QUE AHORA SÍ EXISTE
 //
 // El prototipo reserva 310 px a la derecha para las comprobaciones y los
@@ -105,6 +113,7 @@ import Cambios, { BotonValidar } from './Cambios';
 import Comentarios from './Comentarios';
 import Coordinacion from './Coordinacion';
 import CursoSiguiente from './CursoSiguiente';
+import EstadoDocumento from './EstadoDocumento';
 import Estructura, { ApartadosRetirados } from './Estructura';
 import Ponderaciones from './Ponderaciones';
 import Situaciones from './Situaciones';
@@ -969,8 +978,29 @@ export default function Visor({
     // del apartado abierto, así que sustituyen al contenido y no se meten al
     // lado: lo que se está haciendo ahí es repasar lo que falta, no escribir. Y
     // desde las dos se salta al apartado que hay que mirar, con el mismo `onIr`.
-    if (vista === 'validaciones') return <Validaciones documentoId={documentoId} onIr={irAApartado} />;
-    if (vista === 'coordinacion') return <Coordinacion documentoId={documentoId} onIr={irAApartado} />;
+    //
+    // Y EL ESTADO DEL DOCUMENTO VA ENCIMA DE LAS COMPROBACIONES, no en otra
+    // pantalla: quien decide aprobar está mirando justo esta lista —el
+    // `puedeAprobarse` que la encabeza es la misma puerta que el servidor
+    // comprueba al aprobar—, y cuando el rechazo llega con sus 45 errores
+    // separados en tres grupos, los avisos de los que habla están debajo.
+    if (vista === 'validaciones') {
+      return (
+        <>
+          <EstadoDocumento documentoId={documentoId} onIr={irAApartado} />
+          <Validaciones documentoId={documentoId} onIr={irAApartado} />
+        </>
+      );
+    }
+    if (vista === 'coordinacion') {
+      return (
+        <Coordinacion
+          documentoId={documentoId}
+          onIr={irAApartado}
+          onComprobaciones={() => cambiarVista('validaciones')}
+        />
+      );
+    }
     if (!nodo) return <p className="suave">Ese apartado no está en este documento.</p>;
     // La comparación con el curso anterior es de UN apartado, así que necesita el
     // nodo; en un nodo de paso lo dice y no pide nada al servidor.
@@ -1052,6 +1082,11 @@ export default function Visor({
         vistas={VISTAS}
         vista={vista}
         onVista={cambiarVista}
+        // Dónde estás, para que el menú «Ir a» lo marque. El panel de
+        // comprobaciones es una VISTA de esta misma pantalla, pero para quien
+        // navega es un destino propio —es donde se aprueba—, así que cuenta como
+        // tal.
+        aqui={vista === 'validaciones' ? 'comprobaciones' : 'visor'}
       />
 
       <div className={'workspace' + (cajon ? ' cajon-abierto' : '')}>

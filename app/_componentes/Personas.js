@@ -278,7 +278,7 @@ export default function Personas() {
     body: JSON.stringify({ activo }),
   }));
 
-  // Corregir el nombre o el correo de alguien ya dado de alta. Antes, por una letra mal, había que
+  // Editar el nombre o el correo de alguien ya dado de alta. Antes, por una letra mal, había que
   // darlo de baja y crearlo otra vez, y con el alta nueva se perdían sus asignaciones.
   const empezarCorreccion = (p) => {
     setResultado(null);
@@ -319,7 +319,7 @@ export default function Personas() {
 
   return (
     <>
-      <BarraSuperior subtitulo="Personas del departamento" persona={yo} />
+      <BarraSuperior subtitulo="Personas del departamento" persona={yo} aqui="personas" />
 
       <main className="main">
         <div className="cabecera">
@@ -531,10 +531,10 @@ export default function Personas() {
                                   type="button"
                                   disabled={trabajando}
                                   onClick={() => empezarCorreccion(p)}
-                                  aria-label={`Corregir el nombre o el correo de ${p.nombre}`}
-                                  title="Para arreglar una errata, sin dar de baja a nadie"
+                                  aria-label={`Editar el nombre o el correo de ${p.nombre}`}
+                                  title="Cambiar el nombre o el correo, sin dar de baja a nadie"
                                 >
-                                  Corregir
+                                  Editar
                                 </button>
                               )}
                               {p.activo ? (

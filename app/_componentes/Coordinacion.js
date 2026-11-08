@@ -80,7 +80,12 @@ const Leyenda = () => (
   </ul>
 );
 
-export default function Coordinacion({ documentoId, onIr }) {
+// `onComprobaciones` lleva al panel de comprobaciones, que es donde está el
+// control del estado (EstadoDocumento.js): esta pantalla dice si el documento se
+// puede aprobar, y hasta ahora ahí se acababa. El botón de aprobar no se duplica
+// aquí —aprobar se decide con la lista de lo que falta delante, no con la
+// matriz—, pero la frase deja de ser un callejón sin salida.
+export default function Coordinacion({ documentoId, onIr, onComprobaciones }) {
   const [cuerpo, setCuerpo] = useState(null);
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
@@ -254,6 +259,14 @@ export default function Coordinacion({ documentoId, onIr }) {
         {cuerpo.puedeAprobarse
           ? <span className="total bien">se puede aprobar</span>
           : <span className="total mal">{plural(cuenta.error || 0, 'error sin resolver', 'errores sin resolver')}</span>}
+        {/* Neutral a propósito: quién puede aprobar lo dice `/estado` con su
+            `puede`, y eso se resuelve en la pantalla a la que lleva este enlace.
+            Prometer aquí «apruébalo» sería adelantarse a esa respuesta. */}
+        {onComprobaciones ? (
+          <button type="button" className="enlace" onClick={onComprobaciones}>
+            Ver el estado y lo que falta
+          </button>
+        ) : null}
       </header>
 
       <p className="suave">

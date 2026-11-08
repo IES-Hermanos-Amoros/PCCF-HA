@@ -64,7 +64,7 @@ import { Valor, vacio } from './Valores';
 import {
   Conflicto, Descartado, Estado, urlApartado, useAutoguardado,
 } from './autoguardado';
-import { aJSON, esListaDeBloques, motivoAlGuardar } from './bloques-cliente';
+import { esListaDeBloques, motivoAlGuardar } from './bloques-cliente';
 import { TIPO_FICHA, TIPO_PONDERACION, TIPO_RESUMEN } from './sa-cliente';
 
 export default function ApartadoEditable({
@@ -231,28 +231,6 @@ export default function ApartadoEditable({
         </section>
       ))}
 
-      {/* «Ver lo que se guardaría»: el JSON que recibiría el generador de PDF.
-          Es lo que permite comprobar de un vistazo que el modelo es el que
-          espera el renderer; si aquí sale HTML, el ida y vuelta está roto. */}
-      <details className="tarjeta fidelidad">
-        <summary>Ver lo que se guardaría en la base de datos</summary>
-        <p className="suave">
-          Es el apartado tal como lo recibe <code>motor/render-generico.js</code> para hacer el PDF:
-          bloques <code>{'{ type: \'p\', text }'}</code> y{' '}
-          <code>{'{ type: \'list\', items }'}</code>, con el texto como cadena o como lista de
-          tramos, y nada de HTML; las ponderaciones y las fichas de situación de aprendizaje, con la
-          forma que leen <code>core/validaciones.js</code> y <code>core/sa.js</code>. En el{' '}
-          <code>PATCH</code> viajan solo los campos que has tocado; los demás se quedan en la base
-          de datos como están.
-        </p>
-        {reparos.length ? (
-          <p className="rojo">
-            El servidor va a rechazar esto con un 400 y no se guardará nada:{' '}
-            {reparos[0].motivo}
-          </p>
-        ) : null}
-        <pre>{aJSON(valores)}</pre>
-      </details>
     </>,
     reparos,
   );

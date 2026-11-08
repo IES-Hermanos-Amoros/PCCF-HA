@@ -227,7 +227,10 @@ export default function Reparto({ documentoId }) {
   if (error) {
     return (
       <>
-        <BarraSuperior subtitulo="Reparto de unidades" persona={yo} />
+        {/* Sin `documentoId`: este documento no se ha podido abrir —no existe, o
+            es de otro departamento—, así que el menú no debe ofrecer sus
+            pantallas. Lo que queda es volver a la lista. */}
+        <BarraSuperior subtitulo="Reparto de unidades" persona={yo} aqui="reparto" />
         <main className="main main-estrecha">
           <div className="cabecera"><div><h1>No se puede ver el reparto</h1></div></div>
           <div className="nota nota-lock" role="alert">
@@ -254,7 +257,7 @@ export default function Reparto({ documentoId }) {
 
   return (
     <>
-      <BarraSuperior subtitulo={corto(documento) || 'Reparto de unidades'} persona={yo} />
+      <BarraSuperior subtitulo={corto(documento) || 'Reparto de unidades'} persona={yo} documentoId={documentoId} aqui="reparto" />
 
       <main className="main">
         <div className="cabecera">

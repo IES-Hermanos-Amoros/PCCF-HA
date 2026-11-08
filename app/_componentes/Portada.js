@@ -88,7 +88,7 @@ export default function Portada() {
 
   return (
     <>
-      <BarraSuperior persona={persona} />
+      <BarraSuperior persona={persona} aqui="documentos" />
 
       <main className="main">
         <div className="cabecera">

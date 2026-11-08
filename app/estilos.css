@@ -867,3 +867,69 @@ del > mark.quita { text-decoration-thickness: 2px; }
 }
 .aviso-acceso-libre a { color: #fff; text-decoration: underline; font-weight: 600; }
 .aviso-acceso-libre.aviso-acceso-apagado { background: #78350f; }
+
+/* ============================================ navegación y estado del documento
+   Las dos cosas que el prototipo no tenía porque allí no existían: el menú «Ir
+   a» de la barra superior y la tarjeta del estado del documento. Todo lo demás
+   de las dos pantallas son clases de más arriba —.tarjeta, .metricas,
+   .lista-avisos, .nota, .tabla, .chip, .btn-primario—, que es por lo que esto es
+   tan poco.                                                                  */
+
+/* El menú «Ir a». Va plegado porque la barra ya está llena: una fila de enlaces
+   que crece con el rol la parte en dos líneas justo para quien más cosas puede
+   hacer. El panel se ancla al botón, así que en ventana estrecha cae donde está
+   el botón y no se sale por la derecha. */
+.menu-ir { position: relative; display: inline-flex; }
+.menu-ir > button[aria-expanded="true"] { color: var(--texto); border-color: var(--acento); }
+.menu-ir-flecha { font-size: 9px; color: var(--suave); }
+.menu-ir-lista {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
+  /* Puede encogerse por debajo de su anchura cómoda: en una ventana de 320 px
+     un panel de 290 px fijos no cabe con sus márgenes. Correrlo para que no se
+     salga lo hace MenuIr.js, que es el único que sabe dónde ha quedado el
+     botón. */
+  min-width: min(290px, calc(100vw - 24px)); max-width: min(360px, calc(100vw - 24px));
+  margin: 0; padding: 5px; list-style: none;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--panel); border: 1px solid var(--borde);
+  border-radius: var(--radio); box-shadow: var(--sombra);
+}
+/* El `hidden` del elemento no basta: la regla de arriba pone `display: flex` y
+   gana al `display: none` que el navegador le da por omisión. */
+.menu-ir-lista[hidden] { display: none; }
+.menu-ir-lista a, .menu-ir-lista button {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  border: 0; background: transparent; color: var(--texto); text-decoration: none;
+  padding: 7px 9px; border-radius: 7px; font-size: 13px;
+}
+.menu-ir-lista a:hover, .menu-ir-lista button:hover { background: var(--panel-2); }
+/* Dónde estás ahora: el mismo resaltado que el nodo activo del árbol. */
+.menu-ir-lista [aria-current="page"] { background: var(--azul-suave); }
+.menu-ir-lista .menu-ir-etq { font-weight: 600; }
+.menu-ir-lista .ayuda { line-height: 1.4; }
+
+/* La tarjeta del estado del documento, encima del panel de comprobaciones. El
+   filo azul la separa de la lista de avisos sin ponerle otro borde: es la misma
+   idea que `.estructura`, que también es una tarjeta de decisiones. */
+.tarjeta-estado { border-left: 3px solid var(--azul); }
+/* Las flechas del circuito: cada una con su botón y la frase de lo que hace
+   debajo, en columna, para que la frase no empuje al botón de al lado. */
+.estado-flechas { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.estado-flecha { display: flex; flex-direction: column; gap: 4px; max-width: 34ch; }
+.estado-flecha .ayuda { line-height: 1.45; }
+/* Las flechas que mueve otra persona: una frase por flecha, sin botón apagado. */
+.estado-de-otros {
+  list-style: none; margin: 12px 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--suave);
+}
+.estado-de-otros li { padding-left: 10px; border-left: 3px solid var(--borde); }
+.estado-de-otros strong { color: var(--texto); font-weight: 600; }
+/* El desglose del rechazo al aprobar. El número de cada grupo va donde la lista
+   de avisos pone la severidad, que es la columna que ya se lee como «cuántos». */
+.estado-rechazo { margin-top: 14px; }
+.estado-rechazo .sev {
+  min-width: 42px; font-size: 15px; font-weight: 700; letter-spacing: 0;
+  text-transform: none; color: var(--texto); font-variant-numeric: tabular-nums;
+}
+.estado-rechazo .metricas { margin: 0 0 12px; }
+.estado-rechazo .lista-avisos li > div { gap: 3px; }
