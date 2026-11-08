@@ -267,11 +267,21 @@ el servidor no puedan tener ideas distintas de qué es una tabla válida.
 | Tipo | Nombre | Valor que se guarda |
 |---|---|---|
 | `texto_largo` | Texto | la lista de bloques de siempre |
-| `tabla` | Tabla | `{ filas: [[celda, …], …] }`, con la celda `{ text, colspan?, rowspan?, bold? }` y **ninguna clave más** |
+| `tabla` | Tabla | `{ filas: [[celda, …], …] }`, con la celda `{ text, colspan?, rowspan?, bold?, fondo? }` y **ninguna clave más** |
 | `tabla_clave_valor` | Clave y valor | `{ pares: [{ etiqueta, valor }] }`: dos columnas, la de la izquierda a 150 pt |
 
 Qué hay que saber para escribir un editor sin adivinar:
 
+- **Fondo de la celda.** `fondo` es un **nombre**, no un color: `'cabecera'` (azul claro, `#D9E2F3`),
+  `'etiqueta'` (gris, `#F2F2F2`) o `'ninguno'` (sin fondo); cualquier otro valor se rechaza y el motivo
+  dice cuáles valen. Con la clave presente manda ella, esté la celda en negrita o no y en la fila que
+  esté. **Sin la clave, el fondo lo decide la negrita**, como siempre: negrita en la primera fila cuando
+  es cabecera, azul; negrita en cualquier otro sitio, gris; sin negrita, sin fondo. Esa ausencia es la
+  que tienen todas las celdas importadas de un Word (el importador no escribe nunca `fondo`), así que
+  el PDF y el Word de lo guardado y de lo importado siguen siendo el mismo. Se eligen nombres y no colores
+  para que los documentos sigan pareciendo del centro y para que el PDF y el Word pinten lo mismo con la
+  misma paleta. `fondo` no cambia qué es la cabecera ni el `headerRows` de la tabla: eso lo sigue
+  decidiendo la negrita de la primera fila.
 - **Cabecera.** La primera fila es la cabecera si todas sus celdas van en `bold: true`: se pinta con
   fondo azul claro (fuera de la cabecera, una celda en negrita va en gris). En una tabla creada en la
   aplicación (la que lleva `inicial`) es el único criterio, en el PDF y en el Word: poner o quitar la

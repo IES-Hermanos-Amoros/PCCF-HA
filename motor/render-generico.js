@@ -79,6 +79,14 @@ function anchos(body, ncols) {
   if (total > disponible) w = w.map((x) => (x * disponible) / total);
   return w;
 }
+// El fondo de una celda de tabla. Con «fondo» manda el nombre; sin él, la negrita: azul en la fila de
+// cabecera y gris fuera de ella, y nada si no está en negrita.
+function fondoDeCelda(c, enCabecera) {
+  if (c.fondo === 'cabecera') return AZUL_CLARO;
+  if (c.fondo === 'etiqueta') return GRIS_FONDO;
+  if (c.fondo === 'ninguno') return undefined;
+  return c.bold ? (enCabecera ? AZUL_CLARO : GRIS_FONDO) : undefined;
+}
 function tablaGenerica(rows, opts = {}) {
   if (!rows || !rows.length) return para('(tabla vacía)', { italics: true, color: GRIS });
   const { ncols, body } = rejilla(rows);
@@ -86,7 +94,9 @@ function tablaGenerica(rows, opts = {}) {
   const cuerpo = body.map((r, i) => r.map((c) => {
     if (c._ph) return {};
     const cell = { text: c.text || '', colSpan: c.colspan > 1 ? c.colspan : undefined, rowSpan: c.rowspan > 1 ? c.rowspan : undefined, fontSize: opts.fontSize };
-    if (c.bold) { cell.bold = true; cell.fillColor = i === 0 && cabecera ? AZUL_CLARO : GRIS_FONDO; }
+    if (c.bold) cell.bold = true;
+    const fondo = fondoDeCelda(c, i === 0 && cabecera);
+    if (fondo) cell.fillColor = fondo;
     return cell;
   }));
   const widths = opts.widths || anchos(body, ncols);

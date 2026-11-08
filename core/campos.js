@@ -90,10 +90,12 @@
         ],
         valor: {
           forma: '{ filas: [[celda, …], …] }',
-          celda: '{ text: string, colspan?: entero ≥ 1, rowspan?: entero ≥ 1, bold?: booleano }, y ninguna clave más',
+          celda: '{ text: string, colspan?: entero ≥ 1, rowspan?: entero ≥ 1, bold?: booleano, fondo?: «cabecera» | «etiqueta» | «ninguno» }, y ninguna clave más',
           reglas: [
             'Todas las filas tienen el mismo ancho, contando las casillas que vienen combinadas desde arriba.',
-            'La fila de cabecera es la primera, con todas sus celdas en negrita (bold: true): se pinta con fondo azul claro. Fuera de la cabecera, una celda en negrita se pinta con fondo gris.',
+            'La fila de cabecera es la primera, con todas sus celdas en negrita (bold: true). La negrita no depende del fondo, ni el fondo de la negrita.',
+            'El fondo de una celda se elige por nombre con «fondo»: «cabecera» es azul claro, «etiqueta» es gris y «ninguno» es sin fondo. Vale en cualquier celda, esté o no en negrita y esté en la fila que esté.',
+            'Si la celda no lleva «fondo», el fondo lo decide la negrita: una celda en negrita de la primera fila, si toda la fila va en negrita, sale azul claro; una celda en negrita en cualquier otro sitio, gris; una celda sin negrita, sin fondo. Es lo que tienen las tablas importadas de un Word.',
             'Una tabla sin filas ({ filas: [] }) se guarda, y se imprime como «(tabla vacía)».',
             'Los anchos de columna no se guardan: el generador los calcula por la cantidad de texto de cada una.',
           ],
