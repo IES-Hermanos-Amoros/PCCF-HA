@@ -910,13 +910,29 @@ prueba('el curso siguiente se lleva los campos creados y también los retirados,
     [['texto', false], ['resumen', false], ['vieja', false]]);
 });
 
-prueba('las tablas de la programación real se guardan tal cual las lee el importador (si está el .docx)', async () => {
-  const fs = require('fs');
-  const path = require('path');
+// LOS .DOCX REALES ESTÁN FUERA DE GIT, así que en una máquina recién clonada esta comprobación no
+// se puede hacer. Cuando falta el fichero se registra una prueba que LO DICE, con el nombre de lo
+// que falta, en lugar de salir en silencio: una prueba que pasa sin comprobar nada da por bueno
+// justo lo que protege —que una tabla del Word se guarda tal cual—. Es la misma convención que
+// usa test/ida-y-vuelta.js con el documento de ejemplo.
+const FS_TABLAS = require('fs');
+const PATH_TABLAS = require('path');
+const CARPETA_REAL = PATH_TABLAS.join(__dirname, '..', 'docs', 'entrada_ej', '2026-27');
+const DOCX_REALES = ['PD_DAW_26-27_161026.docx', 'PD_SMR_26-27_221026.docx']
+  .map((f) => PATH_TABLAS.join(CARPETA_REAL, f))
+  .filter((f) => FS_TABLAS.existsSync(f));
+
+if (!DOCX_REALES.length) {
+  prueba('las tablas de la programación real SE OMITEN: los .docx no están en el repositorio', () => {
+    console.log('     faltan en docs/entrada_ej/2026-27/ los .docx de la PD de DAW y de SMR, que quedan');
+    console.log('     fuera de git. Sin ellos no se comprueba que una tabla del Word se guarde tal cual.');
+  });
+} else {
+prueba('las tablas de la programación real se guardan tal cual las lee el importador', async () => {
+  const fs = FS_TABLAS;
+  const path = PATH_TABLAS;
   const { importarDocx } = require('../motor/importar-docx');
-  const carpeta = path.join(__dirname, '..', 'docs', 'entrada_ej', '2026-27');
-  const ficheros = ['PD_DAW_26-27_161026.docx', 'PD_SMR_26-27_221026.docx'].map((f) => path.join(carpeta, f)).filter((f) => fs.existsSync(f));
-  if (!ficheros.length) return;
+  const ficheros = DOCX_REALES;
   let vistas = 0;
   for (const fichero of ficheros) {
     const { plantilla, datos } = await importarDocx({ path: fichero }, { origen: path.basename(fichero), incluirInicial: true });
@@ -947,6 +963,7 @@ prueba('las tablas de la programación real se guardan tal cual las lee el impor
   }
   assert.ok(vistas >= 20, `se esperaban las tablas de la PD real y solo hay ${vistas}`);
 });
+}
 
 // ================================================================ 5. el fondo de la celda
 

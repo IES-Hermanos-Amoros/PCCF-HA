@@ -16,9 +16,6 @@ import { useEffect, useRef, useState } from 'react';
 import { cambiarEstructura } from './estructura-cliente';
 
 const mensajeDeError = (error) => (error ? error.message : null);
-const yaDiceQueNoHaCambiado = (error) => /no se ha (cambiado|escrito|guardado)/i.test(
-  (error && error.message) || '',
-);
 
 // Lo que se añade al aviso cuando el cambio ha salido en todas las unidades.
 // Lo dice la respuesta, no esta pantalla.
@@ -111,7 +108,9 @@ export function QuitarCampos({
       {error ? (
         <div className="nota nota-error" role="alert">
           <div>
-            {yaDiceQueNoHaCambiado(error) ? null : <strong>No se ha cambiado nada. </strong>}
+            {/* El rechazo del servidor no cambia nada: ni la plantilla ni lo escrito. Eso se dice
+                primero, porque es lo que hay que saber antes de leer el motivo. */}
+            <strong>No se ha cambiado nada. </strong>
             {mensajeDeError(error)}
           </div>
         </div>
@@ -192,7 +191,7 @@ export function CamposRetirados({
       {error ? (
         <div className="nota nota-error" role="alert">
           <div>
-            {yaDiceQueNoHaCambiado(error) ? null : <strong>No se ha restaurado nada. </strong>}
+            <strong>No se ha restaurado nada. </strong>
             {mensajeDeError(error)}
           </div>
         </div>
