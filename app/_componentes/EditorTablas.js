@@ -1,11 +1,13 @@
 // El editor de las tablas que se crean en la aplicación: escribir en las celdas, añadir y
-// quitar filas y columnas, y poner o quitar la fila de cabecera.
+// quitar filas y columnas, combinar y separar celdas, poner la negrita celda a celda y poner o
+// quitar la fila de cabecera.
 //
-// ES UNA CÁSCARA. Qué pasa al añadir una columna, qué celdas se conservan al quitar una fila,
-// si poner la cabecera pone la primera fila en negrita, qué se puede y qué no según los topes:
-// todo eso es core/tablas-edicion.js, que no sabe nada de pantallas y tiene sus pruebas
-// (test/editor-tablas.js). Este componente pinta el valor que le llega, manda cada gesto como una
-// operación, y apaga el botón de lo que no se puede diciendo por qué.
+// ES UNA CÁSCARA. Qué pasa al añadir una columna, qué celdas se conservan al quitar una fila, qué
+// se hace con el texto de la celda que se absorbe al combinar, cómo se reparten las combinaciones
+// al cambiar la forma, qué se puede y qué no según los topes: todo eso es core/tablas-edicion.js,
+// que no sabe nada de pantallas y tiene sus pruebas (test/editor-tablas.js). Este componente pinta
+// el valor que le llega, manda cada gesto como una operación, y apaga el botón de lo que no se
+// puede con el motivo que da la misma función que usa el servidor (`motivoDeNo`).
 //
 // SOLO LAS CREADAS AQUÍ. Una tabla que vino del Word es el mismo tipo de campo, pero se queda en
 // solo lectura (`Edicion.esEditable`): el PDF de lo importado tiene que salir idéntico, y reescribir
@@ -19,9 +21,16 @@
 // autoguardado del apartado (autoguardado.js): el mismo PATCH con `esperaUpdatedAt` que guarda los
 // párrafos y las fichas, con su 409 y su aviso de conflicto.
 //
-// EL FOCO. Tras añadir una fila o una columna el foco va a la primera celda nueva, para seguir
-// escribiendo; tras quitar una, al botón de añadir, porque la celda en la que estabas ya no está.
-// Lo que ha pasado se anuncia en una región `aria-live`.
+// LA NEGRITA ES EL SOMBREADO. No hay un color aparte: el PDF y el Word pintan una celda en negrita
+// de azul claro si es de la primera fila entera en negrita (la cabecera) y de gris si no. La
+// pantalla lo dice junto a los controles y en el botón, porque de otro modo nadie sabe de dónde
+// sale el color.
+//
+// EL FOCO. Se mantiene en la tabla tras cada gesto, y no solo en el botón que se pulsó (que puede
+// desaparecer o apagarse): tras añadir una fila va a su primera celda; tras quitar una, a la celda
+// que ocupa su sitio; tras añadir o quitar una columna, a la celda de la primera fila que cae en
+// esa columna; tras combinar o separar, a la celda; tras la negrita se queda en el botón. Lo que
+// ha pasado se anuncia en una región `aria-live`.
 
 'use client';
 
@@ -35,13 +44,22 @@ const llave = (i, j) => `${i}:${j}`;
 // con cabecera lo dice, porque quitarla no es lo mismo que quitar la cabecera del interruptor.
 const nombreDeFila = (i, cabecera) => (i === 0 && cabecera ? 'fila 1 (la cabecera)' : `fila ${i + 1}`);
 
-// Un botón de la tabla: se apaga solo cuando la operación no se puede y su `title` dice por qué.
-// Está FUERA del componente a propósito: definido dentro, cada repintado sería un componente
-// distinto, React lo desmontaría y el botón que acaba de recibir el foco lo perdería.
+// La columna o columnas que ocupa una celda, para el nombre: «columna 2» o «columnas 2 a 3».
+const nombreDeColumnas = (pos) => (pos.ancho > 1
+  ? `columnas ${pos.columna + 1} a ${pos.columna + pos.ancho}` : `columna ${pos.columna + 1}`);
+
+// Lo que cuesta de escribir en un título: el texto que se junta, recortado.
+const recorte = (texto) => (texto.length > 40 ? `${texto.slice(0, 40)}…` : texto).replace(/\n/g, ' / ');
+
+// Un botón de la tabla: se apaga solo cuando la operación no se puede, y el motivo va en el `title`
+// y en el nombre accesible (un botón apagado no recibe el foco, pero un lector lo encuentra al
+// recorrer la tabla). Está FUERA del componente a propósito: definido dentro, cada repintado sería
+// un componente distinto, React lo desmontaría y el botón que acaba de recibir el foco lo perdería.
 function Boton({
-  valor, refBoton, nombre, op, args, children, etiqueta, accion, clase = 'mini',
+  valor, refBoton, nombre, op, args, children, etiqueta, ayuda, accion, pulsado, clase = 'mini',
 }) {
   const motivo = Edicion.motivoDeNo(valor, op, args);
+  const completa = ayuda ? `${etiqueta}. ${ayuda}` : etiqueta;
   return (
     <button
       type="button"
@@ -49,8 +67,9 @@ function Boton({
       ref={nombre ? (n) => refBoton(nombre, n) : undefined}
       onClick={accion}
       disabled={!!motivo}
-      aria-label={etiqueta}
-      title={motivo || etiqueta}
+      aria-pressed={pulsado === undefined ? undefined : pulsado}
+      aria-label={motivo ? `${etiqueta}. No disponible: ${motivo}` : completa}
+      title={motivo || completa}
     >
       {children}
     </button>
@@ -62,7 +81,8 @@ export default function EditorTabla({ campo, valor, onCambio }) {
   const filas = Edicion.filasDe(valor);
   const columnas = Edicion.columnasDe(valor);
   const cabecera = Edicion.tieneCabecera(valor);
-  const combinadas = Edicion.tieneCombinadas(valor);
+  const posiciones = claveValor ? null : Edicion.posiciones(valor);
+  const enRejilla = (i, j) => (posiciones && posiciones[i] && posiciones[i][j]) || { columna: j, ancho: 1, alto: 1 };
 
   const [aviso, setAviso] = useState('');
   const celdas = useRef(new Map());
@@ -77,9 +97,7 @@ export default function EditorTabla({ campo, valor, onCambio }) {
     const p = pendiente.current;
     if (!p) return;
     pendiente.current = null;
-    const nodo = p.celda ? celdas.current.get(p.celda) : botones.current.get(p.boton);
-    const alternativa = botones.current.get(p.boton);
-    const destino = nodo || alternativa;
+    const destino = (p.celda && celdas.current.get(p.celda)) || (p.boton && botones.current.get(p.boton));
     if (destino && typeof destino.focus === 'function') destino.focus();
   });
 
@@ -91,13 +109,13 @@ export default function EditorTabla({ campo, valor, onCambio }) {
   };
 
   // Una operación del módulo puro. Si no cambia nada (no se puede), no hace nada: el botón ya
-  // estaba apagado y dice por qué.
+  // estaba apagado y dice por qué. `foco` recibe el valor nuevo y dice dónde ponerlo.
   const hacer = (op, args, { dice, foco } = {}) => {
     const siguiente = Edicion.aplicar(valor, op, args, { columnas: ancho.current });
     if (siguiente === valor) return;
     onCambio(siguiente);
-    if (dice) setAviso(dice);
-    if (foco) pendiente.current = foco;
+    if (dice) setAviso(typeof dice === 'function' ? dice(siguiente) : dice);
+    if (foco) pendiente.current = foco(siguiente);
   };
 
   const motivoDe = (op, args) => Edicion.motivoDeNo(valor, op, args);
@@ -106,34 +124,64 @@ export default function EditorTabla({ campo, valor, onCambio }) {
   // si el valor que llega ya traía un defecto, que se diga delante de quien lo va a guardar.
   const reparo = Estructurados.motivoDeCampo(campo, valor);
 
+  const textoNumero = (n, uno, varios) => (n === 1 ? `1 ${uno}` : `${n} ${varios}`);
+
   // ---------------------------------------------------------------- las operaciones, con su frase
 
   const anadirFila = (despuesDe) => {
     const nueva = despuesDe == null ? filas : despuesDe + 1;
     hacer('anadir-fila', { despuesDe }, {
       dice: `Fila ${nueva + 1} añadida. La tabla tiene ${filas + 1} filas.`,
-      foco: { celda: llave(nueva, 0), boton: 'anadir-fila' },
+      foco: () => ({ celda: llave(nueva, 0), boton: 'anadir-fila' }),
     });
   };
   const quitarFila = (i) => hacer('quitar-fila', { fila: i }, {
-    dice: `Quitada la ${nombreDeFila(i, cabecera)}. ${filas - 1 === 1 ? 'Queda 1 fila.' : `Quedan ${filas - 1} filas.`}`,
-    foco: { boton: 'anadir-fila' },
+    dice: (s) => `Quitada la ${nombreDeFila(i, cabecera)}. Quedan ${textoNumero(Edicion.filasDe(s), 'fila', 'filas')}.`,
+    foco: (s) => (Edicion.filasDe(s)
+      ? { celda: llave(Math.min(i, Edicion.filasDe(s) - 1), 0), boton: 'anadir-fila' }
+      : { boton: 'anadir-fila' }),
   });
   const anadirColumna = (despuesDe) => {
     const nueva = despuesDe == null ? columnas : despuesDe + 1;
     hacer('anadir-columna', { despuesDe }, {
       dice: `Columna ${nueva + 1} añadida. La tabla tiene ${columnas + 1} columnas.`,
-      foco: { celda: llave(0, nueva), boton: 'anadir-columna' },
+      foco: (s) => {
+        const e = Edicion.celdaEn(s, 0, nueva);
+        return { celda: e ? llave(e.fila, e.columna) : null, boton: 'anadir-columna' };
+      },
     });
   };
   const quitarColumna = (j) => hacer('quitar-columna', { columna: j }, {
-    dice: `Columna ${j + 1} quitada. ${columnas - 1 === 1 ? 'Queda 1 columna.' : `Quedan ${columnas - 1} columnas.`}`,
-    foco: { boton: 'anadir-columna' },
+    dice: (s) => `Columna ${j + 1} quitada. Quedan ${textoNumero(Edicion.columnasDe(s), 'columna', 'columnas')}`
+      + (Edicion.filasDe(s) < filas ? ` y ${textoNumero(Edicion.filasDe(s), 'fila', 'filas')}: una fila se quedaba sin celdas propias y se ha quitado.` : '.'),
+    foco: (s) => {
+      const e = Edicion.celdaEn(s, 0, Math.min(j, Edicion.columnasDe(s) - 1));
+      return { celda: e ? llave(e.fila, e.columna) : null, boton: 'anadir-columna' };
+    },
   });
   const ponerCabecera = (puesta) => hacer('cabecera', { puesta }, {
     dice: puesta ? 'La primera fila es ahora la cabecera.' : 'La tabla ya no tiene fila de cabecera.',
   });
   const escribir = (i, j, texto) => hacer('texto', { fila: i, columna: j, valor: texto });
+
+  const combinar = (i, j, hacia) => {
+    const juntado = Edicion.textoQueSeJunta(valor, { fila: i, columna: j, hacia });
+    hacer('combinar', { fila: i, columna: j, hacia }, {
+      dice: `La celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} se ha combinado con la de ${hacia === 'derecha' ? 'su derecha' : 'debajo'}.`
+        + (juntado ? ' Su texto se ha añadido al de esta celda, en otra línea.' : ''),
+      foco: () => ({ celda: llave(i, j) }),
+    });
+  };
+  const separar = (i, j) => hacer('separar', { fila: i, columna: j }, {
+    dice: `La celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} se ha separado: cada casilla vuelve a ser una celda. El texto se queda en la primera.`,
+    foco: () => ({ celda: llave(i, j) }),
+  });
+  const negrita = (i, j, puesta) => hacer('negrita', { fila: i, columna: j, puesta }, {
+    dice: puesta
+      ? `La celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} va en negrita: saldrá sombreada.`
+      : `La celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} ya no va en negrita ni sombreada.`,
+    foco: () => ({ boton: `neg:${llave(i, j)}` }),
+  });
 
   // ---------------------------------------------------------------- piezas
 
@@ -178,17 +226,69 @@ export default function EditorTabla({ campo, valor, onCambio }) {
     </div>
   );
 
+  // Los controles de una celda. Cada botón dice de qué celda es y qué hace; si no se puede, está
+  // apagado y el motivo va con él.
+  const herramientas = (i, j, celda) => {
+    const pos = enRejilla(i, j);
+    const donde = `la celda de la fila ${i + 1}, ${nombreDeColumnas(pos)}`;
+    const combinada = pos.ancho > 1 || pos.alto > 1;
+    const juntaDerecha = Edicion.textoQueSeJunta(valor, { fila: i, columna: j, hacia: 'derecha' });
+    const juntaAbajo = Edicion.textoQueSeJunta(valor, { fila: i, columna: j, hacia: 'abajo' });
+    const avisoDe = (t) => (t ? `Su texto («${recorte(t)}») se añadirá al de esta celda, en otra línea.` : undefined);
+    const enNegrita = celda.bold === true;
+    const sombreado = i === 0 && cabecera ? 'azul claro' : 'gris';
+    return (
+      <div className="celda-herr" role="group" aria-label={`Combinar, separar y negrita de ${donde}`}>
+        <Boton valor={valor} refBoton={refBoton}
+          op="combinar" args={{ fila: i, columna: j, hacia: 'derecha' }}
+          etiqueta={`Combinar ${donde} con la de su derecha`} ayuda={avisoDe(juntaDerecha)}
+          accion={() => combinar(i, j, 'derecha')}
+        >
+          Unir →
+        </Boton>
+        <Boton valor={valor} refBoton={refBoton}
+          op="combinar" args={{ fila: i, columna: j, hacia: 'abajo' }}
+          etiqueta={`Combinar ${donde} con la de debajo`} ayuda={avisoDe(juntaAbajo)}
+          accion={() => combinar(i, j, 'abajo')}
+        >
+          Unir ↓
+        </Boton>
+        {combinada ? (
+          <Boton valor={valor} refBoton={refBoton}
+            op="separar" args={{ fila: i, columna: j }}
+            etiqueta={`Separar ${donde}: vuelve a ser una celda por casilla`}
+            accion={() => separar(i, j)}
+          >
+            Separar
+          </Boton>
+        ) : null}
+        <Boton valor={valor} refBoton={refBoton}
+          nombre={`neg:${llave(i, j)}`} op="negrita" args={{ fila: i, columna: j, puesta: !enNegrita }}
+          etiqueta={`Negrita de ${donde}`}
+          ayuda={enNegrita ? 'Puesta: sale sombreada. Pulsa para quitarla.' : `Pulsa para ponerla: la celda saldrá en negrita y sombreada de ${sombreado}.`}
+          pulsado={enNegrita}
+          accion={() => negrita(i, j, !enNegrita)}
+        >
+          Negrita
+        </Boton>
+      </div>
+    );
+  };
+
   return (
     <div className="bloque bloque-tabla editor-tabla">
       {barra}
       <div className="sr" role="status" aria-live="polite">{aviso}</div>
 
-      {combinadas ? (
+      {claveValor ? null : (
         <p className="ayuda">
-          Esta tabla tiene celdas combinadas. Se puede escribir en ellas y cambiar su cabecera, pero
-          todavía no añadir ni quitar filas o columnas.
+          <strong>Unir</strong> junta una celda con la de su derecha o la de debajo; si la que se
+          absorbe tenía texto, se añade al de esta en otra línea, así que no se pierde nada.
+          {' '}<strong>La negrita es también el sombreado</strong>: en el PDF y en el Word una celda en
+          negrita sale con fondo azul claro si está en la primera fila y toda ella va en negrita (la
+          cabecera), y con fondo gris en cualquier otro sitio.
         </p>
-      ) : null}
+      )}
 
       {reparo ? (
         <div className="nota nota-error" role="alert">
@@ -255,9 +355,10 @@ export default function EditorTabla({ campo, valor, onCambio }) {
                         rows={1}
                         value={celda.text}
                         ref={(n) => refCelda(i, j, n)}
-                        aria-label={`${i === 0 && cabecera ? 'Cabecera' : `Fila ${i + 1}`}, columna ${j + 1}`}
+                        aria-label={`${i === 0 && cabecera ? 'Cabecera' : `Fila ${i + 1}`}, ${nombreDeColumnas(enRejilla(i, j))}`}
                         onChange={(ev) => escribir(i, j, ev.target.value)}
                       />
+                      {herramientas(i, j, celda)}
                     </td>
                   ))}
                   <td className="celda-acciones">
@@ -277,7 +378,7 @@ export default function EditorTabla({ campo, valor, onCambio }) {
                 </tr>
               ))}
             </tbody>
-            {claveValor || combinadas ? null : (
+            {claveValor ? null : (
               <tfoot>
                 <tr>
                   {Array.from({ length: columnas }, (_, j) => (
