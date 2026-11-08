@@ -144,8 +144,9 @@ export default function Coordinacion({ documentoId, onIr, onComprobaciones }) {
             {error.message}
             {error.codigo === 'no_disponible' ? (
               <p className="suave">
-                La ruta <code>GET /api/documentos/[id]/coordinacion</code> es del E7. El panel está
-                listo: en cuanto la ruta responda, aquí sale la matriz.
+                No es nada de lo que hayas escrito: <strong>el documento está intacto</strong>. Vuelve a
+                cargar la página, y si sigue igual avisa a quien lleva la aplicación, que el servidor no
+                está contestando a <code>GET /api/documentos/[id]/coordinacion</code>.
               </p>
             ) : null}
             {error.codigo === 'no_encontrado' ? (
@@ -335,7 +336,7 @@ export default function Coordinacion({ documentoId, onIr, onComprobaciones }) {
               {/* La esquina se queda pegada igual que los nombres de las filas:
                   si no, al desplazar la matriz a lo ancho los títulos de columna
                   se salen por debajo del nombre del módulo y las cabeceras dejan
-                  de cuadrar con las celdas que hay debajo. Se vio así. */}
+                  de cuadrar con las celdas que hay debajo. */}
               <th scope="col" className="esquina">{etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1)}</th>
               {bloques.map((b) => (
                 <th className="centro col-bloque" scope="col" id={`col-${idSeguro(b.seccion)}`} key={b.seccion}>

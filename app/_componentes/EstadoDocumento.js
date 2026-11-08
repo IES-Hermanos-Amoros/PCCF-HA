@@ -269,8 +269,9 @@ export default function EstadoDocumento({ documentoId, onIr }) {
             {error.message}
             {error.codigo === 'no_disponible' ? (
               <p className="suave">
-                La ruta <code>GET /api/documentos/[id]/estado</code> es del E7. En cuanto responda,
-                aquí salen el estado y las transiciones que puedes hacer.
+                No es nada de lo que hayas escrito: <strong>el documento está intacto</strong>. Vuelve a
+                cargar la página, y si sigue igual avisa a quien lleva la aplicación, que el servidor no
+                está contestando a <code>GET /api/documentos/[id]/estado</code>.
               </p>
             ) : null}
           </div>

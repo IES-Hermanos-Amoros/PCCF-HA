@@ -21,10 +21,14 @@
 // autoguardado del apartado (autoguardado.js): el mismo PATCH con `esperaUpdatedAt` que guarda los
 // párrafos y las fichas, con su 409 y su aviso de conflicto.
 //
-// LA NEGRITA ES EL SOMBREADO. No hay un color aparte: el PDF y el Word pintan una celda en negrita
-// de azul claro si es de la primera fila entera en negrita (la cabecera) y de gris si no. La
-// pantalla lo dice junto a los controles y en el botón, porque de otro modo nadie sabe de dónde
-// sale el color.
+// EL SOMBREADO LO DECIDE CORE/. Mientras una celda no lleve `fondo`, su color sale de la negrita:
+// azul claro en la fila de cabecera, gris fuera de ella. Con `fondo` manda la clave. Quién gana es
+// `fondoDeCelda` de core/estructurados.js, y la pantalla lo consulta por `fondoEfectivo` en lugar
+// de deducirlo, para no pintar una celda de un color y que salga impresa de otro.
+//
+// De dónde sale el color no se puede adivinar mirando la tabla, así que se explica: la regla entera
+// está en la ayuda plegada de la barra, y el botón de negrita dice en su `title` qué va a pasar con
+// ESTA celda, que es lo que hace falta en el momento de pulsarlo.
 //
 // EL FOCO. Se mantiene en la tabla tras cada gesto, y no solo en el botón que se pulsó (que puede
 // desaparecer o apagarse): tras añadir una fila va a su primera celda; tras quitar una, a la celda
@@ -37,6 +41,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import Edicion from '../../core/tablas-edicion';
 import Estructurados from '../../core/estructurados';
+import Ayuda from './Ayuda';
 
 const llave = (i, j) => `${i}:${j}`;
 
@@ -246,6 +251,26 @@ export default function EditorTabla({ campo, valor, onCambio }) {
         </label>
       )}
       <span className="tb-donde">{Edicion.descripcion(valor)}</span>
+      {claveValor ? null : (
+        <Ayuda sobre="las celdas de la tabla">
+          <p>
+            <strong>Unir</strong> junta una celda con la de su derecha o la de debajo. Si la que se
+            absorbe tenía texto, se añade al de esta en otra línea: unir no pierde nada de lo escrito.
+            {' '}<strong>Separar</strong> lo deshace, y el texto se queda en la primera casilla.
+          </p>
+          <p>
+            <strong>El sombreado sale de la negrita</strong> mientras no se elija otra cosa: una celda
+            en negrita sale azul claro si está en la fila de cabecera y gris en cualquier otro sitio,
+            igual en el PDF y en el Word. Con <strong>Fondo</strong> se le pone a una celda suelta el
+            color que se quiera, y entonces manda ese: así se puede sombrear sin negrita, poner negrita
+            sin sombrear y usar el azul fuera de la cabecera.
+          </p>
+          <p>
+            La <strong>fila de cabecera</strong> es la primera cuando va entera en negrita, y es la que
+            se repite arriba al cambiar de página en el PDF.
+          </p>
+        </Ayuda>
+      )}
       <span className="ayuda">
         {claveValor
           ? 'A la izquierda el concepto, en negrita sobre fondo gris; a la derecha su contenido.'
@@ -324,15 +349,6 @@ export default function EditorTabla({ campo, valor, onCambio }) {
       {barra}
       <div className="sr" role="status" aria-live="polite">{aviso}</div>
 
-      {claveValor ? null : (
-        <p className="ayuda">
-          <strong>Unir</strong> junta una celda con la de su derecha o la de debajo; si la que se
-          absorbe tenía texto, se añade al de esta en otra línea, así que no se pierde nada.
-          {' '}<strong>El sombreado sale de la negrita</strong> mientras no se elija: una celda en
-          negrita sale azul claro si está en la cabecera y gris en cualquier otro sitio, en el PDF y en
-          el Word. Con <strong>Fondo</strong> se elige el de una celda suelta, y entonces manda ese.
-        </p>
-      )}
 
       {reparo ? (
         <div className="nota nota-error" role="alert">

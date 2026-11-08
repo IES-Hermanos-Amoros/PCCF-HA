@@ -1177,7 +1177,7 @@ prueba('lo que la pantalla pinta es lo que se imprime: fondoEfectivo coincide co
   const pintado = tabla.table.body.map((f) => f.map((x) => x.fillColor));
   assert.deepEqual(pintado, efectivosDe(v).map((f) => f.map((x) => COLOR[x])),
     'la pantalla y el PDF tienen que decir lo mismo de cada celda');
-  // Y las tres situaciones que antes eran imposibles salen de verdad en el papel.
+  // Y las tres situaciones que la negrita sola no sabe dar salen de verdad en el papel.
   assert.deepEqual(pintado[1], ['#D9E2F3', '#F2F2F2'], 'azul fuera de la cabecera, y gris sin negrita');
   assert.equal(pintado[2][0], undefined, 'negrita sin sombrear, salio ' + JSON.stringify(pintado));
   assert.equal(tabla.table.body[2][0].bold, true);

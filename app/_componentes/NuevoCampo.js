@@ -169,12 +169,14 @@ export function ElegirCampo({
         {def ? <VistaPrevia def={def} vista={vista} /> : null}
       </div>
 
+      {/* Una línea: la consecuencia de pulsar el botón que hay justo debajo. El modelo que la
+          explica —que los apartados de un módulo son una plantilla— está en la ayuda de la tarjeta
+          de estructura, que es la que se está mirando al llegar aquí; repetirlo en cada formulario
+          es lo que convierte el aviso en algo que se salta (docs/interfaz-web.md §3.6). */}
       {enTodas ? (
         <div className="nota nota-lock" role="note">
           <div>
-            <strong>Este campo saldrá en {enTodas} a la vez.</strong>{' '}
-            Está en la plantilla que {enTodas} repiten, así que crearlo aquí lo crea en todos, cada
-            uno con su propio contenido. No hay forma de crearlo solo en uno.
+            <strong>Nacerá en {enTodas} a la vez</strong>, cada uno con su propio contenido.
           </div>
         </div>
       ) : null}

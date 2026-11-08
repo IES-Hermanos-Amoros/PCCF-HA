@@ -295,8 +295,9 @@ export default function Cambios({
             {error.message}
             {error.codigo === 'no_disponible' ? (
               <p className="suave">
-                La ruta <code>GET /api/documentos/[id]/anterior/apartado</code> es del E5. La vista
-                está lista: en cuanto la ruta responda, la comparación sale aquí.
+                No es nada de lo que hayas escrito: <strong>el documento está intacto</strong>. Vuelve a
+                cargar la página, y si sigue igual avisa a quien lleva la aplicación, que el servidor no
+                está contestando a <code>GET /api/documentos/[id]/anterior/apartado</code>.
               </p>
             ) : null}
           </div>

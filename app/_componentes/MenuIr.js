@@ -188,9 +188,8 @@ export default function MenuIr({ documentoId, aqui, onVista }) {
   // El panel cuelga del botón, y el botón no está siempre en el mismo sitio: la
   // barra se recoloca con la anchura de la ventana, así que en una ventana
   // estrecha acaba empujado hacia la derecha. Con un lado fijo en la hoja de
-  // estilos el panel se salía de la pantalla justo donde la pantalla es más
-  // pequeña —medido a 420 px: empezaba en 317 y acababa en 607—, y lo que se
-  // queda fuera es la mitad de los destinos.
+  // estilos el panel se sale de la pantalla justo donde la pantalla es más
+  // pequeña, y lo que queda fuera es la mitad de los destinos.
   //
   // Se mide y se corre lo justo, con los dos márgenes: primero se trae hacia
   // dentro por la derecha y después se comprueba que no se haya salido por la

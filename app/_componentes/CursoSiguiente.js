@@ -180,8 +180,9 @@ export default function CursoSiguiente({ documentoId, documento, documentos, rol
             ) : null}
             {error.codigo === 'no_disponible' ? (
               <p className="suave">
-                La ruta <code>POST /api/documentos/[id]/siguiente-curso</code> es del E5. La tarjeta
-                está lista: en cuanto la ruta responda, el documento se crea desde aquí.
+                No es nada de lo que hayas escrito: <strong>el documento está intacto</strong>. Vuelve a
+                cargar la página, y si sigue igual avisa a quien lleva la aplicación, que el servidor no
+                está contestando a <code>POST /api/documentos/[id]/siguiente-curso</code>.
               </p>
             ) : null}
           </div>
