@@ -18,6 +18,12 @@ const config = {
 
   // Evita que `next dev` deje un AGENTS.md en la raíz al arrancar.
   agentRules: false,
+
+  // En desarrollo, Next solo sirve el JavaScript de cliente al origen que espera.
+  // Abriendo por 127.0.0.1 en lugar de localhost, la página se pinta entera y
+  // luego no responde a nada: no hidrata, y lo único que lo delata es un 404 en
+  // la consola del navegador. Es un rato perdido buscando donde no es.
+  allowedDevOrigins: ['127.0.0.1'],
 };
 
 module.exports = config;
