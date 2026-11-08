@@ -279,13 +279,14 @@
   // rectángulo que parece una tabla rellena. (Y un campo SIN valor, que es como nace uno
   // recién creado, no imprime nada: ver `pintarCampo`.)
   //
-  // LA CABECERA. Qué fila es la cabecera lo decide el campo (`columnas`) para el PDF, pero el
-  // exportador a Word no lo mira: allí la cabecera es la primera fila si todas sus celdas
-  // van en negrita (`tabla` de motor/exportar-docx.js). Para que las dos salidas digan lo
-  // mismo, una tabla creada en la aplicación con cabecera (`campo.inicial` y `campo.columnas`)
-  // tiene que llevar la primera fila entera en negrita. Las importadas no se comprueban: dos
-  // de la PD real tienen `columnas` y su primera fila sin negrita, y editarles una celda no
-  // puede exigir que cambien de aspecto.
+  // LA CABECERA. En una tabla importada la decide el campo (`columnas`) para el PDF, mientras que
+  // el exportador a Word mira solo la negrita: allí la cabecera es la primera fila si todas sus
+  // celdas van en negrita (`tabla` de motor/exportar-docx.js). Dos de la PD real tienen `columnas`
+  // y su primera fila sin negrita, y editarles una celda no puede exigir que cambien de aspecto.
+  // En una tabla creada en la aplicación (`campo.inicial`) no hay dos criterios: el generador
+  // tampoco mira `columnas` (`pintarCampo` de motor/render-generico.js), así que la cabecera es la
+  // primera fila entera en negrita en el PDF y en el Word, y poner o quitar la cabecera es poner o
+  // quitar esa negrita. Por eso esta puerta no exige nada de la primera fila.
   //
   // LO QUE YA ESTABA TORCIDO NO SE RECHAZA. Las tablas importadas de los documentos reales traen
   // defectos de maquetación del Word —un `rowspan` que se pasa del final, tablas de 13 a 17
@@ -293,7 +294,7 @@
   // Si la forma de la rejilla (las combinaciones de cada celda) es la que ya estaba guardada, solo
   // ha cambiado texto, y los defectos de cuadrícula y de tamaño no se vuelven a exigir. En cuanto la
   // forma cambia —una fila nueva, una celda combinada— se exige entera.
-  function motivoDeRejilla(valor, donde, { exigeCabecera = false, guardada } = {}) {
+  function motivoDeRejilla(valor, donde, { guardada } = {}) {
     if (!esObjeto(valor)) return `${donde} no es una tabla { filas: [[celda, …], …] }.`;
     const extra = sobran(valor, ['filas']);
     if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en una tabla: solo «filas».`;
@@ -315,9 +316,6 @@
         const t = motivoDeTextoDeCelda(valor.filas[i][j].text, `la celda ${j + 1} de la fila ${i + 1} de ${donde}`);
         if (t) return t;
       }
-    }
-    if (exigeCabecera && valor.filas.length && !valor.filas[0].every((x) => x.bold === true)) {
-      return `la primera fila de ${donde} es su cabecera y todas sus celdas tienen que ir en negrita («bold»: true): así la imprimen igual el PDF y el Word.`;
     }
     return null;
   }
@@ -718,9 +716,7 @@
       case TIPO_FICHA:
         return motivoFichas(valor, { multiple: !!campo.multiple });
       case TIPO_TABLA:
-        return motivoDeTablas(valor, campo, contexto.guardado, (v, donde, guardada) => motivoDeRejilla(v, donde, {
-          exigeCabecera: !!(campo.inicial && campo.columnas), guardada,
-        }));
+        return motivoDeTablas(valor, campo, contexto.guardado, (v, donde, guardada) => motivoDeRejilla(v, donde, { guardada }));
       case TIPO_CLAVE_VALOR:
         return motivoDeTablas(valor, campo, contexto.guardado, (v, donde) => motivoDeClaveValor(v, donde));
       default:

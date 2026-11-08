@@ -32,11 +32,12 @@
 //   tabla_clave_valor  { id, tipo, etiqueta, inicial: { pares } }
 //
 // `columnas` es lo que deja el importador (`motor/importar-docx.js`) y lo que lee el
-// generador (`campo.columnas ? true : undefined`): si hay títulos, la primera fila es la
-// cabecera. `inicial` es de la aplicación: la forma con la que se abre el campo mientras no
-// tenga valor (`valorInicial`), y la señal de que el campo se creó aquí, que es lo que activa
-// la comprobación de la cabecera en la puerta. El generador no lee ninguna de las dos cosas
-// más allá de `columnas`.
+// generador en una tabla importada (`campo.columnas ? true : undefined`): si hay títulos, la
+// primera fila es la cabecera. `inicial` es de la aplicación: la forma con la que se abre el
+// campo mientras no tenga valor (`valorInicial`), y la señal de que el campo se creó aquí. En un
+// campo con `inicial` el generador no mira `columnas`: la cabecera es la primera fila entera en
+// negrita, como en el Word, y el editor la pone y la quita con esa negrita. Quien necesite
+// distinguir una tabla creada de una importada (el editor de tablas) mira `inicial`.
 //
 // Lógica pura: sin DOM, sin node, sin red, sin localStorage. Vale como <script> en el
 // mockup, como `require` en las pruebas y en las rutas, y como `import` desde Next. Cuelga

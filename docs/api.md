@@ -273,10 +273,11 @@ el servidor no puedan tener ideas distintas de qué es una tabla válida.
 Qué hay que saber para escribir un editor sin adivinar:
 
 - **Cabecera.** La primera fila es la cabecera si todas sus celdas van en `bold: true`: se pinta con
-  fondo azul claro (fuera de la cabecera, una celda en negrita va en gris). El campo de una tabla creada
-  con cabecera lo lleva en `columnas`, como el que deja el importador, y la puerta exige entonces la
-  primera fila entera en negrita: el PDF lo decide por `columnas`, pero el Word solo mira la negrita, y
-  así las dos salidas coinciden. Los anchos no se guardan.
+  fondo azul claro (fuera de la cabecera, una celda en negrita va en gris). En una tabla creada en la
+  aplicación (la que lleva `inicial`) es el único criterio, en el PDF y en el Word: poner o quitar la
+  cabecera es poner o quitar la negrita de la primera fila, y la puerta no exige nada. Su `columnas`
+  se guarda como el que deja el importador pero el generador no lo lee. En una importada, el PDF sigue
+  decidiéndolo por `columnas`. Los anchos no se guardan.
 - **Las filas tienen que cuadrar.** Todas, del mismo ancho contando las casillas que vienen combinadas
   desde arriba. El generador rellena sin avisar lo que falta y sale una tabla torcida, así que se
   rechaza y el motivo dice qué fila sobra o falta. Una tabla importada que **ya venía** torcida se puede

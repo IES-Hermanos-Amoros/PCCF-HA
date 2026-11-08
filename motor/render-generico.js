@@ -162,7 +162,10 @@ function pintarCampo(campo, valor, ctx) {
       valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor) ? filasDeFicha(valor) : null),
       { cabecera: false, fontSize: 8.5 },
     )];
-    default: return [tablaGenerica(valor.filas, { cabecera: campo.columnas ? true : undefined })];
+    // Una tabla creada en la aplicación (`inicial`) tiene la cabecera que dice su primera fila, no
+    // `columnas`: es el mismo criterio que el Word, y lo que hace que quitar la cabecera sea quitar
+    // la negrita (core/estructurados.js, `motivoDeRejilla`).
+    default: return [tablaGenerica(valor.filas, { cabecera: campo.columnas && !campo.inicial ? true : undefined })];
   }
 }
 

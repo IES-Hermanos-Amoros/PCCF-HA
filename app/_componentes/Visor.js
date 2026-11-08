@@ -485,6 +485,9 @@ export default function Visor({
         + ' desde la portada del documento.');
     }
 
+    // Un campo nuevo cambia lo que trae el apartado abierto (`campos`): se vuelve a pedir.
+    if (accion === 'anadir_campo') recargarApartado();
+
     try {
       await recargarArbol();
     } catch (e) {
@@ -493,7 +496,7 @@ export default function Visor({
       setAvisoEstructura('El cambio se ha guardado, pero no se ha podido volver a leer el árbol:'
         + ` ${e.message} Recarga la página para verlo como está ahora.`);
     }
-  }, [entrada, ir, recargarArbol]);
+  }, [entrada, ir, recargarArbol, recargarApartado]);
 
   // Los dos recuentos de la barra lateral, con las correcciones de esta sesión:
   // el servidor los calculó con el árbol de entonces.
@@ -721,6 +724,8 @@ export default function Visor({
       fila={filasEstructura.get(nodo.seccion) || null}
       plantillaVersion={estructura ? estructura.plantillaVersion : documento.plantillaVersion}
       unidades={estructura ? estructura.unidades : 0}
+      tiposDeCampo={estructura ? estructura.tiposDeCampo : null}
+      limites={estructura ? estructura.limites : null}
       onCambiado={alCambiarEstructura}
       onIr={irAApartado}
     />

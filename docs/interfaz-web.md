@@ -118,6 +118,15 @@ Un mapa `tipo → componente`, con **fallback genérico** para tipos nuevos:
 | `tabla`, `auto.*` | Rejilla editable; texto de celda sin alterar `colspan/rowspan` |
 | `dual_ra_ce`, `texto` | Fallback genérico / campo simple |
 
+**Tablas creadas en la aplicación.** `tabla` y `tabla_clave_valor` tienen editor solo cuando el campo
+nació aquí (`campo.inicial`, ver `core/campos.js`): las del Word son el mismo tipo y siguen en solo
+lectura, porque el criterio del importador es que su PDF salga idéntico. El editor
+(`app/_componentes/EditorTablas.js`) es una cáscara sobre `core/tablas-edicion.js`, que decide qué
+pasa al escribir en una celda, añadir o quitar filas y columnas y poner o quitar la cabecera; el alta
+(`NuevoCampo.js`, `AnadirCampo.js`) se pinta del catálogo `tiposDeCampo` que devuelve
+`GET .../estructura`, con la lógica en `core/campos-forma.js`. Ambos guardan por el autoguardado de
+siempre. Todavía no hay celdas combinadas ni cambiar el nombre de un campo.
+
 Campos con `presencia: 9/11` (no existen en 2 módulos): la UI muestra **"vacío → añadir"**; hoy el PDF los omite en silencio.
 
 ### 3.3 Textos compartidos
