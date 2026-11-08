@@ -282,8 +282,9 @@ Qué hay que saber para escribir un editor sin adivinar:
   para que los documentos sigan pareciendo del centro y para que el PDF y el Word pinten lo mismo con la
   misma paleta. `fondo` no cambia qué es la cabecera ni el `headerRows` de la tabla: eso lo sigue
   decidiendo la negrita de la primera fila.
-- **Cabecera.** La primera fila es la cabecera si todas sus celdas van en `bold: true`: se pinta con
-  fondo azul claro (fuera de la cabecera, una celda en negrita va en gris). En una tabla creada en la
+- **Cabecera.** La primera fila es la cabecera si todas sus celdas van en `bold: true`. Que además
+  salga azul es cosa del fondo, que está arriba: aquí solo se decide QUÉ fila es la cabecera, o sea
+  cuál se repite al cambiar de página y cuenta como `headerRows`. En una tabla creada en la
   aplicación (la que lleva `inicial`) es el único criterio, en el PDF y en el Word: poner o quitar la
   cabecera es poner o quitar la negrita de la primera fila, y la puerta no exige nada. Su `columnas`
   se guarda como el que deja el importador pero el generador no lo lee. En una importada, el PDF sigue
