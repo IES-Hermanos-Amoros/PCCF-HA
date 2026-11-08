@@ -44,6 +44,10 @@ const llave = (i, j) => `${i}:${j}`;
 // con cabecera lo dice, porque quitarla no es lo mismo que quitar la cabecera del interruptor.
 const nombreDeFila = (i, cabecera) => (i === 0 && cabecera ? 'fila 1 (la cabecera)' : `fila ${i + 1}`);
 
+// Cómo se llama cada fondo en la pantalla. El nombre que se guarda es el de core/estructurados.js;
+// aquí solo se dice de qué color es, porque «etiqueta» no significa nada para quien lo lee.
+const NOMBRE_FONDO = { cabecera: 'azul claro', etiqueta: 'gris', ninguno: 'ninguno' };
+
 // La columna o columnas que ocupa una celda, para el nombre: «columna 2» o «columnas 2 a 3».
 const nombreDeColumnas = (pos) => (pos.ancho > 1
   ? `columnas ${pos.columna + 1} a ${pos.columna + pos.ancho}` : `columna ${pos.columna + 1}`);
@@ -176,6 +180,26 @@ export default function EditorTabla({ campo, valor, onCambio }) {
     dice: `La celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} se ha separado: cada casilla vuelve a ser una celda. El texto se queda en la primera.`,
     foco: () => ({ celda: llave(i, j) }),
   });
+  // El fondo elegido a mano manda sobre la negrita, así que el botón de negrita no puede prometer
+  // un sombreado que no va a salir.
+  const ayudaNegrita = (celda, enNegrita, sombreado) => {
+    if (celda.fondo !== undefined) {
+      return enNegrita
+        ? 'Puesta. El fondo de esta celda está elegido a mano, así que quitarla no le cambia el color.'
+        : 'Pulsa para ponerla. El fondo de esta celda está elegido a mano, así que no le cambia el color.';
+    }
+    return enNegrita
+      ? 'Puesta: sale sombreada. Pulsa para quitarla.'
+      : `Pulsa para ponerla: la celda saldrá en negrita y sombreada de ${sombreado}.`;
+  };
+
+  const ponerFondo = (i, j, cual) => hacer('fondo', { fila: i, columna: j, cual }, {
+    dice: cual === null
+      ? `El fondo de la celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} vuelve a decidirlo la negrita.`
+      : `La celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} tiene fondo ${NOMBRE_FONDO[cual]}.`,
+    foco: () => ({ celda: llave(i, j) }),
+  });
+
   const negrita = (i, j, puesta) => hacer('negrita', { fila: i, columna: j, puesta }, {
     dice: puesta
       ? `La celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} va en negrita: saldrá sombreada.`
@@ -185,9 +209,13 @@ export default function EditorTabla({ campo, valor, onCambio }) {
 
   // ---------------------------------------------------------------- piezas
 
-  const clasePorFila = (i, celda) => {
-    if (!celda.bold) return '';
-    return i === 0 && cabecera ? 'celda-cab' : 'celda-neg';
+  // La pantalla pinta el fondo que lleva la celda de verdad, el que decide core/, y no el que se
+  // deduzca aquí: si no, una celda con el fondo elegido a mano se vería de un color en la pantalla
+  // y saldría de otro en el PDF. La negrita es una clase aparte porque ya no implica fondo.
+  const claseCelda = (i, j, celda) => {
+    const fondo = Edicion.fondoEfectivo(valor, i, j);
+    return [fondo === 'cabecera' ? 'celda-cab' : '', fondo === 'etiqueta' ? 'celda-neg' : '',
+      celda.bold === true ? 'celda-negrita' : ''].filter(Boolean).join(' ');
   };
 
   const barra = (
@@ -265,12 +293,28 @@ export default function EditorTabla({ campo, valor, onCambio }) {
         <Boton valor={valor} refBoton={refBoton}
           nombre={`neg:${llave(i, j)}`} op="negrita" args={{ fila: i, columna: j, puesta: !enNegrita }}
           etiqueta={`Negrita de ${donde}`}
-          ayuda={enNegrita ? 'Puesta: sale sombreada. Pulsa para quitarla.' : `Pulsa para ponerla: la celda saldrá en negrita y sombreada de ${sombreado}.`}
+          ayuda={ayudaNegrita(celda, enNegrita, sombreado)}
           pulsado={enNegrita}
           accion={() => negrita(i, j, !enNegrita)}
         >
           Negrita
         </Boton>
+        {/* El fondo, por nombre y no por color: son los dos de los documentos del centro. «Según la
+            negrita» no guarda nada y deja que lo decida ella, que es como vienen las tablas del Word. */}
+        <label className="celda-fondo">
+          <span className="sr">{`Fondo de ${donde}`}</span>
+          <select
+            value={celda.fondo === undefined ? '' : celda.fondo}
+            disabled={!!motivoDe('fondo', { fila: i, columna: j, cual: null })}
+            onChange={(e) => ponerFondo(i, j, e.target.value === '' ? null : e.target.value)}
+            title={`Fondo de ${donde}`}
+          >
+            <option value="">{`Fondo: según la negrita (${enNegrita ? sombreado : 'ninguno'})`}</option>
+            <option value="cabecera">Fondo: azul claro</option>
+            <option value="etiqueta">Fondo: gris</option>
+            <option value="ninguno">Fondo: ninguno</option>
+          </select>
+        </label>
       </div>
     );
   };
@@ -284,9 +328,9 @@ export default function EditorTabla({ campo, valor, onCambio }) {
         <p className="ayuda">
           <strong>Unir</strong> junta una celda con la de su derecha o la de debajo; si la que se
           absorbe tenía texto, se añade al de esta en otra línea, así que no se pierde nada.
-          {' '}<strong>La negrita es también el sombreado</strong>: en el PDF y en el Word una celda en
-          negrita sale con fondo azul claro si está en la primera fila y toda ella va en negrita (la
-          cabecera), y con fondo gris en cualquier otro sitio.
+          {' '}<strong>El sombreado sale de la negrita</strong> mientras no se elija: una celda en
+          negrita sale azul claro si está en la cabecera y gris en cualquier otro sitio, en el PDF y en
+          el Word. Con <strong>Fondo</strong> se elige el de una celda suelta, y entonces manda ese.
         </p>
       )}
 
@@ -346,7 +390,7 @@ export default function EditorTabla({ campo, valor, onCambio }) {
                   {fila.map((celda, j) => (
                     <td
                       key={j}
-                      className={clasePorFila(i, celda)}
+                      className={claseCelda(i, j, celda)}
                       colSpan={celda.colspan > 1 ? celda.colspan : undefined}
                       rowSpan={celda.rowspan > 1 ? celda.rowspan : undefined}
                     >

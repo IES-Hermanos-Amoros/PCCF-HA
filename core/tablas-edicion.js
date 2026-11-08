@@ -8,7 +8,7 @@
 //
 // QUÉ SE EDITA
 //
-//   tabla              { filas: [[celda, …], …] }          celda { text, colspan?, rowspan?, bold? }
+//   tabla              { filas: [[celda, …], …] }   celda { text, colspan?, rowspan?, bold?, fondo? }
 //   tabla_clave_valor  { pares: [{ etiqueta, valor }] }
 //
 // Y solo las que se CREARON en la aplicación (`esEditable`): las que trajo el importador del Word
@@ -27,11 +27,21 @@
 //
 // LA CABECERA ES LA NEGRITA DE LA PRIMERA FILA
 //
-// No hay ningún otro dato: el PDF y el Word pintan de azul la primera fila si TODAS sus celdas van
-// en negrita (`tablaGenerica` de motor/render-generico.js, `tabla` de motor/exportar-docx.js), y
-// fuera de ella una celda en negrita se pinta en gris. Poner la cabecera es poner `bold: true` a
-// la primera fila; quitarla es ponérselo a `false`. El texto no se toca. Quitar la fila de la
-// cabecera con «quitar fila» también la quita: la fila que pasa a ser la primera no va en negrita.
+// No hay ningún otro dato: la primera fila es la cabecera si TODAS sus celdas van en negrita, y eso
+// es lo que hace que se repita al cambiar de página. Poner la cabecera es poner `bold: true` a la
+// primera fila; quitarla es ponérselo a `false`. El texto no se toca. Quitar la fila de la cabecera
+// con «quitar fila» también la quita: la fila que pasa a ser la primera no va en negrita.
+//
+// EL FONDO, QUE NO ES LA NEGRITA
+//
+// Mientras una celda no lleve `fondo`, su sombreado lo decide la negrita: azul claro en la cabecera,
+// gris fuera de ella. Con `fondo` manda la clave, y entonces se puede sombrear sin negrita, poner
+// negrita sin sombrear y usar el azul en cualquier fila. Quién gana lo decide `fondoDeCelda` de
+// core/estructurados.js, la misma función que usan el PDF, el Word y la pantalla, para que los tres
+// pinten la misma tabla. `fondoEfectivo` es la consulta que necesita el editor.
+//
+// El interruptor de cabecera le quita a la primera fila el fondo elegido a mano: es lo que permite
+// que ponerla y quitarla se note siempre, en lugar de dejar una cabecera sin azul sin explicación.
 //
 // LAS CELDAS COMBINADAS
 //
@@ -55,6 +65,8 @@
 //   quitar columna    cada `colspan` que la cubre se acorta; una celda que solo ocupaba esa
 //                     columna desaparece, y si una fila se queda sin ninguna celda propia se quita
 //                     también (sus casillas ya eran de las combinaciones de arriba).
+//   fondo             el fondo de una celda: «cabecera», «etiqueta», «ninguno», o sin valor para
+//                     que vuelva a decidirlo la negrita (se borra la clave, no se guarda vacía).
 //   combinar          la celda absorbe a sus vecinas de la derecha o de abajo. Los textos se
 //                     JUNTAN con un salto de línea, en el orden de lectura, y se salta el vacío:
 //                     combinar nunca pierde lo escrito. La celda que se queda conserva su negrita.
@@ -211,7 +223,16 @@
     return filas;
   }
 
-  const huecoVacio = (r, c, bold) => ({ r, c, cs: 1, rs: 1, celda: celdaNueva('', bold) });
+  const huecoVacio = (r, c, bold, fondo) => ({ r, c, cs: 1, rs: 1, celda: conFondo(celdaNueva('', bold), fondo) });
+
+  // Una celda con el fondo puesto o quitado. `cual` sin valor BORRA la clave en lugar de guardarla
+  // como `undefined`: una celda con `fondo: undefined` no pasa la puerta igual que una sin la clave,
+  // y lo que se guarda tiene que ser lo que el importador escribiría.
+  function conFondo(celda, cual) {
+    const fuera = { ...celda };
+    delete fuera.fondo;
+    return cual === undefined ? fuera : { ...fuera, fondo: cual };
+  }
   const copia = (g) => g.celdas.map((x) => ({ ...x }));
 
   // La primera fila que se quedaría sin ninguna celda propia, o -1.
@@ -356,6 +377,7 @@
         return null;
       case 'combinar':
       case 'separar':
+      case 'fondo':
       case 'negrita': {
         if (claveValor) return MOTIVO_CLAVE_VALOR_CELDAS;
         const f = args.fila;
@@ -364,6 +386,11 @@
           return 'No hay esa celda.';
         }
         if (op === 'negrita') return null;
+        if (op === 'fondo') {
+          return args.cual === null || args.cual === undefined || E.FONDOS_CELDA.indexOf(args.cual) >= 0
+            ? null
+            : 'Los fondos son ' + E.FONDOS_CELDA.join(', ') + ', o ninguno de ellos para que lo decida la negrita.';
+        }
         if (op === 'separar') {
           const celda = valor.filas[f][args.columna];
           return (celda.colspan || 1) > 1 || (celda.rowspan || 1) > 1 ? null : 'Esta celda no está combinada: no hay nada que separar.';
@@ -429,12 +456,16 @@
       };
     }
 
+    // El interruptor de cabecera manda sobre la primera fila: le pone o le quita la negrita y le
+    // QUITA el fondo elegido a mano, porque un «ninguno» suelto dejaría la cabecera sin azul y el
+    // interruptor parecería no hacer nada. Quien quiera otro color lo elige después, celda a celda.
     if (op === 'cabecera') {
       const puesta = !!args.puesta;
-      if (puesta ? tieneCabecera(valor) : filas[0].every((c) => c.bold !== true)) return valor;
+      const yaEsta = puesta ? tieneCabecera(valor) : filas[0].every((c) => c.bold !== true);
+      if (yaEsta && filas[0].every((c) => c.fondo === undefined)) return valor;
       return {
         ...valor,
-        filas: filas.map((f, i) => (i !== 0 ? f : f.map((c) => ({ ...c, bold: puesta })))),
+        filas: filas.map((f, i) => (i !== 0 ? f : f.map((c) => conFondo({ ...c, bold: puesta }, undefined)))),
       };
     }
 
@@ -445,6 +476,17 @@
         ...valor,
         filas: filas.map((f, i) => (i !== args.fila ? f
           : f.map((c, j) => (j === args.columna ? { ...c, bold: puesta } : c)))),
+      };
+    }
+
+    // «cual» null o sin pasar quita la clave: el fondo vuelve a decidirlo la negrita.
+    if (op === 'fondo') {
+      const cual = args.cual == null ? undefined : args.cual;
+      if (filas[args.fila][args.columna].fondo === cual) return valor;
+      return {
+        ...valor,
+        filas: filas.map((f, i) => (i !== args.fila ? f
+          : f.map((c, j) => (j === args.columna ? conFondo(c, cual) : c)))),
       };
     }
 
@@ -530,7 +572,7 @@
       propia.rs = 1;
       for (let dr = 0; dr < x.rs; dr += 1) {
         for (let dc = 0; dc < x.cs; dc += 1) {
-          if (dr || dc) celdas.push(huecoVacio(x.r + dr, x.c + dc, x.celda.bold === true));
+          if (dr || dc) celdas.push(huecoVacio(x.r + dr, x.c + dc, x.celda.bold === true, x.celda.fondo));
         }
       }
     } else {
@@ -555,10 +597,18 @@
     return { cabecera: false, filas: [] };
   }
 
+  // El fondo que una celda lleva DE VERDAD, con el nombre que entienden los dos motores: lo decide
+  // `fondoDeCelda` de core/estructurados.js, así que la pantalla no puede pintar una tabla distinta
+  // de la que se imprime.
+  function fondoEfectivo(valor, fila, columna) {
+    if (!esRejilla(valor) || !valor.filas[fila] || !valor.filas[fila][columna]) return null;
+    return Estructurados().fondoDeCelda(valor.filas[fila][columna], fila === 0 && tieneCabecera(valor));
+  }
+
   const api = {
     esEditable, esClaveValor, esRejilla,
     columnasDe, filasDe, tieneCombinadas, tieneCabecera, celdaNueva, descripcion, valorDe,
-    motivoDeNo, puede, aplicar, paraPintar, posiciones, celdaEn, textoQueSeJunta,
+    motivoDeNo, puede, aplicar, paraPintar, posiciones, celdaEn, textoQueSeJunta, fondoEfectivo,
   };
 
   global.Core = global.Core || {};

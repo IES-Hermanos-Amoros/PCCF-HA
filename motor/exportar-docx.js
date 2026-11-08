@@ -35,20 +35,16 @@ const path = require('path');
 const JSZip = require('jszip');
 const { resolverCompartidos, plano } = require('./compartidos');
 const { filasDeFicha, esSemantica } = require('./ficha-sa');
+const Est = require('../core/estructurados');
 
 const ANCHO_TABLA = 9638; // A4 (11906 twips) menos márgenes de 2 cm
 const MAX_NIVEL_LISTA = 8;
 const GRIS_BORDE = 'BFBFBF', AZUL_CLARO = 'D9E2F3', GRIS_FONDO = 'F2F2F2';
 
-// El fondo de una celda de tabla, sin «#». Con «fondo» manda el nombre; sin él, la negrita: azul en
-// la fila de cabecera y gris fuera de ella, y nada si no está en negrita. Es la misma regla que
-// `fondoDeCelda` de motor/render-generico.js.
-function fondoDeCelda(celda, enCabecera) {
-  if (celda.fondo === 'cabecera') return AZUL_CLARO;
-  if (celda.fondo === 'etiqueta') return GRIS_FONDO;
-  if (celda.fondo === 'ninguno') return null;
-  return celda.bold ? (enCabecera ? AZUL_CLARO : GRIS_FONDO) : null;
-}
+// El color de cada fondo, sin «#». QUÉ fondo lleva una celda lo decide `Est.fondoDeCelda` de
+// core/estructurados.js, que es la misma función que usan el PDF y el editor: aquí solo se traduce
+// el nombre al código que entiende Word.
+const COLOR_FONDO = { cabecera: AZUL_CLARO, etiqueta: GRIS_FONDO };
 
 // ---------------------------------------------------------------- XML
 // Los caracteres de control no son XML válido ni siquiera escapados.
@@ -149,7 +145,7 @@ function tabla(filas) {
       const props = `<w:tcW w:w="${ancho(c)}" w:type="dxa"/>${c.span > 1 ? `<w:gridSpan w:val="${c.span}"/>` : ''}`;
       if (c.continuacion) return `<w:tc><w:tcPr>${props}<w:vMerge/></w:tcPr><w:p/></w:tc>`;
       const vmerge = c.alto > 1 ? '<w:vMerge w:val="restart"/>' : '';
-      const relleno = fondoDeCelda(c.celda, i === 0 && cabecera);
+      const relleno = COLOR_FONDO[Est.fondoDeCelda(c.celda, i === 0 && cabecera)];
       const sombra = relleno ? `<w:shd w:val="clear" w:color="auto" w:fill="${relleno}"/>` : '';
       // cada línea de la celda es un párrafo: así las vuelve a juntar el importador
       const lineas = plano(c.celda.text).split('\n');

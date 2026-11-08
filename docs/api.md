@@ -281,7 +281,9 @@ Qué hay que saber para escribir un editor sin adivinar:
   el PDF y el Word de lo guardado y de lo importado siguen siendo el mismo. Se eligen nombres y no colores
   para que los documentos sigan pareciendo del centro y para que el PDF y el Word pinten lo mismo con la
   misma paleta. `fondo` no cambia qué es la cabecera ni el `headerRows` de la tabla: eso lo sigue
-  decidiendo la negrita de la primera fila.
+  decidiendo la negrita de la primera fila. Quién gana lo decide `Core.estructurados.fondoDeCelda`,
+  que devuelve el NOMBRE del fondo: la consultan el PDF, el Word y el editor, cada uno con su
+  sintaxis de color, para que la pantalla no pueda pintar una tabla distinta de la que se imprime.
 - **Cabecera.** La primera fila es la cabecera si todas sus celdas van en `bold: true`. Que además
   salga azul es cosa del fondo, que está arriba: aquí solo se decide QUÉ fila es la cabecera, o sea
   cuál se repite al cambiar de página y cuenta como `headerRows`. En una tabla creada en la

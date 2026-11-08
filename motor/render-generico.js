@@ -4,6 +4,7 @@
 const { resolverCompartidos } = require('./compartidos');
 const { filasDeFicha, esSemantica } = require('./ficha-sa');
 const Val = require('../core/validaciones');
+const Est = require('../core/estructurados');
 
 // El convenio con el que se imprime SI NADIE DICE OTRO. Es el estricto: los criterios de un RA
 // reparten su peso (ver core/validaciones.js).
@@ -79,14 +80,10 @@ function anchos(body, ncols) {
   if (total > disponible) w = w.map((x) => (x * disponible) / total);
   return w;
 }
-// El fondo de una celda de tabla. Con «fondo» manda el nombre; sin él, la negrita: azul en la fila de
-// cabecera y gris fuera de ella, y nada si no está en negrita.
-function fondoDeCelda(c, enCabecera) {
-  if (c.fondo === 'cabecera') return AZUL_CLARO;
-  if (c.fondo === 'etiqueta') return GRIS_FONDO;
-  if (c.fondo === 'ninguno') return undefined;
-  return c.bold ? (enCabecera ? AZUL_CLARO : GRIS_FONDO) : undefined;
-}
+// El color de cada fondo. QUÉ fondo lleva una celda lo decide `Est.fondoDeCelda` de
+// core/estructurados.js, que es la misma función que usan el Word y el editor: aquí solo se
+// traduce el nombre al color de pdfmake.
+const COLOR_FONDO = { cabecera: AZUL_CLARO, etiqueta: GRIS_FONDO };
 function tablaGenerica(rows, opts = {}) {
   if (!rows || !rows.length) return para('(tabla vacía)', { italics: true, color: GRIS });
   const { ncols, body } = rejilla(rows);
@@ -95,7 +92,7 @@ function tablaGenerica(rows, opts = {}) {
     if (c._ph) return {};
     const cell = { text: c.text || '', colSpan: c.colspan > 1 ? c.colspan : undefined, rowSpan: c.rowspan > 1 ? c.rowspan : undefined, fontSize: opts.fontSize };
     if (c.bold) cell.bold = true;
-    const fondo = fondoDeCelda(c, i === 0 && cabecera);
+    const fondo = COLOR_FONDO[Est.fondoDeCelda(c, i === 0 && cabecera)];
     if (fondo) cell.fillColor = fondo;
     return cell;
   }));

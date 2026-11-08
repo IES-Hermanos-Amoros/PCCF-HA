@@ -173,11 +173,25 @@
   // haya pedido. El importador escribe las cuatro primeras; «fondo» solo la escribe el editor.
   const CLAVES_CELDA = ['text', 'colspan', 'rowspan', 'bold', 'fondo'];
 
-  // Los fondos que una celda puede pedir, por NOMBRE y no por color: así el PDF y el Word pintan
-  // lo mismo con la misma paleta del centro. Sin la clave, el fondo lo decide la negrita
-  // (motor/render-generico.js y motor/exportar-docx.js), que es lo que tienen todas las celdas ya
-  // guardadas y las importadas.
+  // Los fondos que una celda puede pedir, por NOMBRE y no por color: así el PDF, el Word y la
+  // pantalla pintan lo mismo con la misma paleta del centro, cada uno en su sintaxis.
   const FONDOS_CELDA = ['cabecera', 'etiqueta', 'ninguno'];
+
+  // QUÉ FONDO LLEVA UNA CELDA: «cabecera», «etiqueta» o ninguno (null). La decisión es una sola y
+  // está aquí porque la toman tres sitios: el PDF (`#D9E2F3` / `#F2F2F2`), el Word (los mismos sin
+  // «#») y el editor (una clase de CSS). Si cada uno la escribiera, la pantalla acabaría pintando
+  // una tabla que no es la que sale impresa.
+  //
+  // Con «fondo» manda la clave, esté la celda en negrita o no y en la fila que esté. Sin ella lo
+  // decide la negrita, que es lo que tienen todas las celdas que vienen de un Word: en la cabecera,
+  // «cabecera»; en negrita fuera de ella, «etiqueta»; sin negrita, ninguno. `enCabecera` es si la
+  // celda está en la primera fila de una tabla cuya primera fila es la cabecera.
+  function fondoDeCelda(celda, enCabecera) {
+    const c = esObjeto(celda) ? celda : {};
+    if (c.fondo === 'cabecera' || c.fondo === 'etiqueta') return c.fondo;
+    if (c.fondo === 'ninguno') return null;
+    return c.bold ? (enCabecera ? 'cabecera' : 'etiqueta') : null;
+  }
 
   function motivoDeFilas(filas, donde) {
     if (!Array.isArray(filas)) return `${donde} no es una lista de filas.`;
@@ -743,8 +757,8 @@
 
   const api = {
     TIPOS, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_TABLA, TIPO_CLAVE_VALOR,
-    CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES,
-    seGuarda,
+    CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES, FONDOS_CELDA,
+    seGuarda, fondoDeCelda,
     motivoDeFilas, motivoDeRejilla, motivoDeClaveValor,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,

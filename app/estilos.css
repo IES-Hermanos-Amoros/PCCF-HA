@@ -1011,10 +1011,11 @@ del > mark.quita { text-decoration-thickness: 2px; }
 .tb-cabecera { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; cursor: pointer; }
 .tabla-editable { table-layout: auto; }
 .tabla-editable td { padding: 3px; vertical-align: top; }
+/* El fondo y la negrita son independientes: una celda puede ir sombreada sin negrita y al revés. */
 .tabla-editable .celda-cab { background: var(--azul-suave); }
 .tabla-editable .celda-neg { background: var(--panel-2); }
-.tabla-editable .celda-cab .celda-campo,
-.tabla-editable .celda-neg .celda-campo { font-weight: 600; }
+.tabla-editable .celda-negrita .celda-campo { font-weight: 600; }
+.celda-fondo select { font-size: 11.5px; padding: 1px 2px; max-width: 15ch; }
 .celda-campo {
   display: block; width: 100%; min-width: 7ch; min-height: 2em; box-sizing: border-box;
   border: 1px solid transparent; border-radius: 5px; background: transparent; color: inherit;

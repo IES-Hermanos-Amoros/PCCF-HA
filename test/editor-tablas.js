@@ -1088,6 +1088,101 @@ prueba('el docente no ve ni usa el alta de campos: es de la jefatura, y el servi
   assert.equal((await anadirCampo(u.ana, doc._id, 'atencion-a-la-diversidad', { campo: { tipo: 'tabla' } })).status, 403);
 });
 
+
+// ================================================================ el fondo de la celda
+
+const SALTO = String.fromCharCode(10);
+const fondosDe = (v) => v.filas.map((f) => f.map((x) => x.fondo));
+// Lo que el editor cree que lleva cada celda, para compararlo con lo que se imprime.
+const efectivosDe = (v) => v.filas.map((f, i) => f.map((x, j) => Edicion.fondoEfectivo(v, i, j)));
+
+prueba('el fondo de una celda se pone, se cambia y se quita, y quitarlo BORRA la clave', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  const azul = hacer(t, 'fondo', { fila: 1, columna: 0, cual: 'cabecera' });
+  assert.deepEqual(fondosDe(azul), [[undefined, undefined], ['cabecera', undefined]]);
+  const gris = hacer(azul, 'fondo', { fila: 1, columna: 0, cual: 'etiqueta' });
+  assert.deepEqual(fondosDe(gris), [[undefined, undefined], ['etiqueta', undefined]]);
+  const fuera = hacer(gris, 'fondo', { fila: 1, columna: 0, cual: null });
+  assert.ok(!('fondo' in fuera.filas[1][0]), 'la clave se borra, no se guarda como undefined');
+  assert.deepEqual(Object.keys(fuera.filas[1][0]).sort(), ['bold', 'colspan', 'rowspan', 'text']);
+  // Poner el mismo que ya tiene no cambia nada.
+  assert.equal(Edicion.aplicar(azul, 'fondo', { fila: 1, columna: 0, cual: 'cabecera' }), azul);
+  assert.equal(Edicion.aplicar(t, 'fondo', { fila: 0, columna: 0, cual: null }), t);
+});
+
+prueba('un fondo que no existe se niega y el motivo dice cuáles valen; la clave y valor no tiene fondo', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  niega(t, 'fondo', { fila: 0, columna: 0, cual: 'rosa' }, /cabecera, etiqueta, ninguno/);
+  niega(t, 'fondo', { fila: 0, columna: 0, cual: '#D9E2F3' }, /Los fondos son/);
+  niega(t, 'fondo', { fila: 9, columna: 0, cual: 'etiqueta' }, /No hay esa celda/);
+  niega({ pares: [{ etiqueta: 'a', valor: 'b' }] }, 'fondo', { fila: 0, columna: 0, cual: 'etiqueta' }, /formato fijo/);
+});
+
+prueba('el interruptor de cabecera le quita a la primera fila el fondo elegido a mano, en los dos sentidos', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  const conCab = hacer(t, 'cabecera', { puesta: true });
+  // Un «ninguno» suelto en la cabecera la dejaría sin azul: volver a pulsar el interruptor lo quita.
+  const roto = hacer(conCab, 'fondo', { fila: 0, columna: 0, cual: 'ninguno' });
+  assert.deepEqual(efectivosDe(roto)[0], [null, 'cabecera'], 'media cabecera sin color');
+  const arreglada = hacer(roto, 'cabecera', { puesta: true });
+  assert.deepEqual(fondosDe(arreglada)[0], [undefined, undefined]);
+  assert.deepEqual(efectivosDe(arreglada)[0], ['cabecera', 'cabecera']);
+  // Quitar la cabecera también limpia el fondo de la primera fila.
+  const pintada = hacer(arreglada, 'fondo', { fila: 0, columna: 1, cual: 'cabecera' });
+  const sinCab = hacer(pintada, 'cabecera', { puesta: false });
+  assert.deepEqual(fondosDe(sinCab)[0], [undefined, undefined]);
+  assert.deepEqual(efectivosDe(sinCab)[0], [null, null]);
+});
+
+prueba('combinar y separar conservan el fondo de la celda, y las casillas que quedan libres lo heredan', () => {
+  const t = { filas: [[c('a', { fondo: 'etiqueta' }), c('b'), c('c')], [c('d'), c('e'), c('f')]] };
+  const unida = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.equal(unida.filas[0][0].fondo, 'etiqueta', 'la celda que se queda conserva su fondo');
+  const suelta = hacer(unida, 'separar', { fila: 0, columna: 0 });
+  assert.deepEqual(fondosDe(suelta)[0], ['etiqueta', 'etiqueta', undefined], 'la casilla liberada hereda el fondo');
+  // Y el texto sigue estando entero.
+  assert.equal(suelta.filas[0][0].text, ['a', 'b'].join(SALTO));
+});
+
+prueba('mover filas y columnas no toca el fondo de las celdas que sobreviven', () => {
+  const t = { filas: [[c('a', { fondo: 'cabecera' }), c('b')], [c('c'), c('d', { fondo: 'etiqueta' })]] };
+  const conFila = hacer(t, 'anadir-fila', { despuesDe: 0 });
+  assert.deepEqual(fondosDe(conFila), [['cabecera', undefined], [undefined, undefined], [undefined, 'etiqueta']]);
+  const conCol = hacer(conFila, 'anadir-columna', { despuesDe: 0 });
+  assert.equal(conCol.filas[0][0].fondo, 'cabecera');
+  assert.equal(conCol.filas[2][2].fondo, 'etiqueta');
+  const menos = hacer(conCol, 'quitar-fila', { fila: 1 });
+  assert.equal(menos.filas[0][0].fondo, 'cabecera');
+});
+
+prueba('lo que la pantalla pinta es lo que se imprime: fondoEfectivo coincide con el fillColor del PDF', async () => {
+  const { u, doc } = await escenario();
+  const peticion = await peticionDeForma(u.jefa, doc._id, 'tabla', { etiqueta: 'Fondos', filas: '3', columnas: '2' });
+  const e0 = await (await estructuraDe(u.jefa, doc._id)).json();
+  await cambio(await anadirCampo(u.jefa, doc._id, 'atencion-a-la-diversidad', { campo: peticion, esperaPlantillaVersion: e0.plantillaVersion }), 201);
+  const { a, campo, valor } = await abrir(u.jefa, doc._id, 'atencion-a-la-diversidad', 'fondos');
+
+  // Una tabla construida con las operaciones del editor, con las tres situaciones nuevas.
+  let v = Edicion.aplicar(valor, 'texto', { fila: 0, columna: 0, valor: 'marca-fondos' });
+  v = Edicion.aplicar(v, 'fondo', { fila: 1, columna: 0, cual: 'cabecera' });
+  v = Edicion.aplicar(v, 'fondo', { fila: 1, columna: 1, cual: 'etiqueta' });
+  v = Edicion.aplicar(v, 'negrita', { fila: 2, columna: 0, puesta: true });
+  v = Edicion.aplicar(v, 'fondo', { fila: 2, columna: 0, cual: 'ninguno' });
+  sale(v, 'la tabla del editor');
+  const r = await guardarValor(u.jefa, doc._id, 'atencion-a-la-diversidad', a, campo.id, v);
+  assert.equal(r.status, 200, 'guardar: ' + JSON.stringify(await r.json()));
+
+  const tabla = tablasDe(await definicionDe(u.jefa, doc._id)).find((t) => textosDe(t).flat().includes('marca-fondos'));
+  const COLOR = { cabecera: '#D9E2F3', etiqueta: '#F2F2F2' };
+  const pintado = tabla.table.body.map((f) => f.map((x) => x.fillColor));
+  assert.deepEqual(pintado, efectivosDe(v).map((f) => f.map((x) => COLOR[x])),
+    'la pantalla y el PDF tienen que decir lo mismo de cada celda');
+  // Y las tres situaciones que antes eran imposibles salen de verdad en el papel.
+  assert.deepEqual(pintado[1], ['#D9E2F3', '#F2F2F2'], 'azul fuera de la cabecera, y gris sin negrita');
+  assert.equal(pintado[2][0], undefined, 'negrita sin sombrear, salio ' + JSON.stringify(pintado));
+  assert.equal(tabla.table.body[2][0].bold, true);
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {
