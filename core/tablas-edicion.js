@@ -33,12 +33,41 @@
 // la primera fila; quitarla es ponérselo a `false`. El texto no se toca. Quitar la fila de la
 // cabecera con «quitar fila» también la quita: la fila que pasa a ser la primera no va en negrita.
 //
-// LAS CELDAS COMBINADAS NO SE CREAN AQUÍ, PERO NO SE PIERDEN
+// LAS CELDAS COMBINADAS
 //
-// El modelo admite `colspan` y `rowspan` y una tabla que ya los trae se puede escribir celda a
-// celda. Cambiar su FORMA (filas, columnas) exigiría recolocar las combinaciones, que es otro
-// trabajo: mientras las haya, esas operaciones se niegan con su motivo. El texto y la cabecera
-// funcionan igual y conservan las combinaciones de cada celda tal cual.
+// Una celda combinada es una que lleva `colspan` o `rowspan` mayor que 1 y que ocupa varias
+// casillas de la cuadrícula. La fila del modelo SOLO lleva las celdas que nacen en ella: las
+// casillas que cubre una combinación de arriba no tienen celda en su fila. Por eso una fila puede
+// tener menos celdas que columnas, y por eso el índice de una celda en su fila (`columna` de
+// `texto`, `combinar`, `separar` y `negrita`) no es la columna de la cuadrícula (`columna` de
+// `anadir-columna` y `quitar-columna`). `posiciones` da la correspondencia.
+//
+// Las operaciones de forma se hacen sobre la cuadrícula colocada («colocar»): cada celda con su
+// fila, su columna y su tamaño. Se transforma la lista y se vuelve a escribir en filas, y así las
+// combinaciones se recolocan en lugar de romperse:
+//
+//   añadir fila       dentro del recorrido de un `rowspan`, lo alarga; en el resto de casillas
+//                     entra una celda vacía.
+//   quitar fila       las celdas que nacen en ella y siguen hacia abajo bajan a la fila siguiente
+//                     con su texto y un `rowspan` menos; las que la atraviesan acortan su `rowspan`.
+//   añadir columna    un `colspan` que la atraviesa se alarga; en el resto de filas entra una
+//                     celda vacía.
+//   quitar columna    cada `colspan` que la cubre se acorta; una celda que solo ocupaba esa
+//                     columna desaparece, y si una fila se queda sin ninguna celda propia se quita
+//                     también (sus casillas ya eran de las combinaciones de arriba).
+//   combinar          la celda absorbe a sus vecinas de la derecha o de abajo. Los textos se
+//                     JUNTAN con un salto de línea, en el orden de lectura, y se salta el vacío:
+//                     combinar nunca pierde lo escrito. La celda que se queda conserva su negrita.
+//   separar           devuelve la celda a 1 × 1 y rellena las casillas libres con celdas vacías
+//                     que heredan su negrita; el texto se queda en la primera casilla.
+//
+// Lo que no tiene salida se niega con su motivo: combinar con vecinas que no encajan en la forma de
+// la celda, o combinar si eso dejaría una fila sin ninguna celda propia (el modelo no admite filas
+// vacías: se quitaría la fila, no se combinaría).
+//
+// LA NEGRITA ES EL SOMBREADO. El PDF y el Word pintan de azul claro una celda en negrita de la
+// primera fila si toda ella lo está, y de gris cualquier otra celda en negrita. No hay un color
+// aparte: `negrita` es el único mando.
 //
 // UNA TABLA SIN FILAS SE GUARDA
 //
@@ -129,14 +158,164 @@
 
   // ---------------------------------------------------------------- lo que no se puede
 
-  const MOTIVO_COMBINADAS = 'Esta tabla tiene celdas combinadas y de momento solo se puede cambiar su texto y su cabecera: no sus filas ni sus columnas.';
+  // ---------------------------------------------------------------- la cuadrícula
 
-  // Por qué no se puede una operación, o null si se puede. `args` es el de la operación.
+  // Coloca las celdas como lo hace el generador: cada una en la primera casilla libre de su fila,
+  // saltando las que una combinación de arriba ya ocupa. Devuelve null si las filas no cuadran
+  // (fila corta o larga, combinación que se sale o que se pisa con otra): sobre eso no se puede
+  // razonar, y la puerta (core/estructurados.js) no deja guardarlo en una tabla creada aquí.
+  //
+  //   n        número de filas          ncols   ancho (lo que mide la primera fila)
+  //   mapa     mapa[fila][columna] → la celda que ocupa esa casilla
+  //   celdas   { r, c, cs, rs, j, celda }: fila, columna, anchura y altura en casillas, su
+  //            índice dentro de su fila (`j`) y la celda del modelo
+  function colocar(filas) {
+    const n = filas.length;
+    const mapa = filas.map(() => []);
+    const celdas = [];
+    let ncols = 0;
+    for (let i = 0; i < n; i += 1) {
+      let col = 0;
+      const fila = filas[i];
+      for (let j = 0; j < fila.length; j += 1) {
+        while (mapa[i][col]) col += 1;
+        const celda = fila[j];
+        const cs = celda.colspan || 1;
+        const rs = celda.rowspan || 1;
+        if (i + rs > n || (i > 0 && col + cs > ncols)) return null;
+        const x = { r: i, c: col, cs, rs, j, celda };
+        for (let dr = 0; dr < rs; dr += 1) {
+          for (let dc = 0; dc < cs; dc += 1) {
+            if (mapa[i + dr][col + dc]) return null;
+            mapa[i + dr][col + dc] = x;
+          }
+        }
+        celdas.push(x);
+        col += cs;
+      }
+      if (i === 0) ncols = col;
+      else for (let k = 0; k < ncols; k += 1) if (!mapa[i][k]) return null;
+    }
+    return { n, ncols, mapa, celdas };
+  }
+
+  // La celda del modelo con el tamaño que lleva ahora. Si no cambió se devuelve la misma, para que
+  // lo que no se toca siga siendo el mismo objeto.
+  const celdaFinal = (x) => (((x.celda.colspan || 1) === x.cs && (x.celda.rowspan || 1) === x.rs)
+    ? x.celda : { ...x.celda, colspan: x.cs, rowspan: x.rs });
+
+  // Las celdas colocadas otra vez como filas del modelo, en orden de lectura.
+  function aFilas(celdas, n) {
+    const filas = Array.from({ length: n }, () => []);
+    celdas.slice().sort((a, b) => a.r - b.r || a.c - b.c).forEach((x) => filas[x.r].push(celdaFinal(x)));
+    return filas;
+  }
+
+  const huecoVacio = (r, c, bold) => ({ r, c, cs: 1, rs: 1, celda: celdaNueva('', bold) });
+  const copia = (g) => g.celdas.map((x) => ({ ...x }));
+
+  // La primera fila que se quedaría sin ninguna celda propia, o -1.
+  function filaSinCeldas(celdas, n) {
+    for (let r = 0; r < n; r += 1) if (!celdas.some((x) => x.r === r)) return r;
+    return -1;
+  }
+
+  // Posición de cada celda en la cuadrícula: posiciones(valor)[fila][celda] = { columna, ancho,
+  // alto }, con `columna` contada en casillas. null si la tabla no cuadra o no es una rejilla.
+  function posiciones(valor) {
+    if (!esRejilla(valor)) return null;
+    const g = colocar(valor.filas);
+    if (!g) return null;
+    const res = valor.filas.map(() => []);
+    g.celdas.forEach((x) => { res[x.r][x.j] = { columna: x.c, ancho: x.cs, alto: x.rs }; });
+    return res;
+  }
+
+  // La celda (índice de fila y de celda en ella) que cubre la casilla de la cuadrícula (r, c).
+  function celdaEn(valor, r, c) {
+    if (!esRejilla(valor)) return null;
+    const g = colocar(valor.filas);
+    const x = g && g.mapa[r] && g.mapa[r][c];
+    return x ? { fila: x.r, columna: x.j } : null;
+  }
+
+  // Combinar la celda (fila, columna) con sus vecinas de la derecha o de abajo. Devuelve
+  // { motivo } si no se puede, o { celdas, texto, absorbido }: las celdas ya colocadas, el texto
+  // que queda en la celda y el que venía de las vecinas (vacío si ninguna llevaba).
+  //
+  // La vecina tiene que encajar: las casillas contiguas, en todo el alto (a la derecha) o el ancho
+  // (hacia abajo) de la celda, han de ser celdas enteras de la misma anchura (altura) que empiezan
+  // pegadas a la celda y no se salen de su alto (ancho). Entonces se las absorbe a todas y la celda
+  // crece lo que mide cada una. Los textos no vacíos se juntan con un salto de línea.
+  function combinarPlan(g, fila, columna, hacia) {
+    const x = g.celdas.find((y) => y.r === fila && y.j === columna);
+    if (!x) return { motivo: 'No hay esa celda.' };
+    const derecha = hacia === 'derecha';
+    if (!derecha && hacia !== 'abajo') return { motivo: 'Combinar es hacia la derecha o hacia abajo.' };
+    const vecinas = [];
+    let encaja;
+    if (derecha) {
+      const col = x.c + x.cs;
+      if (col >= g.ncols) return { motivo: 'Esta celda ya llega al borde derecho de la tabla: no tiene nada a su derecha que combinar.' };
+      for (let r = x.r; r < x.r + x.rs; r += 1) if (!vecinas.includes(g.mapa[r][col])) vecinas.push(g.mapa[r][col]);
+      encaja = vecinas.every((v) => v.c === col && v.r >= x.r && v.r + v.rs <= x.r + x.rs && v.cs === vecinas[0].cs);
+      if (!encaja) {
+        return { motivo: 'Las casillas de la derecha no encajan con la altura de esta celda (alguna empieza antes, acaba después o es más ancha que las demás): sepáralas primero.' };
+      }
+    } else {
+      const fil = x.r + x.rs;
+      if (fil >= g.n) return { motivo: 'Esta celda ya llega al borde inferior de la tabla: no tiene nada debajo que combinar.' };
+      for (let c = x.c; c < x.c + x.cs; c += 1) if (!vecinas.includes(g.mapa[fil][c])) vecinas.push(g.mapa[fil][c]);
+      encaja = vecinas.every((v) => v.r === fil && v.c >= x.c && v.c + v.cs <= x.c + x.cs && v.rs === vecinas[0].rs);
+      if (!encaja) {
+        return { motivo: 'Las casillas de debajo no encajan con el ancho de esta celda (alguna empieza antes, acaba después o es más alta que las demás): sepáralas primero.' };
+      }
+    }
+    const fuera = new Set(vecinas);
+    const absorbido = vecinas.map((v) => v.celda.text).filter((t) => String(t).trim() !== '').join('\n');
+    const propio = String(x.celda.text).trim() !== '';
+    const texto = propio && absorbido ? x.celda.text + '\n' + absorbido : (propio ? x.celda.text : absorbido || x.celda.text);
+    const celdas = g.celdas.filter((y) => !fuera.has(y)).map((y) => {
+      if (y !== x) return { ...y };
+      return derecha
+        ? { ...y, cs: y.cs + vecinas[0].cs, celda: { ...y.celda, text: texto } }
+        : { ...y, rs: y.rs + vecinas[0].rs, celda: { ...y.celda, text: texto } };
+    });
+    const vacia = filaSinCeldas(celdas, g.n);
+    if (vacia >= 0) {
+      return { motivo: `Combinar dejaría la fila ${vacia + 1} sin ninguna celda propia, porque todas sus casillas quedarían dentro de celdas combinadas de arriba. Quita esa fila en lugar de combinar.` };
+    }
+    return { celdas, texto, absorbido };
+  }
+
+  // El texto que se junta a la celda al combinarla en esa dirección, o '' si no hay ninguno o no se
+  // puede combinar. El editor lo muestra ANTES de que el gesto se haga.
+  function textoQueSeJunta(valor, args = {}) {
+    if (!esRejilla(valor)) return '';
+    const g = colocar(valor.filas);
+    if (!g) return '';
+    return combinarPlan(g, args.fila, args.columna, args.hacia).absorbido || '';
+  }
+
+  // ---------------------------------------------------------------- lo que no se puede
+
+  const MOTIVO_CLAVE_VALOR_CELDAS = 'Una tabla de clave y valor tiene un formato fijo (concepto en negrita, contenido normal): no se combinan celdas ni se cambia su negrita.';
+
+  // Por qué no se puede una operación, o null si se puede. `args` es el de la operación. Es la
+  // misma función para apagar el botón y para que `aplicar` se niegue: no pueden discrepar.
   function motivoDeNo(valor, op, args = {}) {
     const E = Estructurados();
     const claveValor = esClaveValor(valor);
     if (!claveValor && !esRejilla(valor)) return 'Esto no es una tabla.';
     const n = filasDe(valor);
+
+    // Las operaciones de forma razonan sobre la cuadrícula, y esa tiene que cuadrar.
+    if (!claveValor && ['anadir-fila', 'quitar-fila', 'anadir-columna', 'quitar-columna', 'combinar', 'separar'].includes(op)
+      && n && !colocar(valor.filas)) {
+      const porque = E.motivoDeRejilla(valor, 'la tabla');
+      return 'Las celdas combinadas de esta tabla no cuadran' + (porque ? ' (' + porque + ')' : '')
+        + ': corrígelo antes de cambiar sus filas o sus columnas.';
+    }
 
     switch (op) {
       case 'texto': {
@@ -147,7 +326,6 @@
         return Number.isInteger(args.columna) && args.columna >= 0 && args.columna < fila.length ? null : 'No hay esa celda.';
       }
       case 'anadir-fila': {
-        if (tieneCombinadas(valor)) return MOTIVO_COMBINADAS;
         if (n >= (claveValor ? E.MAX_PARES : E.MAX_FILAS)) {
           return 'Una tabla no puede tener más de ' + (claveValor ? E.MAX_PARES : E.MAX_FILAS) + ' filas.';
         }
@@ -155,13 +333,10 @@
         if (d !== undefined && d !== null && (!Number.isInteger(d) || d < 0 || d >= n)) return 'No hay esa fila.';
         return null;
       }
-      case 'quitar-fila': {
-        if (tieneCombinadas(valor)) return MOTIVO_COMBINADAS;
+      case 'quitar-fila':
         return Number.isInteger(args.fila) && args.fila >= 0 && args.fila < n ? null : 'No hay esa fila.';
-      }
       case 'anadir-columna': {
         if (claveValor) return 'Una tabla de clave y valor tiene siempre dos columnas.';
-        if (tieneCombinadas(valor)) return MOTIVO_COMBINADAS;
         if (!n) return 'La tabla no tiene filas: añade una fila antes de añadir columnas.';
         if (columnasDe(valor) >= E.MAX_COLUMNAS) {
           return 'Una tabla no puede tener más de ' + E.MAX_COLUMNAS + ' columnas: no caben en el ancho de la hoja.';
@@ -170,17 +345,31 @@
         if (d !== undefined && d !== null && (!Number.isInteger(d) || d < 0 || d >= columnasDe(valor))) return 'No hay esa columna.';
         return null;
       }
-      case 'quitar-columna': {
+      case 'quitar-columna':
         if (claveValor) return 'Una tabla de clave y valor tiene siempre dos columnas.';
-        if (tieneCombinadas(valor)) return MOTIVO_COMBINADAS;
         if (!n) return 'La tabla no tiene filas.';
         if (columnasDe(valor) <= 1) return 'Una tabla tiene al menos una columna: para vaciarla, quita sus filas.';
         return Number.isInteger(args.columna) && args.columna >= 0 && args.columna < columnasDe(valor) ? null : 'No hay esa columna.';
-      }
       case 'cabecera':
         if (claveValor) return 'Una tabla de clave y valor no tiene fila de cabecera.';
         if (!n) return 'La tabla no tiene filas: añade una antes de ponerle cabecera.';
         return null;
+      case 'combinar':
+      case 'separar':
+      case 'negrita': {
+        if (claveValor) return MOTIVO_CLAVE_VALOR_CELDAS;
+        const f = args.fila;
+        if (!Number.isInteger(f) || f < 0 || f >= n
+          || !Number.isInteger(args.columna) || args.columna < 0 || args.columna >= valor.filas[f].length) {
+          return 'No hay esa celda.';
+        }
+        if (op === 'negrita') return null;
+        if (op === 'separar') {
+          const celda = valor.filas[f][args.columna];
+          return (celda.colspan || 1) > 1 || (celda.rowspan || 1) > 1 ? null : 'Esta celda no está combinada: no hay nada que separar.';
+        }
+        return combinarPlan(colocar(valor.filas), f, args.columna, args.hacia).motivo || null;
+      }
       default:
         return 'Operación desconocida: ' + op + '.';
     }
@@ -200,6 +389,12 @@
   //   anadir-columna   { despuesDe? }               sin `despuesDe`, al final
   //   quitar-columna   { columna }
   //   cabecera         { puesta }                   true: primera fila en negrita; false: sin negrita
+  //   combinar         { fila, columna, hacia }     hacia 'derecha' o 'abajo'; `columna` es el índice de la celda en su fila
+  //   separar          { fila, columna }            la celda vuelve a 1 × 1
+  //   negrita          { fila, columna, puesta }    la negrita de una celda
+  //
+  // En `anadir-columna` y `quitar-columna`, `columna` y `despuesDe` cuentan casillas de la
+  // cuadrícula; en el resto, `columna` es el índice de la celda en su fila.
   //
   // `contexto.columnas` es el ancho con el que abrir una fila en una tabla que se ha quedado sin
   // ninguna. Devuelve el mismo objeto si la operación no se puede hacer o no cambia nada.
@@ -234,30 +429,6 @@
       };
     }
 
-    if (op === 'anadir-fila') {
-      const ancho = columnasDe(valor) || Math.min(Math.max(parseInt(contexto.columnas, 10) || 1, 1), E.MAX_COLUMNAS);
-      const fila = [];
-      for (let j = 0; j < ancho; j += 1) fila.push(celdaNueva('', false));
-      const i = args.despuesDe == null ? filas.length : args.despuesDe + 1;
-      return { ...valor, filas: insertar(filas, i, fila) };
-    }
-
-    if (op === 'quitar-fila') return { ...valor, filas: filas.filter((_, i) => i !== args.fila) };
-
-    if (op === 'anadir-columna') {
-      const j = args.despuesDe == null ? columnasDe(valor) : args.despuesDe + 1;
-      const titulo = 'Columna ' + (columnasDe(valor) + 1);
-      const cabecera = tieneCabecera(valor);
-      return {
-        ...valor,
-        filas: filas.map((f, i) => insertar(f, j, i === 0 && cabecera ? celdaNueva(titulo, true) : celdaNueva('', false))),
-      };
-    }
-
-    if (op === 'quitar-columna') {
-      return { ...valor, filas: filas.map((f) => f.filter((_, j) => j !== args.columna)) };
-    }
-
     if (op === 'cabecera') {
       const puesta = !!args.puesta;
       if (puesta ? tieneCabecera(valor) : filas[0].every((c) => c.bold !== true)) return valor;
@@ -266,7 +437,106 @@
         filas: filas.map((f, i) => (i !== 0 ? f : f.map((c) => ({ ...c, bold: puesta })))),
       };
     }
-    return valor;
+
+    if (op === 'negrita') {
+      const puesta = !!args.puesta;
+      if ((filas[args.fila][args.columna].bold === true) === puesta) return valor;
+      return {
+        ...valor,
+        filas: filas.map((f, i) => (i !== args.fila ? f
+          : f.map((c, j) => (j === args.columna ? { ...c, bold: puesta } : c)))),
+      };
+    }
+
+    // Lo que queda cambia la forma: se hace sobre la cuadrícula colocada.
+    const g = colocar(filas);
+    let celdas;
+    let n = g.n;
+
+    if (op === 'anadir-fila') {
+      const ancho = g.ncols || Math.min(Math.max(parseInt(contexto.columnas, 10) || 1, 1), E.MAX_COLUMNAS);
+      const k = args.despuesDe == null ? n : args.despuesDe + 1;
+      const atravesadas = new Set();
+      celdas = copia(g);
+      celdas.forEach((x) => {
+        if (x.r < k && x.r + x.rs > k) {
+          x.rs += 1;
+          for (let c = x.c; c < x.c + x.cs; c += 1) atravesadas.add(c);
+        } else if (x.r >= k) x.r += 1;
+      });
+      for (let c = 0; c < ancho; c += 1) if (!atravesadas.has(c)) celdas.push(huecoVacio(k, c, false));
+      n += 1;
+    } else if (op === 'quitar-fila') {
+      const f = args.fila;
+      const eraCabecera = f === 0 && tieneCabecera(valor);
+      celdas = [];
+      copia(g).forEach((x) => {
+        if (x.r === f) {
+          if (x.rs === 1) return;
+          // Nace aquí y sigue hacia abajo: baja a la fila siguiente (que pasa a ser esta) con su
+          // texto. Si era la cabecera, deja de serlo: la fila que queda primera no va en negrita.
+          x.rs -= 1;
+          if (eraCabecera) x.celda = { ...x.celda, bold: false };
+        } else if (x.r < f && x.r + x.rs > f) x.rs -= 1;
+        else if (x.r > f) x.r -= 1;
+        celdas.push(x);
+      });
+      n -= 1;
+    } else if (op === 'anadir-columna') {
+      const k = args.despuesDe == null ? g.ncols : args.despuesDe + 1;
+      const titulo = 'Columna ' + (g.ncols + 1);
+      const cabecera = tieneCabecera(valor);
+      const atravesadas = new Set();
+      celdas = copia(g);
+      celdas.forEach((x) => {
+        if (x.c < k && x.c + x.cs > k) {
+          x.cs += 1;
+          for (let r = x.r; r < x.r + x.rs; r += 1) atravesadas.add(r);
+        } else if (x.c >= k) x.c += 1;
+      });
+      for (let r = 0; r < n; r += 1) {
+        if (atravesadas.has(r)) continue;
+        celdas.push(r === 0 && cabecera
+          ? { r, c: k, cs: 1, rs: 1, celda: celdaNueva(titulo, true) }
+          : huecoVacio(r, k, false));
+      }
+    } else if (op === 'quitar-columna') {
+      const col = args.columna;
+      celdas = [];
+      copia(g).forEach((x) => {
+        if (x.c <= col && col < x.c + x.cs) {
+          x.cs -= 1;
+          if (!x.cs) return;
+        } else if (x.c > col) x.c -= 1;
+        celdas.push(x);
+      });
+      // Una fila cuyas celdas eran solo de esa columna queda sin celdas propias: sus casillas ya
+      // eran de combinaciones de arriba, así que se quita y esas combinaciones se acortan.
+      for (let r = n - 1; r >= 0; r -= 1) {
+        if (celdas.some((x) => x.r === r)) continue;
+        celdas.forEach((x) => {
+          if (x.r < r && x.r + x.rs > r) x.rs -= 1;
+          else if (x.r > r) x.r -= 1;
+        });
+        n -= 1;
+      }
+    } else if (op === 'combinar') {
+      celdas = combinarPlan(g, args.fila, args.columna, args.hacia).celdas;
+    } else if (op === 'separar') {
+      const x = g.celdas.find((y) => y.r === args.fila && y.j === args.columna);
+      celdas = copia(g);
+      const propia = celdas.find((y) => y.r === x.r && y.c === x.c);
+      propia.cs = 1;
+      propia.rs = 1;
+      for (let dr = 0; dr < x.rs; dr += 1) {
+        for (let dc = 0; dc < x.cs; dc += 1) {
+          if (dr || dc) celdas.push(huecoVacio(x.r + dr, x.c + dc, x.celda.bold === true));
+        }
+      }
+    } else {
+      return valor;
+    }
+    return { ...valor, filas: aFilas(celdas, n) };
   }
 
   // ---------------------------------------------------------------- para pintar
@@ -288,7 +558,7 @@
   const api = {
     esEditable, esClaveValor, esRejilla,
     columnasDe, filasDe, tieneCombinadas, tieneCabecera, celdaNueva, descripcion, valorDe,
-    motivoDeNo, puede, aplicar, paraPintar,
+    motivoDeNo, puede, aplicar, paraPintar, posiciones, celdaEn, textoQueSeJunta,
   };
 
   global.Core = global.Core || {};

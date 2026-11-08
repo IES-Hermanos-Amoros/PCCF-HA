@@ -469,25 +469,293 @@ prueba('la cabecera es la negrita de la primera fila: ponerla y quitarla no toca
   assert.equal(Edicion.tieneCabecera({ filas: [] }), false);
 });
 
-prueba('las celdas combinadas no se crean, no se pierden, y mientras estén no se cambia la forma', () => {
-  const combinada = { filas: [
-    [c('Título', { bold: true, colspan: 2 })],
-    [c('a'), c('b')],
-  ] };
-  assert.equal(Est.motivoDeRejilla(combinada, 'la tabla'), null);
-  assert.equal(Edicion.tieneCombinadas(combinada), true);
-  assert.equal(Edicion.columnasDe(combinada), 2);
-  for (const [op, args] of [['anadir-fila', {}], ['quitar-fila', { fila: 1 }], ['anadir-columna', {}], ['quitar-columna', { columna: 0 }]]) {
-    assert.ok(/combinadas/.test(Edicion.motivoDeNo(combinada, op, args)), op);
-    assert.equal(Edicion.aplicar(combinada, op, args), combinada, op);
-  }
-  // El texto y la cabecera sí, conservando colspan.
-  const escrita = Edicion.aplicar(combinada, 'texto', { fila: 1, columna: 1, valor: 'B' });
+// ---------------------------------------------------------------- celdas combinadas
+
+// Lo que la puerta del servidor diría de este valor: null si lo acepta.
+const puerta = (v) => Est.motivoDeRejilla(v, 'la tabla');
+const sale = (v, texto) => assert.equal(puerta(v), null, `${texto || ''} → ${JSON.stringify(v)}`);
+
+// Una tabla de texto plano: cada fila una lista de cadenas.
+const plana = (...filas) => ({ filas: filas.map((f) => f.map((t) => c(t))) });
+// Lo que dice cada fila: texto, y @cs / @rs si la celda se combina.
+const resumen = (v) => v.filas.map((f) => f.map((x) => x.text
+  + ((x.colspan || 1) > 1 ? `@c${x.colspan}` : '') + ((x.rowspan || 1) > 1 ? `@r${x.rowspan}` : '')));
+const hacer = (v, op, args, ctx) => {
+  const r = Edicion.aplicar(v, op, args, ctx);
+  assert.notEqual(r, v, `${op} ${JSON.stringify(args)} no hizo nada: ${Edicion.motivoDeNo(v, op, args)}`);
+  sale(r, `${op} ${JSON.stringify(args)}`);
+  return r;
+};
+const niega = (v, op, args, patron) => {
+  const motivo = Edicion.motivoDeNo(v, op, args);
+  assert.ok(motivo && patron.test(motivo), `${op}: ${motivo}`);
+  assert.equal(Edicion.aplicar(v, op, args), v, `${op} debía devolver el mismo valor`);
+};
+
+prueba('combinar a la derecha y hacia abajo: la celda crece, absorbe a la vecina y junta los textos con un salto', () => {
+  const t = plana(['a', 'b', 'c'], ['d', 'e', 'f'], ['g', 'h', 'i']);
+  const der = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.deepEqual(resumen(der), [['a\nb@c2', 'c'], ['d', 'e', 'f'], ['g', 'h', 'i']]);
+  assert.equal(Edicion.columnasDe(der), 3);
+  const aba = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'abajo' });
+  assert.deepEqual(resumen(aba), [['a\nd@r2', 'b', 'c'], ['e', 'f'], ['g', 'h', 'i']]);
+  // El original no se muta.
+  assert.deepEqual(resumen(t), [['a', 'b', 'c'], ['d', 'e', 'f'], ['g', 'h', 'i']]);
+  // Una vecina vacía no deja saltos de línea sueltos, y si la celda estaba vacía queda el texto de la vecina.
+  const v = hacer(plana(['a', ''], ['', 'x']), 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.equal(v.filas[0][0].text, 'a');
+  const w = hacer(plana(['', 'b'], ['c', 'x']), 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.equal(w.filas[0][0].text, 'b');
+  // Lo que se va a juntar se sabe antes de hacerlo.
+  assert.equal(Edicion.textoQueSeJunta(t, { fila: 0, columna: 0, hacia: 'derecha' }), 'b');
+  assert.equal(Edicion.textoQueSeJunta(plana(['a', ''], ['', 'x']), { fila: 0, columna: 0, hacia: 'derecha' }), '');
+  assert.equal(Edicion.textoQueSeJunta(t, { fila: 2, columna: 0, hacia: 'abajo' }), '');
+});
+
+prueba('combinar conserva la negrita de la celda que se queda, no la de la absorbida', () => {
+  const t = { filas: [[c('A', { bold: true }), c('B')], [c('C'), c('D', { bold: true })]] };
+  const v = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.equal(v.filas[0][0].bold, true);
+  const w = hacer(t, 'combinar', { fila: 0, columna: 1, hacia: 'abajo' });
+  assert.equal(w.filas[0][1].bold, false);
+});
+
+prueba('combinaciones encadenadas: la celda grande absorbe a todas las vecinas que encajan', () => {
+  let t = plana(['a', 'b', 'c'], ['d', 'e', 'f'], ['g', 'h', 'i']);
+  t = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'abajo' });
+  // Ahora «a\nd» ocupa dos filas: a su derecha hay dos celdas apiladas, b y e, y entran las dos.
+  t = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.deepEqual(resumen(t), [['a\nd\nb\ne@c2@r2', 'c'], ['f'], ['g', 'h', 'i']]);
+  // Su vecina de la derecha ocupa toda la casilla que le queda a la fila 2, y absorberla la dejaría sin celdas.
+  niega(t, 'combinar', { fila: 0, columna: 1, hacia: 'abajo' }, /fila 2 sin ninguna celda propia/);
+  // Debajo hay tres celdas y dos caben bajo el ancho de la grande: las dos entran.
+  t = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'abajo' });
+  assert.deepEqual(resumen(t), [['a\nd\nb\ne\ng\nh@c2@r3', 'c'], ['f'], ['i']]);
+  assert.equal(Edicion.columnasDe(t), 3);
+});
+
+prueba('combinar se niega, con el motivo, cuando no hay vecina, no encaja o dejaría una fila sin celdas', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  niega(t, 'combinar', { fila: 0, columna: 1, hacia: 'derecha' }, /borde derecho/);
+  niega(t, 'combinar', { fila: 1, columna: 0, hacia: 'abajo' }, /borde inferior/);
+  niega(t, 'combinar', { fila: 5, columna: 0, hacia: 'derecha' }, /No hay esa celda/);
+  niega(t, 'combinar', { fila: 0, columna: 0, hacia: 'arriba' }, /derecha o hacia abajo/);
+  // La vecina sigue hacia abajo más que la celda: no se puede absorber una parte.
+  const alta = { filas: [[c('a'), c('b', { rowspan: 2 })], [c('c')]] };
+  sale(alta);
+  niega(alta, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' }, /no encajan con la altura/);
+  // Combinar las dos de arriba hacia abajo deja la segunda fila sin celdas propias.
+  const abajo = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'abajo' });
+  niega(abajo, 'combinar', { fila: 0, columna: 1, hacia: 'abajo' }, /fila 2 sin ninguna celda propia.*Quita esa fila/);
+});
+
+prueba('combinar en la última fila, en la primera columna, en una tabla de una celda y en una sin filas', () => {
+  const t = plana(['a', 'b', 'c'], ['d', 'e', 'f']);
+  const ultima = hacer(t, 'combinar', { fila: 1, columna: 1, hacia: 'derecha' });
+  assert.deepEqual(resumen(ultima), [['a', 'b', 'c'], ['d', 'e\nf@c2']]);
+  const primera = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'abajo' });
+  assert.deepEqual(resumen(primera)[1], ['e', 'f']);
+  const una = plana(['solo']);
+  niega(una, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' }, /borde derecho/);
+  niega(una, 'combinar', { fila: 0, columna: 0, hacia: 'abajo' }, /borde inferior/);
+  niega(una, 'separar', { fila: 0, columna: 0 }, /no está combinada/);
+  let dos = hacer(una, 'anadir-columna', {});
+  dos = hacer(dos, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.deepEqual(resumen(dos), [['solo@c2']]);
+  sale(hacer(dos, 'quitar-columna', { columna: 1 }));
+  const vacia = { filas: [] };
+  niega(vacia, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' }, /No hay esa celda/);
+  niega(vacia, 'separar', { fila: 0, columna: 0 }, /No hay esa celda/);
+  niega(vacia, 'negrita', { fila: 0, columna: 0, puesta: true }, /No hay esa celda/);
+});
+
+prueba('separar devuelve la celda a 1 × 1, rellena lo libre con celdas vacías y deja el texto en la primera casilla', () => {
+  let t = plana(['a', 'b', 'c'], ['d', 'e', 'f']);
+  t = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  t = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'abajo' });
+  assert.deepEqual(resumen(t), [['a\nb\nd\ne@c2@r2', 'c'], ['f']]);
+  const s = hacer(t, 'separar', { fila: 0, columna: 0 });
+  assert.deepEqual(resumen(s), [['a\nb\nd\ne', '', 'c'], ['', '', 'f']]);
+  assert.equal(Edicion.tieneCombinadas(s), false);
+  assert.deepEqual(s.filas[0][1], { text: '', colspan: 1, rowspan: 1, bold: false });
+  // Una celda en negrita separada rellena con celdas en negrita: la cabecera sigue siéndolo.
+  const cab = { filas: [[c('T', { bold: true, colspan: 2 })], [c('x'), c('y')]] };
+  sale(cab);
+  const sep = hacer(cab, 'separar', { fila: 0, columna: 0 });
+  assert.equal(Edicion.tieneCabecera(sep), true);
+  assert.equal(sep.filas[0].length, 2);
+});
+
+prueba('negrita celda a celda: es el sombreado, y no toca nada más', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  const v = hacer(t, 'negrita', { fila: 1, columna: 0, puesta: true });
+  assert.equal(v.filas[1][0].bold, true);
+  assert.equal(v.filas[1][1].bold, false);
+  assert.equal(v.filas[0], t.filas[0], 'las otras filas son las mismas');
+  // Quitarla y ponerla otra vez no cambia nada.
+  assert.equal(Edicion.aplicar(v, 'negrita', { fila: 1, columna: 0, puesta: true }), v);
+  assert.equal(Edicion.aplicar(t, 'negrita', { fila: 1, columna: 0, puesta: false }), t);
+  assert.equal(hacer(v, 'negrita', { fila: 1, columna: 0, puesta: false }).filas[1][0].bold, false);
+  // Toda la primera fila en negrita es la cabecera; una sola celda de la primera fila, no.
+  let h = hacer(t, 'negrita', { fila: 0, columna: 0, puesta: true });
+  assert.equal(Edicion.tieneCabecera(h), false);
+  h = hacer(h, 'negrita', { fila: 0, columna: 1, puesta: true });
+  assert.equal(Edicion.tieneCabecera(h), true);
+  // Una tabla de clave y valor tiene formato fijo.
+  const kv = { pares: [{ etiqueta: 'a', valor: 'b' }] };
+  niega(kv, 'negrita', { fila: 0, columna: 0, puesta: true }, /formato fijo/);
+  niega(kv, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' }, /formato fijo/);
+  niega(kv, 'separar', { fila: 0, columna: 0 }, /formato fijo/);
+});
+
+prueba('añadir una fila dentro del recorrido de un rowspan lo alarga; en el límite, no', () => {
+  const t = { filas: [[c('a', { rowspan: 2 }), c('b')], [c('c')]] };
+  sale(t);
+  const dentro = hacer(t, 'anadir-fila', { despuesDe: 0 });
+  assert.deepEqual(resumen(dentro), [['a@r3', 'b'], [''], ['c']]);
+  const despues = hacer(t, 'anadir-fila', { despuesDe: 1 });
+  assert.deepEqual(resumen(despues), [['a@r2', 'b'], ['c'], ['', '']]);
+  const alFinal = hacer(t, 'anadir-fila', {});
+  assert.deepEqual(resumen(alFinal), resumen(despues));
+  // Dos combinaciones que cruzan la misma frontera crecen las dos, y se añade una celda en el hueco.
+  const dos = { filas: [[c('a', { rowspan: 2 }), c('b'), c('c', { rowspan: 2 })], [c('d')]] };
+  sale(dos);
+  assert.deepEqual(resumen(hacer(dos, 'anadir-fila', { despuesDe: 0 })), [['a@r3', 'b', 'c@r3'], [''], ['d']]);
+  // Una celda ancha que cruza la frontera no pide celdas nuevas bajo ninguna de sus columnas.
+  const ancha = { filas: [[c('a', { rowspan: 2, colspan: 2 }), c('b')], [c('c')]] };
+  sale(ancha);
+  assert.deepEqual(resumen(hacer(ancha, 'anadir-fila', { despuesDe: 0 })), [['a@c2@r3', 'b'], [''], ['c']]);
+});
+
+prueba('quitar la fila donde nace un rowspan: la celda baja con su texto y un rowspan menos; si la atraviesa, se acorta', () => {
+  const t = { filas: [[c('a', { rowspan: 3 }), c('b')], [c('c')], [c('d')]] };
+  sale(t);
+  assert.deepEqual(resumen(hacer(t, 'quitar-fila', { fila: 0 })), [['a@r2', 'c'], ['d']]);
+  assert.deepEqual(resumen(hacer(t, 'quitar-fila', { fila: 1 })), [['a@r2', 'b'], ['d']]);
+  assert.deepEqual(resumen(hacer(t, 'quitar-fila', { fila: 2 })), [['a@r2', 'b'], ['c']]);
+  // Con rowspan 2 la celda queda en 1 y ya no es combinada.
+  const dos = { filas: [[c('a', { rowspan: 2 }), c('b')], [c('c')]] };
+  const sin = hacer(dos, 'quitar-fila', { fila: 0 });
+  assert.deepEqual(resumen(sin), [['a', 'c']]);
+  assert.equal(Edicion.tieneCombinadas(sin), false);
+  // Quitar la última deja la tabla vacía, como siempre.
+  assert.deepEqual(hacer({ filas: [[c('a', { rowspan: 1 })]] }, 'quitar-fila', { fila: 0 }), { filas: [] });
+  // La cabecera que nace en la primera fila con un rowspan: al quitarla, lo que baja deja de ser cabecera.
+  const cab = { filas: [[c('H', { bold: true, rowspan: 2 }), c('X', { bold: true })], [c('y')]] };
+  sale(cab);
+  assert.equal(Edicion.tieneCabecera(cab), true);
+  const sinCab = hacer(cab, 'quitar-fila', { fila: 0 });
+  assert.deepEqual(resumen(sinCab), [['H', 'y']]);
+  assert.equal(sinCab.filas[0][0].bold, false);
+  assert.equal(Edicion.tieneCabecera(sinCab), false);
+});
+
+prueba('añadir y quitar columnas ajustan los colspan que las atraviesan', () => {
+  const t = { filas: [[c('T', { bold: true, colspan: 2 })], [c('a'), c('b')]] };
+  sale(t);
+  assert.deepEqual(resumen(hacer(t, 'anadir-columna', { despuesDe: 0 })), [['T@c3'], ['a', '', 'b']]);
+  // Al borde de la celda ancha no la atraviesa: entra una celda nueva, y en la cabecera lleva título.
+  const alFinal = hacer(t, 'anadir-columna', {});
+  assert.deepEqual(resumen(alFinal), [['T@c2', 'Columna 3'], ['a', 'b', '']]);
+  assert.equal(alFinal.filas[0][1].bold, true);
+  // Quitar una columna que la celda ancha cubre solo en parte la acorta.
+  assert.deepEqual(resumen(hacer(t, 'quitar-columna', { columna: 0 })), [['T'], ['b']]);
+  assert.deepEqual(resumen(hacer(t, 'quitar-columna', { columna: 1 })), [['T'], ['a']]);
+  // Una celda que solo ocupaba la columna quitada desaparece con su rowspan.
+  const alta = { filas: [[c('A', { rowspan: 2 }), c('b')], [c('c')]] };
+  sale(alta);
+  assert.deepEqual(resumen(hacer(alta, 'quitar-columna', { columna: 0 })), [['b'], ['c']]);
+  // Si una fila se queda sin celdas propias, se quita y la celda de arriba se acorta.
+  assert.deepEqual(resumen(hacer(alta, 'quitar-columna', { columna: 1 })), [['A']]);
+  // Una columna ancha nunca baja a 0 casillas: una tabla de una columna no se queda sin ella.
+  niega(plana(['a']), 'quitar-columna', { columna: 0 }, /al menos una columna/);
+  // En una tabla con combinadas, las columnas son casillas, no celdas de la fila.
+  niega(t, 'quitar-columna', { columna: 2 }, /No hay esa columna/);
+  niega(t, 'anadir-columna', { despuesDe: 2 }, /No hay esa columna/);
+});
+
+prueba('posiciones y celdaEn dicen dónde cae cada celda de la fila en la cuadrícula', () => {
+  const t = { filas: [[c('A', { rowspan: 2 }), c('b', { colspan: 2 })], [c('c'), c('d')]] };
+  sale(t);
+  assert.deepEqual(Edicion.posiciones(t), [
+    [{ columna: 0, ancho: 1, alto: 2 }, { columna: 1, ancho: 2, alto: 1 }],
+    [{ columna: 1, ancho: 1, alto: 1 }, { columna: 2, ancho: 1, alto: 1 }],
+  ]);
+  assert.deepEqual(Edicion.celdaEn(t, 1, 0), { fila: 0, columna: 0 });
+  assert.deepEqual(Edicion.celdaEn(t, 0, 2), { fila: 0, columna: 1 });
+  assert.deepEqual(Edicion.celdaEn(t, 1, 2), { fila: 1, columna: 1 });
+  assert.equal(Edicion.celdaEn(t, 5, 0), null);
+  // Una tabla que no cuadra no tiene posiciones, y las operaciones de forma se niegan con el porqué.
+  const rota = { filas: [[c('a'), c('b')], [c('c')]] };
+  assert.equal(Edicion.posiciones(rota), null);
+  niega(rota, 'anadir-fila', {}, /no cuadran.*más corta que la primera/);
+});
+
+prueba('las celdas combinadas no se pierden al escribir ni al poner la cabecera', () => {
+  const combinada = { filas: [[c('Título', { bold: true, colspan: 2 })], [c('a'), c('b')]] };
+  const escrita = hacer(combinada, 'texto', { fila: 1, columna: 1, valor: 'B' });
   assert.equal(escrita.filas[1][1].text, 'B');
   assert.equal(escrita.filas[0][0].colspan, 2);
-  const sin = Edicion.aplicar(combinada, 'cabecera', { puesta: false });
+  const sin = hacer(combinada, 'cabecera', { puesta: false });
   assert.equal(sin.filas[0][0].colspan, 2);
-  assert.equal(Est.motivoDeRejilla(sin, 'la tabla'), null);
+  // Las celdas que no se tocan siguen siendo los mismos objetos.
+  assert.equal(hacer(combinada, 'anadir-fila', {}).filas[0][0], combinada.filas[0][0]);
+});
+
+prueba('los topes siguen valiendo con celdas combinadas', () => {
+  let t = plana(['a', 'b']);
+  while (Edicion.columnasDe(t) < Est.MAX_COLUMNAS) t = hacer(t, 'anadir-columna', {});
+  t = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.equal(Edicion.columnasDe(t), Est.MAX_COLUMNAS);
+  niega(t, 'anadir-columna', {}, /más de 12 columnas/);
+});
+
+prueba('al azar con combinar, separar y negrita: toda operación saca un valor que la puerta acepta, o el mismo valor', () => {
+  const sorteo = azar(20261108);
+  const ops = ['texto', 'anadir-fila', 'quitar-fila', 'anadir-columna', 'quitar-columna', 'cabecera',
+    'combinar', 'combinar', 'combinar', 'separar', 'negrita'];
+  const lineas = (v) => v.filas.flat().flatMap((x) => x.text.split('\n')).filter((t) => t !== '').sort();
+  const sinTitulo = (t) => !/^Columna \d+$/.test(t);
+  let combinadas = 0;
+  let fusiones = 0;
+  for (let ronda = 0; ronda < 60; ronda += 1) {
+    const campo = campoCreado({
+      tipo: 'tabla', filas: 1 + Math.floor(sorteo() * 5), columnas: 1 + Math.floor(sorteo() * 5), cabecera: sorteo() < 0.5,
+    });
+    let v = Campos.valorInicial(campo);
+    v = { filas: v.filas.map((f, i) => f.map((x, j) => ({ ...x, text: x.text || `${i}${j}` }))) };
+    let ancho = Edicion.columnasDe(v);
+    for (let paso = 0; paso < 80; paso += 1) {
+      const op = ops[Math.floor(sorteo() * ops.length)];
+      const nf = Edicion.filasDe(v);
+      const nc = Edicion.columnasDe(v);
+      const fila = Math.floor(sorteo() * (nf + 1));
+      const args = {
+        fila,
+        columna: Math.floor(sorteo() * ((op === 'anadir-columna' || op === 'quitar-columna' ? nc : (v.filas[fila] || []).length) + 1)),
+        despuesDe: sorteo() < 0.3 ? undefined : Math.floor(sorteo() * (op === 'anadir-columna' ? nc : nf)),
+        valor: sorteo() < 0.5 ? 'texto ' + paso : '',
+        puesta: sorteo() < 0.5,
+        hacia: sorteo() < 0.5 ? 'derecha' : 'abajo',
+      };
+      const antes = v;
+      const motivo = Edicion.motivoDeNo(antes, op, args);
+      const lineasAntes = lineas(antes);
+      v = Edicion.aplicar(antes, op, args, { columnas: ancho });
+      if (motivo !== null) assert.equal(v, antes, `${op} ${JSON.stringify(args)} se niega (${motivo}) y debe devolver el mismo valor`);
+      if (Edicion.columnasDe(v)) ancho = Edicion.columnasDe(v);
+      assert.equal(puerta(v), null, `${op} ${JSON.stringify(args)} → ${JSON.stringify(v)}`);
+      assert.equal(Est.motivoDeCampo(campo, v), null);
+      assert.ok(Edicion.filasDe(v) <= Est.MAX_FILAS && Edicion.columnasDe(v) <= Est.MAX_COLUMNAS);
+      if (['combinar', 'separar', 'negrita', 'anadir-fila', 'anadir-columna'].includes(op)) {
+        assert.deepEqual(lineas(v).filter(sinTitulo), lineasAntes.filter(sinTitulo), `${op} no debe perder ni inventar texto`);
+      }
+      if (op === 'combinar' && v !== antes) fusiones += 1;
+      if (Edicion.tieneCombinadas(v)) combinadas += 1;
+    }
+  }
+  assert.ok(fusiones > 100, `pocas combinaciones conseguidas: ${fusiones}`);
+  assert.ok(combinadas > 500, `pocas tablas con combinadas: ${combinadas}`);
 });
 
 prueba('clave y valor: escribir, añadir y quitar filas; sin columnas ni cabecera', () => {

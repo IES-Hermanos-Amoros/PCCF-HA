@@ -1027,6 +1027,10 @@ del > mark.quita { text-decoration-thickness: 2px; }
 .tabla-editable tfoot .celda-acciones { text-align: center; width: auto; border-style: dashed; }
 .tabla-editable .celda-acciones .mini { margin: 0 1px; }
 .tabla-editable .celda-acciones .mini:disabled { opacity: .45; cursor: not-allowed; }
+.celda-herr { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
+.celda-herr .mini { padding: 1px 6px; font-size: 11.5px; }
+.celda-herr .mini:disabled { opacity: .45; cursor: not-allowed; }
+.celda-herr .mini[aria-pressed="true"] { background: var(--azul-suave); border-color: var(--acento); font-weight: 700; }
 
 .nuevo-campo {
   display: flex; flex-direction: column; gap: 12px; margin: 4px 0 10px;
