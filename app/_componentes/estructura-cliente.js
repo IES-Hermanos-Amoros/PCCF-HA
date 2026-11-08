@@ -67,6 +67,8 @@ const CAMBIOS = {
   mover: { metodo: 'POST', url: (b, s) => conSeccion(`${b}/estructura/apartado/mover`, s) },
   retirar: { metodo: 'POST', url: (b, s) => conSeccion(`${b}/estructura/apartado/retirar`, s) },
   restaurar: { metodo: 'POST', url: (b, s) => conSeccion(`${b}/estructura/apartado/restaurar`, s) },
+  // Un campo más en un apartado que ya existe: { campo: { tipo, … } }.
+  anadir_campo: { metodo: 'POST', url: (b, s) => conSeccion(`${b}/estructura/apartado/campo`, s) },
 };
 
 export const urlEstructura = (documentoId) => `${base(documentoId)}/estructura`;

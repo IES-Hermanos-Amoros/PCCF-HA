@@ -469,14 +469,24 @@ prueba('una tabla vacía se guarda, y un campo multiple pide una lista', () => {
   assert.ok(/tabla 2/.test(Est.motivoDeCampo(multiple, [{ filas: [ancho(2)] }, { filas: [ancho(2), ancho(1)] }])));
 });
 
-prueba('una tabla creada con cabecera tiene que llevarla en negrita en todas sus celdas', () => {
+prueba('la cabecera de una tabla creada es la negrita de su primera fila, y no se exige nada más', () => {
   const hecho = Campos.crearCampo({ tipo: 'tabla', filas: 3, columnas: 4, cabecera: true }, []);
-  const sinNegrita = { filas: [ancho(4), ancho(4), ancho(4)] };
-  const motivo = Est.motivoDeCampo(hecho.campo, sinNegrita);
-  assert.ok(/cabecera/.test(motivo) && /negrita/.test(motivo), motivo);
+  // Quitar la cabecera es quitar la negrita: se guarda aunque el campo lleve `columnas`.
+  assert.equal(Est.motivoDeCampo(hecho.campo, { filas: [ancho(4), ancho(4), ancho(4)] }), null);
   assert.equal(Est.motivoDeCampo(hecho.campo, Campos.valorInicial(hecho.campo)), null);
-  // Una importada con `columnas` y sin negrita (hay dos en la PD real) no se toca.
+  // Y una importada con `columnas` y sin negrita (hay dos en la PD real) tampoco se toca.
   assert.equal(Est.motivoDeCampo({ ...CAMPO_TABLA, columnas: ['a', 'b'] }, { filas: [ancho(2)] }), null);
+  // El PDF de una creada y el de una importada con `columnas` ya no coinciden en una cosa: la
+  // creada no fuerza la cabecera, la decide la negrita; la importada sigue como estaba.
+  const definicion = (campo, filas) => buildDocDefinition({
+    plantilla: { tipo: 'programacion_didactica', secciones: [{ id: 'x', titulo: 'X', nivel: 1, campos: [campo], hijos: [] }] },
+    datos: { departamento: 'informatica', documento: { x: { [campo.id]: { filas } } }, instancias: [], asignaciones: {}, compartidos: {} },
+    instancias: [], titulo: 'T', subtitulo: 'S',
+  });
+  const cabeceras = (campo, filas) => nodos(definicion(campo, filas)).filter((n) => n.table && n.table.body).map((t) => t.table.headerRows);
+  assert.deepEqual(cabeceras(hecho.campo, [ancho(4), ancho(4)]), [0], 'creada, primera fila sin negrita: sin cabecera');
+  assert.deepEqual(cabeceras(hecho.campo, [cab(4), ancho(4)]), [1]);
+  assert.deepEqual(cabeceras({ ...CAMPO_TABLA, columnas: ['a', 'b', 'c', 'd'] }, [ancho(4), ancho(4)]), [1], 'importada con columnas: cabecera forzada, como siempre');
 });
 
 prueba('clave y valor: pares con etiqueta y valor, y la tabla importada solo si no hay pares', () => {

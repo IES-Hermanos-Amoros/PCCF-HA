@@ -63,6 +63,7 @@ const SUITES = [
   // --- E6: cambiar la estructura del documento ----------------------------
   { archivo: 'test/estructura.js', nombre: 'estructura editable y versiones de la plantilla' },
   { archivo: 'test/tablas.js', nombre: 'tablas y campos creados en la aplicación' },
+  { archivo: 'test/editor-tablas.js', nombre: 'editor de tablas y alta de campos' },
 
   // --- E7: aprobar, coordinar y los otros documentos ----------------------
   { archivo: 'test/estados.js', nombre: 'estados del documento, PCCF y memoria' },

@@ -54,6 +54,8 @@ import Ayuda from './Ayuda';
 import {
   cambiarEstructura, hermanosDe, todasLasUnidades, unidadDelCamino,
 } from './estructura-cliente';
+import AnadirCampo from './AnadirCampo';
+import { CamposDelApartadoNuevo } from './NuevoCampo';
 
 // El mensaje del servidor se enseña tal cual: ya está redactado y en castellano
 // (docs/api.md, «Errores»). Lo único que se le añade delante es que no se ha
@@ -73,6 +75,7 @@ const cuantos = (n) => (n === 1 ? '1 apartado' : `${n} apartados`);
 
 export default function Estructura({
   documentoId, nodo, camino, fila, plantillaVersion, unidades, onCambiado, onIr,
+  tiposDeCampo, limites,
 }) {
   const [titulo, setTitulo] = useState(nodo && nodo.titulo ? nodo.titulo : '');
   const [nuevo, setNuevo] = useState('');
@@ -81,6 +84,9 @@ export default function Estructura({
   const [error, setError] = useState(null);
   const [confirmaRetirar, setConfirmaRetirar] = useState(false);
   const [anadido, setAnadido] = useState(null);
+  // Los campos con los que nacerá el apartado nuevo: [{ peticion, resumen }]. Vacía, nace con un
+  // campo de texto.
+  const [camposNuevos, setCamposNuevos] = useState([]);
 
   const refSubir = useRef(null);
   const refBajar = useRef(null);
@@ -192,8 +198,10 @@ export default function Estructura({
     ev.preventDefault();
     const limpio = nuevo.trim();
     if (!limpio || ocupado) return;
-    mandar('anadir', { cuerpo: { titulo: limpio, padre: nodo.seccion } }, (r) => {
+    const campos = camposNuevos.map((c) => c.peticion);
+    mandar('anadir', { cuerpo: { titulo: limpio, padre: nodo.seccion, ...(campos.length ? { campos } : {}) } }, (r) => {
       setNuevo('');
+      setCamposNuevos([]);
       // El id lo ha generado el servidor: se dice cuál es, que es la mitad de lo
       // que esta tarjeta enseña, y se ofrece abrirlo para escribir en él.
       setAnadido(r.seccion ? { seccion: r.seccion, titulo: r.titulo || limpio } : null);
@@ -348,6 +356,29 @@ export default function Estructura({
           campos de cada ficha. Las fichas se crean en el panel de situaciones de aprendizaje.
         </p>
       )}
+
+      {/* Los campos con los que nace el apartado de arriba, y el alta de un campo en ESTE
+          apartado. Van fuera del formulario de añadir: llevan sus propios formularios. */}
+      {admiteHijos ? (
+        <CamposDelApartadoNuevo
+          tipos={tiposDeCampo}
+          limites={limites}
+          campos={camposNuevos}
+          onCambio={setCamposNuevos}
+          enTodas={enTodas}
+          ocupado={ocupado}
+        />
+      ) : null}
+      <AnadirCampo
+        documentoId={documentoId}
+        seccion={nodo.seccion}
+        fila={fila}
+        tipos={tiposDeCampo}
+        limites={limites}
+        plantillaVersion={plantillaVersion}
+        enTodas={enTodas}
+        onCambiado={onCambiado}
+      />
 
       <div className="linea-estructura">
         <span className="suave">Orden y retirada</span>

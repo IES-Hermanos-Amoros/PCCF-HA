@@ -935,9 +935,9 @@ del > mark.quita { text-decoration-thickness: 2px; }
 .estado-rechazo .lista-avisos li > div { gap: 3px; }
 
 /* ===================================================== la ayuda plegada
-   Tres cosas tenían la misma pinta en toda la aplicación: el aviso de lo que va
-   a pasar si pulsas, la explicación de un dato que está en pantalla, y la prosa
-   de referencia que es siempre igual. La tercera se pliega aquí, detrás de un
+   Tres cosas distintas piden la misma pinta en toda la aplicación: el aviso de
+   lo que va a pasar si pulsas, la explicación de un dato que está en pantalla, y
+   la prosa de referencia que es siempre igual. La tercera se pliega aquí, detrás de un
    botón junto al título; las otras dos se quedan visibles. El porqué de cada
    grupo está en `app/_componentes/Ayuda.js`, que es el único componente que usa
    estas clases.                                                              */
@@ -1002,3 +1002,67 @@ del > mark.quita { text-decoration-thickness: 2px; }
    dentro y el botón se queda arriba a la derecha. */
 .pie-leyenda .leyenda { flex: 1 1 0; min-width: 0; margin: 10px 0 0; }
 .pie-leyenda .btn-ayuda { margin-top: 10px; }
+
+/* ------------------------------------------------------------ editor de tablas y alta de campos
+   Lo que añade EditorTablas.js, NuevoCampo.js y AnadirCampo.js. Las celdas se escriben en
+   `textarea` (nunca contenteditable) y crecen con su texto. */
+.editor-tabla { gap: 8px; }
+.editor-tabla .toolbar { margin-bottom: 0; }
+.tb-cabecera { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; cursor: pointer; }
+.tabla-editable { table-layout: auto; }
+.tabla-editable td { padding: 3px; vertical-align: top; }
+.tabla-editable .celda-cab { background: var(--azul-suave); }
+.tabla-editable .celda-neg { background: var(--panel-2); }
+.tabla-editable .celda-cab .celda-campo,
+.tabla-editable .celda-neg .celda-campo { font-weight: 600; }
+.celda-campo {
+  display: block; width: 100%; min-width: 7ch; min-height: 2em; box-sizing: border-box;
+  border: 1px solid transparent; border-radius: 5px; background: transparent; color: inherit;
+  font: inherit; line-height: 1.4; padding: 3px 5px; resize: none; outline: none; overflow: hidden;
+  field-sizing: content;
+}
+.celda-campo:hover { border-color: var(--borde); }
+.celda-campo:focus { border-color: var(--acento); background: var(--panel); }
+.tabla-editable .celda-acciones { white-space: nowrap; width: 1%; vertical-align: middle; }
+.tabla-editable tfoot .celda-acciones { text-align: center; width: auto; border-style: dashed; }
+.tabla-editable .celda-acciones .mini { margin: 0 1px; }
+.tabla-editable .celda-acciones .mini:disabled { opacity: .45; cursor: not-allowed; }
+
+.nuevo-campo {
+  display: flex; flex-direction: column; gap: 12px; margin: 4px 0 10px;
+  padding: 12px 14px; border: 1px solid var(--borde); border-radius: 9px; background: var(--panel-2);
+}
+.nuevo-campo-tipos { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.nuevo-campo-tipos legend { font-size: 12px; color: var(--suave); padding: 0; margin-bottom: 6px; }
+.opcion-campo {
+  display: flex; gap: 8px; align-items: flex-start; flex: 1 1 200px; max-width: 320px;
+  padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; background: var(--panel);
+  cursor: pointer;
+}
+.opcion-campo.on { border-color: var(--acento); box-shadow: 0 0 0 1px var(--acento) inset; }
+.opcion-campo > span { display: flex; flex-direction: column; gap: 2px; }
+.nuevo-campo-datos { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
+.nuevo-campo-datos .ayuda { flex-basis: 100%; margin: 0; }
+.dato-campo { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--suave); }
+.dato-campo input[type="text"], .dato-campo input[type="number"] {
+  border: 1px solid var(--borde); border-radius: 8px; background: var(--panel); color: var(--texto);
+  padding: 6px 9px; outline: none; min-width: 12ch;
+}
+.dato-campo input[type="number"] { width: 9ch; min-width: 0; }
+.dato-campo input:focus { border-color: var(--acento); }
+.dato-casilla { flex-direction: row; align-items: center; gap: 4px; color: var(--texto); }
+.nuevo-campo-previa { display: flex; flex-direction: column; gap: 4px; }
+/* La vista previa pinta con los colores del PDF, no con los del tema: es lo que se imprimirá. */
+.previa-campo-marco { background: #fff; max-width: 100%; }
+.tabla-previa { width: 100%; border-collapse: collapse; font-size: 12px; color: #1b2330; }
+.tabla-previa td { border: 1px solid #bfbfbf; padding: 4px 7px; min-width: 6ch; }
+.tabla-previa .previa-cab { background: #d9e2f3; font-weight: 600; }
+.tabla-previa .previa-neg { background: #f2f2f2; font-weight: 600; }
+.previa-campo-motivo { margin: 0; color: var(--rojo); font-size: 12.5px; }
+.nuevo-campo-botones { display: flex; gap: 8px; flex-wrap: wrap; }
+.campos-del-apartado-nuevo, .anadir-campo { margin-bottom: 9px; }
+.lista-campos-nuevos {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px;
+  font-size: 12.5px;
+}
+.lista-campos-nuevos li { display: flex; align-items: center; gap: 8px; }

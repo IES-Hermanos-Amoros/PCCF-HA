@@ -14,6 +14,7 @@
 //   ponderacion_ra_ce                la tabla de pesos, con la suma en vivo     E4
 //   ficha_situacion_aprendizaje      las fichas: ver, cambiar, crear, mover     E4
 //   derivado.resumen_situaciones     la tabla resumen SA × RA, CALCULADA        E4
+//   tabla y clave y valor CREADAS en la aplicación (campo.inicial)              EditorTablas.js
 //   lo demás (ficha del módulo, RA y CE, contenidos, rejillas importadas)       sin editor
 //
 // Lo que no tiene editor se sigue viendo en lectura, con el mismo `Valores.js`
@@ -57,7 +58,9 @@
 
 'use client';
 
+import Edicion from '../../core/tablas-edicion';
 import EditorBloques from './Editor';
+import EditorTabla from './EditorTablas';
 import Ponderaciones from './Ponderaciones';
 import Situaciones from './Situaciones';
 import { Valor, vacio } from './Valores';
@@ -169,7 +172,9 @@ export default function ApartadoEditable({
 
   const dePonderacion = campos.filter((c) => c.tipo === TIPO_PONDERACION);
   const editables = campos.filter((c) => c.tipo === 'texto_largo' || esListaDeBloques(valores[c.id]));
-  const yaPintados = new Set([...editables, ...dePonderacion, ...deFichas, ...deResumen]);
+  // Las tablas que nacieron aquí se editan; las que trajo el Word siguen en lectura (EditorTablas.js).
+  const deTabla = campos.filter((c) => Edicion.esEditable(c));
+  const yaPintados = new Set([...editables, ...dePonderacion, ...deFichas, ...deResumen, ...deTabla]);
   const otros = campos.filter((c) => !yaPintados.has(c));
 
   // Lo que el servidor diría de los campos de texto, dicho antes de mandarlos,
@@ -177,6 +182,28 @@ export default function ApartadoEditable({
   const reparos = editables
     .map((c) => ({ campo: c, motivo: motivoAlGuardar(valores[c.id] || []) }))
     .filter((x) => x.motivo);
+
+  // Los textos y las tablas creadas van en el orden de la plantilla, que es el del PDF: un apartado
+  // con una tabla y luego un texto no puede enseñar el texto primero.
+  const delEditor = campos.filter((c) => editables.includes(c) || deTabla.includes(c));
+
+  const seccionDeTabla = (campo) => (
+    <section className="tarjeta" key={campo.id}>
+      <header className="tarjeta-cab">
+        <h2>{campo.etiqueta || campo.id}</h2>
+        {/* Una tabla recién creada se abre con su forma de nacimiento, que no está guardada hasta
+            que se escribe algo: sin valor no sale en el PDF. */}
+        {valores[campo.id] === undefined || valores[campo.id] === null
+          ? <span className="chip chip-vacio" title="Se guarda al escribir en una celda o cambiar la tabla">sin rellenar</span>
+          : null}
+      </header>
+      <EditorTabla
+        campo={campo}
+        valor={Edicion.valorDe(campo, valores[campo.id])}
+        onCambio={(v) => cambiar(campo.id, v)}
+      />
+    </section>
+  );
 
   return marco(
     <>
@@ -194,7 +221,7 @@ export default function ApartadoEditable({
         />
       ))}
 
-      {editables.map((campo) => (
+      {delEditor.map((campo) => (deTabla.includes(campo) ? seccionDeTabla(campo) : (
         <section className="tarjeta" key={campo.id}>
           <header className="tarjeta-cab">
             <h2>{campo.etiqueta || campo.id}</h2>
@@ -209,7 +236,7 @@ export default function ApartadoEditable({
             onCambio={(bs) => cambiar(campo.id, bs)}
           />
         </section>
-      ))}
+      )))}
 
       {otros.map((campo) => (
         <section className="tarjeta" key={campo.id}>
