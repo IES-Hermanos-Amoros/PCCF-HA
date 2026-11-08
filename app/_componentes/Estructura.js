@@ -55,6 +55,7 @@ import {
   cambiarEstructura, hermanosDe, todasLasUnidades, unidadDelCamino,
 } from './estructura-cliente';
 import AnadirCampo from './AnadirCampo';
+import { QuitarCampos } from './QuitarCampo';
 import { CamposDelApartadoNuevo } from './NuevoCampo';
 
 // El mensaje del servidor se enseña tal cual: ya está redactado y en castellano
@@ -375,6 +376,15 @@ export default function Estructura({
         fila={fila}
         tipos={tiposDeCampo}
         limites={limites}
+        plantillaVersion={plantillaVersion}
+        enTodas={enTodas}
+        onCambiado={onCambiado}
+      />
+      <QuitarCampos
+        documentoId={documentoId}
+        seccion={nodo.seccion}
+        tituloApartado={nodo.titulo}
+        fila={fila}
         plantillaVersion={plantillaVersion}
         enTodas={enTodas}
         onCambiado={onCambiado}

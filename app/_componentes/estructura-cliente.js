@@ -57,7 +57,7 @@ import { pedir } from './api';
 
 const base = (documentoId) => `/api/documentos/${encodeURIComponent(documentoId)}`;
 
-const conSeccion = (camino, seccion) => `${camino}?${new URLSearchParams({ seccion })}`;
+const conSeccion = (camino, seccion, campo) => `${camino}?${new URLSearchParams(campo ? { seccion, campo } : { seccion })}`;
 
 // Cada cambio: con qué método va y a qué dirección. La sección viaja en la URL,
 // igual que en `/apartado`, para que la petición diga sobre qué actúa.
@@ -69,6 +69,9 @@ const CAMBIOS = {
   restaurar: { metodo: 'POST', url: (b, s) => conSeccion(`${b}/estructura/apartado/restaurar`, s) },
   // Un campo más en un apartado que ya existe: { campo: { tipo, … } }.
   anadir_campo: { metodo: 'POST', url: (b, s) => conSeccion(`${b}/estructura/apartado/campo`, s) },
+  // Quitar un campo (no borra) y devolverlo: el campo viaja en la URL junto al apartado.
+  retirar_campo: { metodo: 'POST', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo/retirar`, s, c) },
+  restaurar_campo: { metodo: 'POST', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo/restaurar`, s, c) },
 };
 
 export const urlEstructura = (documentoId) => `${base(documentoId)}/estructura`;
@@ -80,10 +83,10 @@ export const leerEstructura = (documentoId) => pedir(urlEstructura(documentoId))
 
 // Un cambio de estructura. `seccion` es el apartado sobre el que se actúa (al
 // añadir no hay: el padre va en el cuerpo).
-export function cambiarEstructura(documentoId, accion, { seccion, cuerpo } = {}) {
+export function cambiarEstructura(documentoId, accion, { seccion, campo, cuerpo } = {}) {
   const c = CAMBIOS[accion];
   if (!c) return Promise.reject(new Error(`Acción de estructura desconocida: ${accion}`));
-  return pedir(c.url(base(documentoId), seccion), {
+  return pedir(c.url(base(documentoId), seccion, campo), {
     method: c.metodo,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cuerpo || {}),
