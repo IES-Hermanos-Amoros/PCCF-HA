@@ -116,6 +116,7 @@ import Coordinacion from './Coordinacion';
 import CursoSiguiente from './CursoSiguiente';
 import EstadoDocumento from './EstadoDocumento';
 import Estructura, { ApartadosRetirados } from './Estructura';
+import { CamposRetirados } from './QuitarCampo';
 import Ponderaciones from './Ponderaciones';
 import Situaciones from './Situaciones';
 import Validaciones from './Validaciones';
@@ -487,7 +488,7 @@ export default function Visor({
     }
 
     // Un campo nuevo cambia lo que trae el apartado abierto (`campos`): se vuelve a pedir.
-    if (accion === 'anadir_campo') recargarApartado();
+    if (accion === 'anadir_campo' || accion === 'retirar_campo' || accion === 'restaurar_campo') recargarApartado();
 
     try {
       await recargarArbol();
@@ -841,6 +842,14 @@ export default function Visor({
         <ApartadosRetirados
           documentoId={documentoId}
           retirados={estructura.retirados}
+          plantillaVersion={estructura.plantillaVersion}
+          onCambiado={alCambiarEstructura}
+        />
+      ) : null}
+      {n.tipo === 'raiz' && puedeEstructura && estructura ? (
+        <CamposRetirados
+          documentoId={documentoId}
+          retirados={estructura.camposRetirados}
           plantillaVersion={estructura.plantillaVersion}
           onCambiado={alCambiarEstructura}
         />

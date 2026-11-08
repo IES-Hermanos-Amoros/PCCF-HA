@@ -791,6 +791,71 @@ prueba('quitar un campo no borra lo escrito: deja de salir en el PDF, no se pued
   assert.deepEqual(reg, [[2, 'campo_anadido'], [3, 'campo_retirado'], [4, 'campo_restaurado']]);
 });
 
+prueba('el camino de la pantalla: lo que la estructura ofrece para quitar, lo quitado y lo restaurado, con su contenido', async () => {
+  const { repo, u, doc } = await escenario();
+  const sec = 'atencion-a-la-diversidad';
+  const filaDe = async () => (await (await estructuraDe(u.jefa, doc._id)).json());
+  await cambio(await anadirCampo(u.jefa, doc._id, sec, { campo: { tipo: 'tabla', etiqueta: 'Tabla', filas: 1, columnas: 2 } }), 201);
+
+  // 1. La estructura ofrece el botón de quitar: el campo está activo y puedeRetirar lo dice.
+  const antes = await filaDe();
+  assert.equal(antes.puedeCambiar, true);
+  const campoAntes = antes.apartados.find((x) => x.seccion === sec).campos.find((x) => x.id === 'tabla');
+  assert.deepEqual([campoAntes.retirado, campoAntes.puedeRetirar, campoAntes.puedeRestaurar], [false, true, false]);
+  assert.deepEqual(antes.camposRetirados, []);
+
+  const abierto = await (await leer(u.jefa, doc._id, sec, null)).json();
+  const valor = abierto.iniciales.tabla;
+  valor.filas[0][0].text = 'Texto de la tabla';
+  assert.equal((await escribir(u.jefa, doc._id, sec, null, { tabla: valor })).status, 200);
+
+  // 2. Se quita con la versión que leyó la pantalla: ya no es activo y sí retirado.
+  const quitado = await cambio(await retirarCampo(u.jefa, doc._id, sec, 'tabla', { esperaPlantillaVersion: antes.plantillaVersion }));
+  assert.equal(quitado.plantillaVersion, antes.plantillaVersion + 1);
+  const entre = await filaDe();
+  const campoEntre = entre.apartados.find((x) => x.seccion === sec).campos.find((x) => x.id === 'tabla');
+  assert.deepEqual([campoEntre.retirado, campoEntre.puedeRetirar, campoEntre.puedeRestaurar], [true, false, true]);
+  assert.deepEqual(entre.camposRetirados.map((x) => [x.seccion, x.campo, x.etiqueta, x.apartadoRetirado]), [[sec, 'tabla', 'Tabla', false]]);
+  assert.ok(!(await (await leer(u.jefa, doc._id, sec, null)).json()).campos.some((x) => x.id === 'tabla'));
+
+  // 3. Quitarlo otra vez, o con una versión vieja, no cambia nada.
+  await esError(await retirarCampo(u.jefa, doc._id, sec, 'tabla'), 400, 'peticion');
+  await esError(await restaurarCampo(u.jefa, doc._id, sec, 'tabla', { esperaPlantillaVersion: antes.plantillaVersion }), 409, 'conflicto');
+  assert.equal((await filaDe()).plantillaVersion, entre.plantillaVersion);
+
+  // 4. Se restaura desde la lista global y vuelve con lo escrito.
+  await cambio(await restaurarCampo(u.jefa, doc._id, sec, 'tabla', { esperaPlantillaVersion: entre.plantillaVersion }));
+  const despues = await filaDe();
+  assert.deepEqual(despues.camposRetirados, []);
+  const campoDespues = despues.apartados.find((x) => x.seccion === sec).campos.find((x) => x.id === 'tabla');
+  assert.deepEqual([campoDespues.retirado, campoDespues.puedeRetirar], [false, true]);
+  assert.deepStrictEqual((await guardados(repo, doc._id, sec)).valores.tabla, valor);
+});
+
+prueba('un campo que la aplicación no puede crear sale con puedeRetirar apagado y el servidor lo rechaza', async () => {
+  const { u, doc } = await escenario();
+  const e = await (await estructuraDe(u.jefa, doc._id)).json();
+  const apagados = e.apartados.flatMap((a) => a.campos.filter((c) => !c.puedeRetirar && !c.retirado && !a.retirado && !a.repetidor).map((c) => [a.seccion, c.id]));
+  assert.ok(apagados.length > 0, 'el escenario debería tener algún campo que no se puede quitar');
+  const [seccion, campo] = apagados[0];
+  await esError(await retirarCampo(u.jefa, doc._id, seccion, campo), 400, 'peticion');
+  assert.equal((await (await estructuraDe(u.jefa, doc._id)).json()).plantillaVersion, e.plantillaVersion);
+});
+
+prueba('un docente no ve el candado abierto y su quitar y restaurar campos dan 403, sin tocar la plantilla', async () => {
+  const { u, doc } = await escenario();
+  const sec = 'atencion-a-la-diversidad';
+  await cambio(await anadirCampo(u.jefa, doc._id, sec, { campo: { tipo: 'tabla', etiqueta: 'Tabla' } }), 201);
+  assert.equal((await (await estructuraDe(u.ana, doc._id)).json()).puedeCambiar, false);
+  await esError(await retirarCampo(u.ana, doc._id, sec, 'tabla'), 403, 'sin_permiso');
+  const v = (await (await estructuraDe(u.jefa, doc._id)).json()).plantillaVersion;
+  await cambio(await retirarCampo(u.jefa, doc._id, sec, 'tabla'));
+  await esError(await restaurarCampo(u.ana, doc._id, sec, 'tabla'), 403, 'sin_permiso');
+  const e = await (await estructuraDe(u.jefa, doc._id)).json();
+  assert.equal(e.plantillaVersion, v + 1);
+  assert.equal(e.camposRetirados.length, 1);
+});
+
 prueba('los permisos de siempre: el docente 403, estudios 403, sin sesión 401, otro departamento 404', async () => {
   const { u, doc } = await escenario();
   const cuerpo = { campo: { tipo: 'tabla' } };
