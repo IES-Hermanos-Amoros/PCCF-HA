@@ -477,6 +477,16 @@ prueba('el curso siguiente nace con la estructura que el anterior tenía en ese 
   const secciones = await raizDelArbol(u.jefa, nuevoId);
   assert.ok(secciones.includes('plan-de-refuerzo'), 'el apartado añadido no se hereda');
   assert.ok(!secciones.includes('anexos'), 'el apartado retirado vuelve en el curso nuevo');
+
+  // Pero SIGUE EN LA PLANTILLA del curso nuevo, retirado, y por tanto se puede restaurar allí.
+  // Arrastrar el curso no puede borrar lo que retirar prometió no borrar, y el contenido de un
+  // apartado retirado sí se copia: sin el apartado al que pertenece quedaría inalcanzable.
+  const retiradosNuevo = (await (await estructuraDe(u.jefa, nuevoId)).json()).retirados;
+  assert.deepStrictEqual(retiradosNuevo.map((x) => x.seccion), ['anexos'],
+    'el apartado retirado no se puede restaurar en el curso nuevo porque no ha viajado');
+  await cambio(await restaurar(u.jefa, nuevoId, 'anexos'));
+  assert.ok((await raizDelArbol(u.jefa, nuevoId)).includes('anexos'),
+    'restaurado en el curso nuevo, el apartado no vuelve al árbol');
   assert.equal((await (await leer(u.jefa, nuevoId, 'introduccion', null)).json()).titulo, 'Presentación del ciclo',
     'el título nuevo no se hereda');
 

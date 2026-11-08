@@ -20,9 +20,10 @@
 // QUÉ SE COPIA Y QUÉ NO, Y POR QUÉ
 //
 // Se copia lo que describe el contenido del departamento, que es lo que el curso nuevo arranca con
-// él: la plantilla y su versión, las unidades con sus docentes, los apartados con sus valores tal
-// cual, los textos compartidos, el reparto de apartados comunes (`asignaciones`) y —desde el E7— las
-// COMPROBACIONES del documento, con su registro de quién las cambió.
+// él: la plantilla y su versión —ENTERA, con los apartados y los campos retirados dentro—, las
+// unidades con sus docentes, los apartados con sus valores tal cual, los textos compartidos, el
+// reparto de apartados comunes (`asignaciones`) y —desde el E7— las COMPROBACIONES del documento,
+// con su registro de quién las cambió.
 //
 // LAS COMPROBACIONES SE COPIAN, Y ES LA DECISIÓN QUE IMPORTA DE ESTE EVOLUTIVO: el criterio del
 // centro no se reinicia cada septiembre. Si no viajaran, cada curso nuevo volvería al convenio de
@@ -85,14 +86,21 @@ const copia = (valor) => structuredClone(valor);
 // Las filas del documento nuevo a partir de las del de partida. Es una función pura: no toca el
 // repositorio, así que lo que se copia y lo que no se decide en un solo sitio y se puede leer de
 // arriba abajo. `origen` es el documento de partida; `curso` el del nuevo.
-function filasDelSiguiente(origen, { curso, unidades, apartados, compartidos }) {
+function filasDelSiguiente(origen, { curso, unidades, apartados, compartidos, plantillaCompleta }) {
   const documento = {
     tipo: origen.tipo,
     ciclo: origen.ciclo === undefined ? null : origen.ciclo,
     curso,
     departamento: origen.departamento,
     estado: 'borrador',
-    plantilla: copia(origen.plantilla),
+    // LA PLANTILLA ENTERA, con lo retirado dentro, y no la podada que ve el resto de la aplicación
+    // (`abrirDocumento` de ./comun.js sustituye `documento.plantilla` por la vigente). Si se copiara
+    // la podada, retirar un apartado o un campo y arrastrar el curso BORRARÍA lo retirado, y eso
+    // contradice la garantía de core/plantilla.js: «retirar no borra». Peor aún, el contenido de lo
+    // retirado sí se copia —los apartados se copian por su id, no por lo que diga la plantilla—, así
+    // que quedaría en el documento nuevo sin ningún campo al que pertenecer: invisible, imposible de
+    // restaurar, y volviendo a aparecer el día que alguien creara un campo que se llamara igual.
+    plantilla: copia(plantillaCompleta || origen.plantilla),
     plantillaVersion: origen.plantillaVersion === undefined ? null : origen.plantillaVersion,
     anteriorId: origen._id,
     asignaciones: copia(origen.asignaciones || {}),
@@ -157,7 +165,7 @@ async function cuerpoOpcional(peticion) {
 const CREAR = conErrores(async (peticion, parametros) => {
   const abierto = await abrirDocumento(peticion, parametros);
   if (abierto.fallo) return abierto.fallo;
-  const { usuario, documento: origen, repo } = abierto;
+  const { usuario, documento: origen, repo, plantillaCompleta } = abierto;
 
   if (!PUEDEN_CREAR_CURSO.includes(usuario.rol)) {
     return SIN_PERMISO('Solo la jefatura del departamento crea el documento del curso siguiente.');
@@ -207,7 +215,7 @@ const CREAR = conErrores(async (peticion, parametros) => {
     repo.apartados.listar(origen._id),
     repo.compartidos.listar(origen._id),
   ]);
-  const filas = filasDelSiguiente(origen, { curso, unidades, apartados, compartidos });
+  const filas = filasDelSiguiente(origen, { curso, unidades, apartados, compartidos, plantillaCompleta });
 
   // Un documento a medias es peor que ninguno: sale en la lista y no se puede abrir bien. Si alguna
   // escritura falla, se borra lo escrito y se devuelve el error, igual que la importación.

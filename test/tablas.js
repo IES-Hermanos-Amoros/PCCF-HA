@@ -810,7 +810,7 @@ prueba('los errores de los campos: 400 con el motivo, 404 si no existe, y nada c
   await esError(sinCampo, 400, 'peticion');
 });
 
-prueba('el curso siguiente se lleva los campos creados y, como con los apartados, no los retirados', async () => {
+prueba('el curso siguiente se lleva los campos creados y también los retirados, para poder restaurarlos', async () => {
   const { repo, u, doc } = await escenario();
   await cambio(await anadirCampo(u.jefa, doc._id, 'atencion-a-la-diversidad', { campo: { tipo: 'tabla_clave_valor', etiqueta: 'Resumen', pares: 1 } }), 201);
   await escribir(u.jefa, doc._id, 'atencion-a-la-diversidad', null, { resumen: { pares: [{ etiqueta: 'Alumnado', valor: '12' }] } });
@@ -818,10 +818,21 @@ prueba('el curso siguiente se lleva los campos creados y, como con los apartados
   await cambio(await retirarCampo(u.jefa, doc._id, 'atencion-a-la-diversidad', 'vieja'));
   const nuevoId = await cursoNuevo(u, doc);
   const e = await (await estructuraDe(u.jefa, nuevoId)).json();
+  // El campo retirado VIAJA, y sigue retirado: retirar no borra, y arrastrar el curso tampoco puede
+  // borrar. Si no viajara, su contenido se quedaría en el documento nuevo sin campo al que
+  // pertenecer —los apartados se copian por su id— y reaparecería el día que alguien creara un
+  // campo con la misma etiqueta.
   assert.deepEqual(e.apartados.find((x) => x.seccion === 'atencion-a-la-diversidad').campos.map((x) => [x.id, x.retirado]),
-    [['texto', false], ['resumen', false]]);
+    [['texto', false], ['resumen', false], ['vieja', true]]);
   assert.ok(impreso(await definicionDe(u.jefa, nuevoId), 'Alumnado'));
   assert.ok(await guardados(repo, nuevoId, 'atencion-a-la-diversidad'));
+
+  // Y como sigue ahí, en el curso nuevo se puede restaurar. Mientras está retirado no se imprime.
+  assert.ok(!impreso(await definicionDe(u.jefa, nuevoId), 'Vieja'));
+  await cambio(await restaurarCampo(u.jefa, nuevoId, 'atencion-a-la-diversidad', 'vieja'));
+  const despues = await (await estructuraDe(u.jefa, nuevoId)).json();
+  assert.deepEqual(despues.apartados.find((x) => x.seccion === 'atencion-a-la-diversidad').campos.map((x) => [x.id, x.retirado]),
+    [['texto', false], ['resumen', false], ['vieja', false]]);
 });
 
 prueba('las tablas de la programación real se guardan tal cual las lee el importador (si está el .docx)', async () => {
