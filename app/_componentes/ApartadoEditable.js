@@ -45,16 +45,18 @@
 // un 400 no llegue sin explicación y para señalar EN QUÉ CAMPO está el problema,
 // que es lo que el mensaje del servidor no puede hacer en la pantalla.
 //
-// De los campos ESTRUCTURADOS todavía no, y no por gusto: su puerta es
-// `core/estructurados.js`, que resuelve sus dependencias con un `require(ruta)`
-// calculado (`deCore`) y por eso Turbopack no la puede meter en el paquete del
-// navegador —«Module not found: Can't resolve <dynamic>», y el `npm run build`
-// entero se cae—. `core/bloques.js` no tiene ese patrón y por eso sí entra, por
-// `bloques-cliente.js`. Hasta que esa capa se pueda importar desde el cliente,
-// lo que el servidor rechace se enseña cuando lo rechaza, con su mensaje y en
-// voz alta; lo que NO se hace es escribir aquí una segunda copia de la regla,
-// que es la forma conocida de que las dos se separen sin que nadie se entere
-// (docs/plan.md §2.2).
+// De las TABLAS editables también se puede: `core/estructurados.js` resuelve
+// sus dependencias con un `require` LITERAL en cada rama —un `require(variable)`
+// sí cortaría el `npm run build` con «Can't resolve <dynamic>»—, así que
+// Turbopack la mete en el paquete del navegador, y `core/tablas-edicion.js` la
+// consulta desde aquí con `motivoDeNo`: la misma puerta que usa la ruta, así
+// que un botón apagado y un 400 no pueden discrepar.
+//
+// De los demás campos estructurados —las fichas, las ponderaciones, que tienen
+// su propia pantalla— no se avisa antes: lo que el servidor rechace se enseña
+// cuando lo rechaza, con su mensaje y en voz alta. Lo que NO se hace en ningún
+// caso es escribir aquí una segunda copia de la regla, que es la forma conocida
+// de que las dos se separen sin que nadie se entere (docs/plan.md §2.2).
 
 'use client';
 

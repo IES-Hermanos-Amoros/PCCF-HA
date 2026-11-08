@@ -81,7 +81,7 @@
       {
         tipo: E.TIPO_TABLA,
         nombre: 'Tabla',
-        descripcion: 'Una rejilla de filas y columnas, con o sin fila de cabecera. Las celdas se pueden combinar.',
+        descripcion: 'Una rejilla de filas y columnas, con o sin fila de cabecera.',
         parametros: [
           { ...etiqueta, defecto: 'Tabla' },
           { id: 'filas', nombre: 'Filas (con la de cabecera, si la hay)', tipo: 'entero', minimo: 1, maximo: 50, defecto: 3 },
