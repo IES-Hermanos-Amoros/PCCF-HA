@@ -220,8 +220,8 @@ export default function ApartadoEditable({
 
   const dePonderacion = campos.filter((c) => c.tipo === TIPO_PONDERACION);
   const editables = campos.filter((c) => c.tipo === 'texto_largo' || esListaDeBloques(valores[c.id]));
-  // Las tablas se editan, las haya creado alguien aquí o las haya traído el Word; las listas de
-  // tablas y las que el editor no sabe abrir siguen en lectura (EditorTablas.js).
+  // Las tablas se editan, las haya creado alguien aquí o las haya traído el Word, y también las
+  // listas de tablas de un campo; las que el editor no sabe abrir siguen en lectura (EditorTablas.js).
   const deTabla = campos.filter((c) => Edicion.esEditable(c, valores[c.id]));
   const yaPintados = new Set([...editables, ...dePonderacion, ...deFichas, ...deResumen, ...deTabla]);
   const otros = campos.filter((c) => !yaPintados.has(c));
@@ -235,6 +235,63 @@ export default function ApartadoEditable({
   // Los textos y las tablas creadas van en el orden de la plantilla, que es el del PDF: un apartado
   // con una tabla y luego un texto no puede enseñar el texto primero.
   const delEditor = campos.filter((c) => editables.includes(c) || deTabla.includes(c));
+
+  // UN EDITOR POR TABLA, EN ORDEN, cada uno rotulado «Tabla 2 de 3». Un selector obligaría a esconder
+  // todas menos una y a recordar cuál se está viendo; así se ven todas, se llega a cualquiera sin
+  // pulsar nada y se reutiliza EditorTabla tal cual, que solo sabe de un valor. Añadir y quitar son
+  // del CAMPO y su regla (cuántas caben, que no se quede sin ninguna) está en core/tablas-edicion.js.
+  const tablasDelCampo = (campo) => {
+    const lista = valores[campo.id];
+    const tablas = Edicion.tablasDe(campo, lista);
+    const uno = Edicion.unaTabla(campo);
+    const cambiarLista = (nueva) => cambiar(campo.id, nueva);
+    const motivoAnadir = Edicion.motivoDeNoEnCampo(campo, lista, 'anadir-tabla');
+    return (
+      <>
+        {tablas.map((tabla, i) => {
+          const motivoQuitar = Edicion.motivoDeNoEnCampo(campo, lista, 'quitar-tabla', { indice: i });
+          return (
+            <div key={`${campo.id}-${i}`} className="tabla-de-lista">
+              <div className="acciones-persona">
+                <strong>Tabla {i + 1} de {tablas.length}</strong>
+                {motivoQuitar ? (
+                  <span className="motivo-no">{motivoQuitar}</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="mini"
+                    onClick={() => cambiarLista(Edicion.aplicarEnCampo(campo, lista, 'quitar-tabla', { indice: i }))}
+                    aria-label={`Quitar la tabla ${i + 1} de ${tablas.length} de «${campo.etiqueta || campo.id}»`}
+                  >
+                    Quitar esta tabla
+                  </button>
+                )}
+              </div>
+              <EditorTabla
+                campo={uno}
+                valor={tabla}
+                guardada={Array.isArray(lista) ? lista[i] : undefined}
+                onCambio={(v) => cambiarLista(Edicion.cambiarTabla(campo, lista, i, v))}
+              />
+            </div>
+          );
+        })}
+        <div className="acciones-persona">
+          {motivoAnadir ? (
+            <span className="motivo-no">{motivoAnadir}</span>
+          ) : (
+            <button
+              type="button"
+              className="mini"
+              onClick={() => cambiarLista(Edicion.aplicarEnCampo(campo, lista, 'anadir-tabla'))}
+            >
+              Añadir tabla
+            </button>
+          )}
+        </div>
+      </>
+    );
+  };
 
   const seccionDeTabla = (campo) => (
     <section className="tarjeta" key={campo.id} {...deTarjeta(campo)}>
@@ -262,12 +319,14 @@ export default function ApartadoEditable({
           ? <span className="chip chip-vacio" title="Se guarda al escribir en una celda o cambiar la tabla">sin rellenar</span>
           : null}
       </header>
-      <EditorTabla
-        campo={campo}
-        valor={Edicion.valorDe(campo, valores[campo.id])}
-        guardada={valores[campo.id]}
-        onCambio={(v) => cambiar(campo.id, v)}
-      />
+      {campo.multiple ? tablasDelCampo(campo) : (
+        <EditorTabla
+          campo={campo}
+          valor={Edicion.valorDe(campo, valores[campo.id])}
+          guardada={valores[campo.id]}
+          onCambio={(v) => cambiar(campo.id, v)}
+        />
+      )}
     </section>
   );
 

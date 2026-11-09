@@ -30,8 +30,12 @@
 // partida que no pasaría la puerta, añadir o quitar filas o columnas y combinar o separar celdas se
 // niegan, con el defecto por delante y lo que sí se puede hacer.
 //
-// Quedan fuera las listas de tablas (`multiple`): un campo con varias tablas guarda un array, cada
-// tabla con su cuadrícula y su forma guardada por separado, y el editor trabaja con UN valor.
+// LAS LISTAS DE TABLAS (`multiple`). Un campo con varias tablas guarda un array, cada tabla con su
+// cuadrícula y su forma guardada por separado, y el editor trabaja con UN valor. Por eso la pantalla
+// abre un editor por tabla (`unaTabla` le da el campo como si fuera de una sola) y lo que es del
+// CAMPO —cuántas tablas tiene, añadir una, quitar una, sustituir la i-ésima— está en `aplicarEnCampo`,
+// `motivoDeNoEnCampo` y `cambiarTabla`, con el tope `MAX_TABLAS` de core/estructurados.js. Solo lo
+// son de tabla y clave y valor; las ponderaciones y las fichas de SA tienen su propio editor.
 //
 // TODA OPERACIÓN DEVUELVE UN VALOR QUE PASA LA PUERTA
 //
@@ -169,12 +173,29 @@
   // y no hay nada que descartar.
   function esEditable(campo, guardado) {
     const E = Estructurados();
-    if (!campo || E.TIPOS_EDITABLES.indexOf(campo.tipo) < 0 || campo.multiple) return false;
+    if (!campo || E.TIPOS_EDITABLES.indexOf(campo.tipo) < 0) return false;
+    if (campo.multiple) return esListaEditable(campo, guardado);
     if (guardado === undefined || guardado === null) return true;
     if (!esObjeto(guardado)) return false;
     if (Array.isArray(guardado.filas)) return true;
     return E.TIPOS_CON_PARES.indexOf(campo.tipo) >= 0 && Array.isArray(guardado.pares);
   }
+
+  // Una lista de tablas se edita si es de tabla o de clave y valor y cada elemento tiene la forma de
+  // su tipo. Sin valor guardado se abre con una tabla; una lista vacía también se abre (para poder
+  // añadirle una).
+  function esListaEditable(campo, guardado) {
+    const E = Estructurados();
+    if (campo.tipo !== E.TIPO_TABLA && campo.tipo !== E.TIPO_CLAVE_VALOR) return false;
+    if (guardado === undefined || guardado === null) return true;
+    if (!Array.isArray(guardado)) return false;
+    const uno = unaTabla(campo);
+    return guardado.every((t) => esEditable(uno, t));
+  }
+
+  // El campo visto desde UNA de sus tablas: el mismo, sin `multiple`. El editor de una tabla y la
+  // puerta para un elemento (`motivoDeCampo`) razonan sobre un valor suelto.
+  const unaTabla = (campo) => ({ ...campo, multiple: false });
 
   // ¿Vino del Word? Lo que deja el importador es un campo sin `inicial`, que es la señal de que se
   // creó aquí (core/campos.js). Para avisar a quien edita de que lo que escriba ya no coincide con el
@@ -284,6 +305,47 @@
     const sinPares = { ...v };
     delete sinPares.pares;
     return sinPares;
+  }
+
+  // ---------------------------------------------------------------- las tablas de un campo
+
+  // Las tablas del campo tal como las abre el editor, cada una con `valorDe` (que le quita los
+  // pares viejos a la que se imprime por filas). Un campo sin valor guardado se abre con una.
+  function tablasDe(campo, guardado) {
+    if (!Array.isArray(guardado)) return [valorDe(unaTabla(campo), undefined)];
+    return guardado.map((t) => valorDe(unaTabla(campo), t));
+  }
+
+  // La lista guardada con la tabla `indice` sustituida y las demás EXACTAMENTE como estaban: abrir
+  // una tabla no cambia las otras, y un campo sin editar sale igual en el PDF y en el Word.
+  function cambiarTabla(campo, guardado, indice, tabla) {
+    const base = Array.isArray(guardado) ? guardado : tablasDe(campo, guardado);
+    return base.map((t, i) => (i === indice ? tabla : t));
+  }
+
+  // Por qué no se puede una operación sobre el campo (`anadir-tabla`, `quitar-tabla` { indice }), o
+  // null. Quitar la última se niega: un campo con lista se queda siempre con una tabla, aunque esté
+  // vacía; para que no salga nada se vacía esa tabla.
+  function motivoDeNoEnCampo(campo, guardado, op, args = {}) {
+    const n = tablasDe(campo, guardado).length;
+    const tope = Estructurados().MAX_TABLAS;
+    if (op === 'anadir-tabla') {
+      return n >= tope ? 'Un campo no puede tener más de ' + tope + ' tablas.' : null;
+    }
+    if (op === 'quitar-tabla') {
+      if (!Number.isInteger(args.indice) || args.indice < 0 || args.indice >= n) return 'Esa tabla no existe.';
+      return n <= 1 ? 'El campo necesita al menos una tabla. Para que no salga nada, vacíala.' : null;
+    }
+    return 'Operación desconocida: ' + op + '.';
+  }
+
+  // La lista nueva, o el MISMO `guardado` si la operación no se puede. La tabla que se añade nace
+  // como la de nacimiento del campo (vacía si el campo vino del Word).
+  function aplicarEnCampo(campo, guardado, op, args = {}) {
+    if (motivoDeNoEnCampo(campo, guardado, op, args) !== null) return guardado;
+    const base = Array.isArray(guardado) ? guardado : tablasDe(campo, guardado);
+    if (op === 'anadir-tabla') return [...base, Campos().valorInicial(unaTabla(campo))];
+    return base.filter((_, i) => i !== args.indice);
   }
 
   // ---------------------------------------------------------------- lo que no se puede
@@ -914,6 +976,7 @@
     fondoEfectivo, alineacionEfectiva, tamanoEfectivo,
     anchosDe, porcentajesDe,
     elegirCelda, formatoDeCelda,
+    unaTabla, tablasDe, cambiarTabla, motivoDeNoEnCampo, aplicarEnCampo,
   };
 
   global.Core = global.Core || {};
