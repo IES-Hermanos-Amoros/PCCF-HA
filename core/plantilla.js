@@ -882,8 +882,21 @@
     const i = vigentes.indexOf(c);
     const j = i + d;
     if (vigentes.length < 2) return no(`«${nombre}» es el único campo de «${h.seccion.titulo}»: no hay sitio donde moverlo.`);
-    if (j < 0) return no(`«${nombre}» ya es el primer campo de «${h.seccion.titulo}»: no se puede subir más.`);
-    if (j >= vigentes.length) return no(`«${nombre}» ya es el último campo de «${h.seccion.titulo}»: no se puede bajar más.`);
+    // Lo que se rechaza se dice con la verdad. La pantalla solo manda un sitio cada vez, pero la
+    // ruta acepta cualquier desplazamiento, y a uno de tres sitios contestarle «ya es el primero»
+    // cuando no lo es manda a buscar un fallo que no existe.
+    const arriba = i;
+    const abajo = vigentes.length - 1 - i;
+    if (j < 0) {
+      return no(arriba === 0
+        ? `«${nombre}» ya es el primer campo de «${h.seccion.titulo}»: no se puede subir más.`
+        : `«${nombre}» solo tiene ${arriba} campo${arriba === 1 ? '' : 's'} por encima en «${h.seccion.titulo}»: no se puede subir ${-d} sitios.`);
+    }
+    if (j >= vigentes.length) {
+      return no(abajo === 0
+        ? `«${nombre}» ya es el último campo de «${h.seccion.titulo}»: no se puede bajar más.`
+        : `«${nombre}» solo tiene ${abajo} campo${abajo === 1 ? '' : 's'} por debajo en «${h.seccion.titulo}»: no se puede bajar ${d} sitios.`);
+    }
 
     const objetivo = vigentes[j];
     lista.splice(lista.indexOf(c), 1);

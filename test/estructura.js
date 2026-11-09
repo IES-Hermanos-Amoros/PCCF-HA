@@ -1692,8 +1692,13 @@ prueba('mover el primer campo hacia arriba o el último hacia abajo es un 400 qu
   assert.ok(/primer/.test(arriba.mensaje), arriba.mensaje);
   const abajo = await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa', { delta: 1 }), 400, 'peticion');
   assert.ok(/último/.test(abajo.mensaje), abajo.mensaje);
-  // Un salto que se pasa del final tampoco se recorta.
-  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'texto', { delta: 2 }), 400, 'peticion');
+  // Un salto que se pasa del final tampoco se recorta, y el motivo dice la verdad: a un campo que
+  // tiene uno por debajo no se le contesta que ya es el ultimo, porque no lo es.
+  const lejos = await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'texto', { delta: 2 }), 400, 'peticion');
+  assert.ok(/1 campo por debajo/.test(lejos.mensaje), lejos.mensaje);
+  assert.ok(!/último/.test(lejos.mensaje), lejos.mensaje);
+  const lejosArriba = await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa', { delta: -2 }), 400, 'peticion');
+  assert.ok(/1 campo por encima/.test(lejosArriba.mensaje), lejosArriba.mensaje);
   // Sin hermanos no hay sitio.
   const solo = await esError(await moverCampo(u.jefa, doc._id, 'atencion-a-la-diversidad', 'texto', { delta: 1 }), 400, 'peticion');
   assert.ok(/único/.test(solo.mensaje), solo.mensaje);
