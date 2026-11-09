@@ -1015,7 +1015,16 @@ del > mark.quita { text-decoration-thickness: 2px; }
 .tabla-editable .celda-cab { background: var(--azul-suave); }
 .tabla-editable .celda-neg { background: var(--panel-2); }
 .tabla-editable .celda-negrita .celda-campo { font-weight: 600; }
+/* La alineación y el tamaño de letra que lleva la celda de verdad: lo que decide core/ y lo que
+   sale impreso. Sin clave no hay clase y la celda se pinta como siempre. */
+.tabla-editable .celda-centro .celda-campo { text-align: center; }
+.tabla-editable .celda-derecha .celda-campo { text-align: right; }
+.tabla-editable .celda-pequena .celda-campo { font-size: 85%; }
+.tabla-editable .celda-grande .celda-campo { font-size: 126%; }
 .celda-fondo select { font-size: 11.5px; padding: 1px 2px; max-width: 15ch; }
+/* El ancho de una columna se mueve de una en una y el porcentaje va entre los dos botones. */
+.celda-ancho { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; }
+.celda-ancho-pct { font-size: 11px; color: var(--suave); min-width: 4ch; text-align: center; }
 .celda-campo {
   display: block; width: 100%; min-width: 7ch; min-height: 2em; box-sizing: border-box;
   border: 1px solid transparent; border-radius: 5px; background: transparent; color: inherit;
