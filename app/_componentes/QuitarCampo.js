@@ -76,9 +76,11 @@ export function QuitarCampos({
 
   return (
     <div className="quitar-campo">
-      {/* Qué es esta lista. Sin este rótulo eran unas filas sueltas dentro de la tarjeta. */}
+      {/* Qué es esta lista. Sin rótulo eran unas filas sueltas dentro de la tarjeta, y el
+          rótulo no repite el de AnadirCampo, que está justo encima y ya dice «Campos del
+          apartado»: esta línea dice cuáles tiene AHORA, que es de lo que habla la lista. */}
       <div className="linea-estructura">
-        <span className="suave">Campos de este apartado</span>
+        <span className="suave">Los que tiene ahora</span>
         <span className="chip chip-cod">{campos.length}</span>
       </div>
       <ul className="lista-retirados" aria-label={`Campos de «${tituloApartado}»`}>
