@@ -445,6 +445,14 @@ export default function Visor({
 
   const recargarApartado = useCallback(() => setRecargas((n) => n + 1), []);
 
+  // EL CAMPO QUE HAY QUE ENSEÑAR cuando acaba de nacer o de volver. Los campos se pintan en el
+  // orden de la plantilla —el del PDF—, así que uno nuevo aparece en su sitio y no al final, y la
+  // tarjeta de estructura desde la que se crea está al pie de una página que en la PD real pasa de
+  // treinta mil píxeles. Repintar no basta: hay que llevar allí a quien lo creó, y de eso se
+  // encarga ApartadoEditable, que es quien tiene las tarjetas. Aquí solo se dice cuál.
+  const [campoARevelar, setCampoARevelar] = useState(null);
+  const olvidarRevelado = useCallback(() => setCampoARevelar(null), []);
+
   // ---------------------------------------------------------------- la estructura (E6)
 
   // Volver a pedir el árbol. Es la petición que NO lleva contenido —títulos,
@@ -489,6 +497,14 @@ export default function Visor({
 
     // Un campo nuevo cambia lo que trae el apartado abierto (`campos`): se vuelve a pedir.
     if (accion === 'anadir_campo' || accion === 'retirar_campo' || accion === 'restaurar_campo') recargarApartado();
+
+    // Y si ha nacido o ha vuelto, se enseña: el id lo dice la respuesta, no esta pantalla. Al
+    // retirarlo no se enseña nada, porque lo que había que ver es que ya no está.
+    if (accion === 'anadir_campo' && r && Array.isArray(r.campos) && r.campos.length) {
+      setCampoARevelar(r.campos[0].id);
+    } else if (accion === 'restaurar_campo' && r && r.campo) {
+      setCampoARevelar(r.campo);
+    }
 
     try {
       await recargarArbol();
@@ -925,6 +941,8 @@ export default function Visor({
           onGuardado={alGuardar}
           contexto={contexto}
           onIr={irAApartado}
+          revelar={campoARevelar}
+          onRevelado={olvidarRevelado}
         />
       );
     }

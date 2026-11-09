@@ -60,6 +60,7 @@
 
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Edicion from '../../core/tablas-edicion';
 import Ayuda from './Ayuda';
 import EditorBloques from './Editor';
@@ -74,10 +75,54 @@ import { esListaDeBloques, motivoAlGuardar } from './bloques-cliente';
 import { TIPO_FICHA, TIPO_PONDERACION, TIPO_RESUMEN } from './sa-cliente';
 
 export default function ApartadoEditable({
-  documentoId, apartado, onGuardado, contexto, onIr,
+  documentoId, apartado, onGuardado, contexto, onIr, revelar, onRevelado,
 }) {
   const campos = Array.isArray(apartado.campos) ? apartado.campos : [];
   const url = urlApartado(documentoId, apartado);
+
+  // LLEVAR A LA VISTA EL CAMPO QUE ACABA DE NACER.
+  //
+  // Los campos se pintan EN EL ORDEN DE LA PLANTILLA, que es el del PDF, no por orden de creación:
+  // un apartado con una tabla y luego un texto no puede enseñar el texto primero. La consecuencia
+  // es que un campo nuevo no aparece al final, sino en el sitio que le toca —en medio—, y la
+  // tarjeta de estructura desde la que se crea está al pie de la página. En un apartado de la PD
+  // real eso son más de cuatro mil píxeles de distancia: quien lo crea ve el aviso «Campo añadido»
+  // y ni un cambio donde está mirando, y da por hecho que la pantalla no se ha enterado.
+  //
+  // Así que no basta con repintar: hay que llevar a quien lo creó hasta su campo. Se desplaza la
+  // tarjeta a la vista y el foco entra en ella, que es además lo que necesita quien va por teclado
+  // para seguir escribiendo sin recorrer el apartado entero con el tabulador.
+  const tarjetas = useRef(new Map());
+  useEffect(() => {
+    if (!revelar) return;
+    const n = tarjetas.current.get(revelar);
+    if (!n) return;
+    n.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // El primer sitio donde se puede ESCRIBIR, y en ESTE orden, que no es el del documento: en un
+    // campo de texto los botones de la barra (negrita, cursiva) van delante del área de escritura
+    // en el HTML, así que un `querySelector('textarea, button')` devolvería el botón —devuelve el
+    // primero que aparece en el documento, no el primero de la lista— y quien acaba de crear el
+    // campo tendría el foco en «negrita» en lugar de donde se teclea. Si el campo no tiene ningún
+    // sitio donde escribir —una tabla sin editor, un campo en lectura— el foco va a la tarjeta, que
+    // para eso lleva `tabIndex`.
+    // `[data-entrada]` lo pone el editor del campo para señalar por dónde se empieza cuando está
+    // vacío (Editor.js, el botón «+ párrafo»): un campo de texto recién creado no tiene ningún
+    // `textarea`, y sin esa marca el foco caería en el primer botón de la barra, que es «negrita» y
+    // sin texto seleccionado no hace nada.
+    const PREFERENCIA = ['[data-entrada]', 'textarea', 'input:not([type="hidden"])', '[contenteditable="true"]', 'select', 'button'];
+    let dentro = null;
+    for (let i = 0; i < PREFERENCIA.length && !dentro; i += 1) dentro = n.querySelector(PREFERENCIA[i]);
+    (dentro || n).focus({ preventScroll: true });
+    if (onRevelado) onRevelado();
+  }, [revelar, onRevelado]);
+
+  // `id` para poder enlazarlo y `ref` para poder llevar a él; `tabIndex` -1 para que la tarjeta
+  // pueda recibir el foco cuando no hay nada dentro que lo reciba.
+  const deTarjeta = (campo) => ({
+    id: `campo-${campo.id}`,
+    tabIndex: -1,
+    ref: (n) => { if (n) tarjetas.current.set(campo.id, n); else tarjetas.current.delete(campo.id); },
+  });
 
   const {
     valores, estado, guardadoEn, error, conflicto, descartado,
@@ -192,7 +237,7 @@ export default function ApartadoEditable({
   const delEditor = campos.filter((c) => editables.includes(c) || deTabla.includes(c));
 
   const seccionDeTabla = (campo) => (
-    <section className="tarjeta" key={campo.id}>
+    <section className="tarjeta" key={campo.id} {...deTarjeta(campo)}>
       <header className="tarjeta-cab">
         <h2>{campo.etiqueta || campo.id}</h2>
         {/* Quien edita una tabla del Word tiene que saber que lo que escriba ya no coincidirá con el
@@ -243,7 +288,7 @@ export default function ApartadoEditable({
       ))}
 
       {delEditor.map((campo) => (deTabla.includes(campo) ? seccionDeTabla(campo) : (
-        <section className="tarjeta" key={campo.id}>
+        <section className="tarjeta" key={campo.id} {...deTarjeta(campo)}>
           <header className="tarjeta-cab">
             <h2>{campo.etiqueta || campo.id}</h2>
             {/* Un campo que la plantilla tiene y este documento no había
@@ -260,7 +305,7 @@ export default function ApartadoEditable({
       )))}
 
       {otros.map((campo) => (
-        <section className="tarjeta" key={campo.id}>
+        <section className="tarjeta" key={campo.id} {...deTarjeta(campo)}>
           <header className="tarjeta-cab">
             <h2>{campo.etiqueta || campo.id}</h2>
             <span className="chip">todavía sin editor</span>

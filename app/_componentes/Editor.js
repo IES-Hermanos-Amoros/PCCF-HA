@@ -120,9 +120,16 @@ function BarraFormato({ donde, onMarca, onAnadir, refBoton }) {
         <em>C</em>
       </button>
       <span className="sep" aria-hidden="true" />
+      {/* `data-entrada` señala POR DÓNDE SE EMPIEZA en este campo cuando está vacío, que es lo
+          mismo que dice el texto de abajo («Empieza con + párrafo ahí arriba»). Lo lee
+          ApartadoEditable.js al llevar a la vista un campo recién creado: un campo de texto vacío
+          no tiene ningún `textarea` todavía, así que sin esta marca el foco acabaría en el primer
+          botón de la barra —«negrita», que sin texto seleccionado no hace nada— en lugar de en el
+          único gesto que lleva a alguna parte. */}
       <button
         type="button"
         className="tb"
+        data-entrada=""
         ref={(n) => refBoton('anadir-parrafo', n)}
         onClick={() => onAnadir('anadir-parrafo')}
       >
