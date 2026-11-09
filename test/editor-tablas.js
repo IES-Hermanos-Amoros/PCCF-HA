@@ -1183,6 +1183,267 @@ prueba('lo que la pantalla pinta es lo que se imprime: fondoEfectivo coincide co
   assert.equal(tabla.table.body[2][0].bold, true);
 });
 
+// ================================================================ la alineación y el tamaño de letra
+
+// Lo que lleva escrito cada celda, y lo que el editor cree que lleva de verdad. Se comparan las dos
+// cosas: la clave guardada y lo que los motores van a traducir.
+const clavesDe = (v, clave) => v.filas.map((f) => f.map((x) => x[clave]));
+const alineacionesDe = (v) => v.filas.map((f, i) => f.map((_, j) => Edicion.alineacionEfectiva(v, i, j)));
+const tamanosDe = (v) => v.filas.map((f, i) => f.map((_, j) => Edicion.tamanoEfectivo(v, i, j)));
+
+prueba('la alineación de una celda se pone y se cambia, y elegir «izquierda» BORRA la clave', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  const centro = hacer(t, 'alineacion', { fila: 1, columna: 0, cual: 'centro' });
+  assert.deepEqual(clavesDe(centro, 'alineacion'), [[undefined, undefined], ['centro', undefined]]);
+  const derecha = hacer(centro, 'alineacion', { fila: 1, columna: 0, cual: 'derecha' });
+  assert.deepEqual(clavesDe(derecha, 'alineacion'), [[undefined, undefined], ['derecha', undefined]]);
+  // El valor por omisión no se guarda: se borra la clave, y la celda queda como nació.
+  const fuera = hacer(derecha, 'alineacion', { fila: 1, columna: 0, cual: 'izquierda' });
+  assert.ok(!('alineacion' in fuera.filas[1][0]), 'la clave se borra, no se guarda como undefined');
+  assert.deepEqual(Object.keys(fuera.filas[1][0]).sort(), ['bold', 'colspan', 'rowspan', 'text']);
+  // Y null hace lo mismo que el valor por omisión.
+  assert.deepEqual(hacer(derecha, 'alineacion', { fila: 1, columna: 0, cual: null }), fuera);
+  // Poner lo que ya tiene no cambia nada; «izquierda» en una celda que no la lleva, tampoco.
+  assert.equal(Edicion.aplicar(centro, 'alineacion', { fila: 1, columna: 0, cual: 'centro' }), centro);
+  assert.equal(Edicion.aplicar(t, 'alineacion', { fila: 0, columna: 0, cual: 'izquierda' }), t);
+  assert.equal(Edicion.aplicar(t, 'alineacion', { fila: 0, columna: 0, cual: null }), t);
+});
+
+prueba('el tamaño de letra de una celda se pone y se cambia, y elegir «normal» BORRA la clave', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  const pequena = hacer(t, 'tamano', { fila: 0, columna: 1, cual: 'pequena' });
+  assert.deepEqual(clavesDe(pequena, 'tamano'), [[undefined, 'pequena'], [undefined, undefined]]);
+  const grande = hacer(pequena, 'tamano', { fila: 0, columna: 1, cual: 'grande' });
+  assert.deepEqual(clavesDe(grande, 'tamano'), [[undefined, 'grande'], [undefined, undefined]]);
+  const fuera = hacer(grande, 'tamano', { fila: 0, columna: 1, cual: 'normal' });
+  assert.ok(!('tamano' in fuera.filas[0][1]), 'la clave se borra, no se guarda como undefined');
+  assert.deepEqual(Object.keys(fuera.filas[0][1]).sort(), ['bold', 'colspan', 'rowspan', 'text']);
+  assert.deepEqual(hacer(grande, 'tamano', { fila: 0, columna: 1, cual: null }), fuera);
+  assert.equal(Edicion.aplicar(t, 'tamano', { fila: 0, columna: 0, cual: 'normal' }), t);
+});
+
+prueba('una alineación o un tamaño que no existen se niegan y el motivo dice cuáles valen', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  niega(t, 'alineacion', { fila: 0, columna: 0, cual: 'center' }, /izquierda, centro, derecha/);
+  niega(t, 'alineacion', { fila: 0, columna: 0, cual: 'justificada' }, /Las alineaciones son/);
+  niega(t, 'tamano', { fila: 0, columna: 0, cual: 9.5 }, /pequena, normal, grande/);
+  niega(t, 'tamano', { fila: 0, columna: 0, cual: 'pequeña' }, /Los tamaños de letra son/);
+  niega(t, 'alineacion', { fila: 9, columna: 0, cual: 'centro' }, /No hay esa celda/);
+  niega(t, 'tamano', { fila: 0, columna: 9, cual: 'grande' }, /No hay esa celda/);
+  // Una tabla de clave y valor tiene formato fijo: no se alinea ni se le cambia la letra.
+  const kv = { pares: [{ etiqueta: 'a', valor: 'b' }] };
+  niega(kv, 'alineacion', { fila: 0, columna: 0, cual: 'centro' }, /formato fijo/);
+  niega(kv, 'tamano', { fila: 0, columna: 0, cual: 'grande' }, /formato fijo/);
+});
+
+prueba('las dos claves conviven con el fondo y con la negrita, y sobreviven a mover filas y columnas', () => {
+  let v = plana(['a', 'b'], ['c', 'd']);
+  v = hacer(v, 'alineacion', { fila: 0, columna: 0, cual: 'centro' });
+  v = hacer(v, 'tamano', { fila: 0, columna: 0, cual: 'pequena' });
+  v = hacer(v, 'fondo', { fila: 0, columna: 0, cual: 'etiqueta' });
+  v = hacer(v, 'negrita', { fila: 0, columna: 0, puesta: true });
+  assert.deepEqual(Object.keys(v.filas[0][0]).sort(),
+    ['alineacion', 'bold', 'colspan', 'fondo', 'rowspan', 'tamano', 'text']);
+  // Combinar conserva lo de la celda que se queda.
+  const unida = hacer(v, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.equal(unida.filas[0][0].alineacion, 'centro');
+  assert.equal(unida.filas[0][0].tamano, 'pequena');
+  const conFila = hacer(v, 'anadir-fila', { despuesDe: 0 });
+  assert.deepEqual(alineacionesDe(conFila), [['centro', null], [null, null], [null, null]]);
+  assert.deepEqual(tamanosDe(conFila), [['pequena', null], [null, null], [null, null]]);
+  const conCol = hacer(conFila, 'anadir-columna', { despuesDe: 0 });
+  assert.equal(conCol.filas[0][0].alineacion, 'centro');
+  assert.equal(conCol.filas[0][0].tamano, 'pequena');
+  // Y las celdas que nacen no llevan ninguna de las dos claves: salen como las del importador.
+  assert.ok(!('alineacion' in conCol.filas[1][1]) && !('tamano' in conCol.filas[1][1]));
+});
+
+// ================================================================ el ancho de las columnas
+
+prueba('el ancho de una columna se mueve de una en una, y al primer toque todas quedan iguales', () => {
+  const t = plana(['a', 'b', 'c'], ['d', 'e', 'f']);
+  assert.equal(Edicion.anchosDe(t), null, 'una tabla recién creada reparte sus columnas sola');
+  assert.equal(Edicion.porcentajesDe(t), null, 'y el porcentaje no se puede decir: lo calcula el motor');
+  // El primer toque iguala las tres y ensancha la primera.
+  const uno = hacer(t, 'ancho', { columna: 0, hacia: 'ensanchar' });
+  assert.deepEqual(uno.anchos, [11, 10, 10]);
+  assert.deepEqual(Edicion.porcentajesDe(uno), [35, 32, 32]);
+  // Y desde ahí se sigue moviendo esa o cualquier otra.
+  const dos = hacer(uno, 'ancho', { columna: 2, hacia: 'estrechar' });
+  assert.deepEqual(dos.anchos, [11, 10, 9]);
+  // El tope por columna: ni se queda sin sitio ni se come la tabla.
+  let ancha = t;
+  for (let k = 0; k < 20; k += 1) ancha = Edicion.aplicar(ancha, 'ancho', { columna: 0, hacia: 'ensanchar' });
+  assert.deepEqual(ancha.anchos, [30, 10, 10]);
+  niega(ancha, 'ancho', { columna: 0, hacia: 'ensanchar' }, /lo más ancha que puede ser/);
+  let estrecha = t;
+  for (let k = 0; k < 20; k += 1) estrecha = Edicion.aplicar(estrecha, 'ancho', { columna: 1, hacia: 'estrechar' });
+  assert.deepEqual(estrecha.anchos, [10, 2, 10]);
+  niega(estrecha, 'ancho', { columna: 1, hacia: 'estrechar' }, /lo más estrecha que puede ser/);
+});
+
+prueba('volver al automático BORRA «anchos» entero, y no se puede volver dos veces', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  const puesto = hacer(t, 'ancho', { columna: 0, hacia: 'ensanchar' });
+  const auto = hacer(puesto, 'anchos-automaticos', {});
+  assert.ok(!('anchos' in auto), 'la clave se borra, no se guarda vacía ni con pesos iguales');
+  assert.deepEqual(Object.keys(auto).sort(), ['filas']);
+  assert.deepEqual(auto, t, 'y la tabla vuelve a ser exactamente la de antes');
+  niega(t, 'anchos-automaticos', {}, /ya se reparten solas/);
+  // Una tabla de clave y valor tiene las dos columnas fijas.
+  niega({ pares: [] }, 'ancho', { columna: 0, hacia: 'ensanchar' }, /dos columnas fijas/);
+  niega({ pares: [] }, 'anchos-automaticos', {}, /dos columnas fijas/);
+  // Y sin filas no hay columnas que repartir.
+  niega({ filas: [] }, 'ancho', { columna: 0, hacia: 'ensanchar' }, /no tiene filas/);
+  niega(t, 'ancho', { columna: 9, hacia: 'ensanchar' }, /No hay esa columna/);
+  niega(t, 'ancho', { columna: 0, hacia: 'donde sea' }, /se ensancha o se estrecha/);
+});
+
+prueba('añadir y quitar columnas mantiene «anchos» con un peso por columna', () => {
+  let v = plana(['a', 'b', 'c'], ['d', 'e', 'f']);
+  v = hacer(v, 'ancho', { columna: 1, hacia: 'ensanchar' });
+  v = hacer(v, 'ancho', { columna: 1, hacia: 'ensanchar' });
+  assert.deepEqual(v.anchos, [10, 12, 10]);
+  // La columna nueva nace del ancho de la que tiene al lado, que es la que se pulsó.
+  const mas = hacer(v, 'anadir-columna', { despuesDe: 1 });
+  assert.deepEqual(mas.anchos, [10, 12, 12, 10]);
+  assert.equal(mas.anchos.length, Edicion.columnasDe(mas));
+  assert.deepEqual(hacer(v, 'anadir-columna', {}).anchos, [10, 12, 10, 10]);
+  // Y al quitar una, se va su peso.
+  const menos = hacer(mas, 'quitar-columna', { columna: 1 });
+  assert.deepEqual(menos.anchos, [10, 12, 10]);
+  assert.equal(menos.anchos.length, Edicion.columnasDe(menos));
+  // Las filas no tocan los anchos.
+  assert.deepEqual(hacer(v, 'anadir-fila', {}).anchos, [10, 12, 10]);
+  assert.deepEqual(hacer(v, 'quitar-fila', { fila: 1 }).anchos, [10, 12, 10]);
+  // Pero una tabla que se queda SIN FILAS los pierde: sin columnas no hay nada que repartir, y una
+  // lista de pesos sin columnas no pasaría la puerta.
+  const vacia = hacer(hacer(v, 'quitar-fila', { fila: 1 }), 'quitar-fila', { fila: 0 });
+  assert.deepEqual(vacia, { filas: [] });
+  // Y la fila que se añade después nace con el reparto automático.
+  assert.ok(!('anchos' in hacer(vacia, 'anadir-fila', {}, { columnas: 3 })));
+});
+
+prueba('ninguna operación deja una clave guardada con valor undefined', () => {
+  let v = plana(['a', 'b'], ['c', 'd']);
+  const gestos = [
+    ['alineacion', { fila: 0, columna: 0, cual: 'centro' }], ['alineacion', { fila: 0, columna: 0, cual: 'izquierda' }],
+    ['tamano', { fila: 0, columna: 1, cual: 'grande' }], ['tamano', { fila: 0, columna: 1, cual: 'normal' }],
+    ['fondo', { fila: 1, columna: 0, cual: 'etiqueta' }], ['fondo', { fila: 1, columna: 0, cual: null }],
+    ['ancho', { columna: 0, hacia: 'ensanchar' }], ['anchos-automaticos', {}],
+    ['negrita', { fila: 0, columna: 0, puesta: true }], ['cabecera', { puesta: true }],
+    ['anadir-columna', { despuesDe: 0 }], ['quitar-columna', { columna: 0 }],
+    ['anadir-fila', { despuesDe: 0 }], ['quitar-fila', { fila: 0 }],
+    ['combinar', { fila: 0, columna: 0, hacia: 'derecha' }], ['separar', { fila: 0, columna: 0 }],
+  ];
+  for (const [op, args] of gestos) {
+    v = hacer(v, op, args);
+    // `JSON.stringify` tira las claves que valen `undefined`, así que lo que hay que mirar son las
+    // presentes: ninguna puede valer `undefined` ni en la tabla ni en una celda.
+    for (const [k, x] of Object.entries(v)) assert.notEqual(x, undefined, `«${k}» de la tabla tras ${op}`);
+    v.filas.forEach((f, i) => f.forEach((celda, j) => {
+      for (const [k, x] of Object.entries(celda)) {
+        assert.notEqual(x, undefined, `«${k}» de la celda ${j + 1} de la fila ${i + 1} tras ${op}`);
+      }
+    }));
+  }
+});
+
+prueba('una tabla sin las claves nuevas da exactamente la definición de pdfmake de antes', () => {
+  // La garantía de las 1.070 tablas de los documentos reales, en una prueba que se puede ejecutar en
+  // una máquina recién clonada: mientras no haya ninguna de las claves nuevas, el motor no escribe
+  // `alignment` ni `fontSize` ni cambia los anchos, y la tabla sale como salía.
+  const campo = { id: 'tabla-x', tipo: 'tabla', etiqueta: 'Tabla' };
+  const definicion = (valor) => buildDocDefinition({
+    plantilla: { tipo: 'programacion_didactica', secciones: [{ id: 'x', titulo: 'X', nivel: 1, campos: [campo], hijos: [] }] },
+    datos: { departamento: 'informatica', documento: { x: { 'tabla-x': valor } }, instancias: [], asignaciones: {}, compartidos: {} },
+    instancias: [], titulo: 'T', subtitulo: 'S',
+  });
+  const base = { filas: [[c('Ámbito', { bold: true }), c('Norma', { bold: true })], [c('Estatal'), c('RD 1147/2011')]] };
+  const tabla = tablasDe(definicion(base))[0];
+  for (const f of tabla.table.body) {
+    for (const celda of f) {
+      assert.ok(!('alignment' in celda), 'una celda sin «alineacion» no puede llevar alignment');
+      assert.equal(celda.fontSize, undefined, 'una celda sin «tamano» no puede llevar fontSize');
+    }
+  }
+  // Y una celda que pide el valor por omisión escribiéndolo da la MISMA definición: por eso la
+  // operación del editor borra la clave en lugar de guardarla.
+  const conOmision = { filas: base.filas.map((f) => f.map((x) => ({ ...x, alineacion: 'izquierda', tamano: 'normal' }))) };
+  assert.equal(puerta(conOmision), null, 'escribir el valor por omisión pasa la puerta');
+  assert.deepStrictEqual(comparable(tablasDe(definicion(conOmision))[0]), comparable(tabla));
+  // Y sin «anchos» cada columna mide lo que diga su texto, no un reparto a partes iguales.
+  assert.equal(tabla.table.widths.length, 2);
+  assert.notEqual(tabla.table.widths[0], tabla.table.widths[1], 'las dos columnas no miden lo mismo');
+});
+
+prueba('lo que la pantalla pinta es lo que se imprime: la alineación y el tamaño de cada celda coinciden con el PDF', async () => {
+  const { u, doc } = await escenario();
+  const peticion = await peticionDeForma(u.jefa, doc._id, 'tabla', { etiqueta: 'Formatos', filas: '3', columnas: '3' });
+  const e0 = await (await estructuraDe(u.jefa, doc._id)).json();
+  await cambio(await anadirCampo(u.jefa, doc._id, 'atencion-a-la-diversidad', { campo: peticion, esperaPlantillaVersion: e0.plantillaVersion }), 201);
+  const { a, campo, valor } = await abrir(u.jefa, doc._id, 'atencion-a-la-diversidad', 'formatos');
+
+  // Una tabla con las dos claves en todas sus combinaciones, montada con las operaciones del editor.
+  // Todas las celdas llevan texto: en el Word el tamaño de letra va en el tramo, y una celda vacía
+  // no tiene ninguno.
+  let v = valor;
+  for (let i = 0; i < 3; i += 1) {
+    for (let j = 0; j < 3; j += 1) {
+      v = Edicion.aplicar(v, 'texto', { fila: i, columna: j, valor: i === 0 && j === 0 ? 'marca-formatos' : `f${i}c${j}` });
+    }
+  }
+  v = Edicion.aplicar(v, 'alineacion', { fila: 0, columna: 1, cual: 'centro' });
+  v = Edicion.aplicar(v, 'alineacion', { fila: 0, columna: 2, cual: 'derecha' });
+  v = Edicion.aplicar(v, 'tamano', { fila: 1, columna: 0, cual: 'pequena' });
+  v = Edicion.aplicar(v, 'tamano', { fila: 1, columna: 1, cual: 'grande' });
+  v = Edicion.aplicar(v, 'alineacion', { fila: 2, columna: 0, cual: 'centro' });
+  v = Edicion.aplicar(v, 'tamano', { fila: 2, columna: 0, cual: 'pequena' });
+  v = Edicion.aplicar(v, 'ancho', { columna: 0, hacia: 'ensanchar' });
+  sale(v, 'la tabla del editor');
+  const r = await guardarValor(u.jefa, doc._id, 'atencion-a-la-diversidad', a, campo.id, v);
+  assert.equal(r.status, 200, 'guardar: ' + JSON.stringify(await r.json()));
+
+  const definicion = await definicionDe(u.jefa, doc._id);
+  const tabla = tablasDe(definicion).find((t) => textosDe(t).flat().includes('marca-formatos'));
+  assert.ok(tabla, 'la tabla no sale en el PDF');
+  // La pantalla consulta `alineacionEfectiva` y `tamanoEfectivo`; el PDF escribe `alignment` y
+  // `fontSize`. Lo que dicen de cada celda tiene que ser lo mismo, traducido.
+  const ALINEACION = { centro: 'center', derecha: 'right' };
+  const TAMANO = { pequena: 8, grande: 12 };
+  assert.deepEqual(tabla.table.body.map((f) => f.map((x) => x.alignment)),
+    alineacionesDe(v).map((f) => f.map((x) => ALINEACION[x])),
+    'la pantalla y el PDF tienen que decir lo mismo de la alineación de cada celda');
+  assert.deepEqual(tabla.table.body.map((f) => f.map((x) => x.fontSize)),
+    tamanosDe(v).map((f) => f.map((x) => TAMANO[x])),
+    'la pantalla y el PDF tienen que decir lo mismo del tamaño de letra de cada celda');
+  // Y el ancho elegido a mano llega: la pulsada es la más ancha y las otras dos quedan iguales.
+  const w = tabla.table.widths;
+  assert.equal(w.length, 3);
+  assert.ok(w[0] > w[1], `la columna ensanchada no es la más ancha: ${JSON.stringify(w)}`);
+  assert.equal(w[1], w[2], 'las otras dos se reparten por igual');
+  const pct = Edicion.porcentajesDe(v);
+  assert.ok(Math.abs((w[0] * 100) / w.reduce((x, y) => x + y, 0) - pct[0]) < 1,
+    `el porcentaje de la pantalla (${pct[0]} %) no es el del PDF (${JSON.stringify(w)})`);
+
+  // Y en el Word: la alineación va en `w:jc` y el tamaño en `w:sz`, en medios puntos.
+  const zip = await JSZip.loadAsync(Buffer.from(await (await Docx.GET(pet(`/api/documentos/${doc._id}/docx`, u.jefa), { id: doc._id })).arrayBuffer()));
+  const xml = await zip.file('word/document.xml').async('string');
+  const trozo = xml.slice(xml.indexOf('marca-formatos'));
+  const tbl = trozo.slice(0, trozo.indexOf('</w:tbl>'));
+  assert.ok(tbl.includes('<w:jc w:val="center"/>'), 'la celda centrada no llega al Word');
+  assert.ok(tbl.includes('<w:jc w:val="right"/>'), 'la celda a la derecha no llega al Word');
+  assert.ok(tbl.includes('<w:sz w:val="16"/>'), 'la letra pequeña no llega al Word (8 pt = 16 medios puntos)');
+  assert.ok(tbl.includes('<w:sz w:val="24"/>'), 'la letra grande no llega al Word (12 pt = 24 medios puntos)');
+  // Los anchos: la rejilla de la tabla va antes de sus celdas, así que las tres últimas columnas
+  // declaradas hasta la marca son las de esta tabla. La pulsada es la más ancha, en dxa.
+  const cols = [...xml.slice(0, xml.indexOf('marca-formatos')).matchAll(/<w:gridCol w:w="(\d+)"\/>/g)].map((m) => Number(m[1]));
+  assert.ok(cols.length >= 3, 'no se encuentran las columnas de la tabla en el Word');
+  const ultimas = cols.slice(-3);
+  assert.ok(ultimas[0] > ultimas[1], `la columna ensanchada no es la más ancha en el Word: ${JSON.stringify(ultimas)}`);
+  assert.equal(ultimas[1], ultimas[2], 'las otras dos se reparten por igual en el Word');
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {

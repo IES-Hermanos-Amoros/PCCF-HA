@@ -83,7 +83,7 @@ historial     { documentoId, ruta, antes, despues, usuario, fecha }   // opciona
 El PDF solo sale bien si el editor escribe **exactamente** el formato que espera el renderer:
 
 - texto: bloques `{ type: 'p', text }` y `{ type: 'list', items: [{ text, level }] }` — no HTML arbitrario;
-- tablas: celdas `{ text, colspan, rowspan, bold, fondo? }` —`fondo` es opcional, y sin ella el fondo lo decide la negrita: el contrato está en `docs/api.md`— y las celdas cubiertas **omitidas** (las reconstruye `rejilla()`).
+- tablas: `{ filas, anchos? }` con celdas `{ text, colspan, rowspan, bold, fondo?, alineacion?, tamano? }` —las cuatro últimas son opcionales y sin ellas la celda sale como la importa el Word; `anchos` son proporciones por columna y sin ellas las calcula el motor con el texto: el contrato está en `docs/api.md`— y las celdas cubiertas **omitidas** (las reconstruye `rejilla()`).
 
 Por eso: editor de bloques con esquema restringido (párrafo, negrita, listas anidadas) y, en las rejillas, empezar editando el **texto** de la celda sin tocar la geometría de `colspan/rowspan`.
 

@@ -31,3 +31,6 @@ entrada/*
 # Next.js
 .next/
 next-env.d.ts
+
+# Los worktrees de los agentes y los ajustes locales de la herramienta.
+.claude/

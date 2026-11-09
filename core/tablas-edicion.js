@@ -8,7 +8,8 @@
 //
 // QUÉ SE EDITA
 //
-//   tabla              { filas: [[celda, …], …] }   celda { text, colspan?, rowspan?, bold?, fondo? }
+//   tabla              { filas: [[celda, …], …], anchos? }   celda { text, colspan?, rowspan?,
+//                      bold?, fondo?, alineacion?, tamano? }
 //   tabla_clave_valor  { pares: [{ etiqueta, valor }] }
 //
 // Y solo las que se CREARON en la aplicación (`esEditable`): las que trajo el importador del Word
@@ -42,6 +43,22 @@
 //
 // El interruptor de cabecera le quita a la primera fila el fondo elegido a mano: es lo que permite
 // que ponerla y quitarla se note siempre, en lugar de dejar una cabecera sin azul sin explicación.
+//
+// LA ALINEACIÓN Y EL TAMAÑO DE LETRA DE UNA CELDA
+//
+// Por nombre y no por medida («centro», «pequena»), igual que el fondo, porque el PDF los escribe
+// en puntos y el Word en medios puntos y en `w:jc`. Quién manda lo deciden `alineacionDeCelda` y
+// `tamanoDeCelda` de core/estructurados.js, las mismas que usan los dos motores y la pantalla.
+//
+// Elegir el valor por omisión («izquierda», «normal») BORRA la clave, no la guarda: así una tabla
+// rehecha en la aplicación se parece a la importada hasta en lo que no lleva escrito.
+//
+// EL ANCHO DE LAS COLUMNAS
+//
+// Va en la tabla y no en la celda: `anchos` es una lista de pesos relativos, uno por columna. Sin
+// ella cada columna mide lo que diga su cantidad de texto, que es el cálculo de cada motor; con
+// ella mandan las proporciones. Quien edita no escribe ninguna proporción: ensancha o estrecha una
+// columna de una en una, ve el porcentaje que le queda, y «automático» borra la clave entera.
 //
 // LAS CELDAS COMBINADAS
 //
@@ -137,6 +154,51 @@
     return esRejilla(valor) ? valor.filas.length : 0;
   };
 
+  // ---------------------------------------------------------------- los anchos de las columnas
+
+  // Los pesos con los que se trabaja al poner los anchos a mano. Son números pequeños a propósito:
+  // lo que importa es la PROPORCIÓN entre ellos, y quien edita no escribe ninguno —mueve una
+  // columna de una en una y ve el porcentaje que le queda.
+  //
+  // El tope por columna está para que ninguna se quede sin sitio: con 2 contra 30 ya hay quince
+  // veces de diferencia, y para apretar más una columna se estrechan las de al lado.
+  const PESO_BASE = 10;
+  const PESO_PASO = 1;
+  const PESO_MIN = 2;
+  const PESO_MAX = 30;
+
+  // Los pesos que trae la tabla, o null si sus columnas se reparten solas. Una lista que no cuadra
+  // con las columnas que de verdad tiene no se puede usar (ni se puede guardar: la puerta la
+  // rechaza), así que cuenta como si no estuviera.
+  function anchosDe(valor) {
+    if (!esRejilla(valor) || !Array.isArray(valor.anchos)) return null;
+    return valor.anchos.length === columnasDe(valor) ? valor.anchos : null;
+  }
+
+  // De qué pesos parte una pulsación: los de la tabla si los tiene, y si no, uno igual para todas.
+  // PASAR A ANCHOS A MANO DEJA DE MIRAR EL TEXTO: el reparto automático lo calcula cada motor a
+  // partir de la cantidad de texto de cada columna, y core/ no sabe de puntos ni de dxa. Así que al
+  // primer toque las columnas quedan iguales y desde ahí se mueve la que haga falta, que es
+  // previsible y se ve en el porcentaje. Volver al automático es una operación aparte.
+  const pesosDe = (valor) => anchosDe(valor) || Array.from({ length: columnasDe(valor) }, () => PESO_BASE);
+
+  // Qué porcentaje del ancho de la tabla ocupa cada columna, o null si se reparten solas (eso lo
+  // calcula cada motor con el texto, y aquí no se puede saber). Es lo que enseña el editor.
+  function porcentajesDe(valor) {
+    const pesos = anchosDe(valor);
+    if (!pesos) return null;
+    const suma = pesos.reduce((a, b) => a + b, 0);
+    return pesos.map((p) => Math.round((p * 100) / suma));
+  }
+
+  // El valor con los anchos puestos o quitados. Sin lista BORRA la clave, igual que `conClave` con
+  // las de la celda: «las columnas se reparten solas» se dice de una sola manera, sin la clave.
+  function conAnchos(valor, pesos) {
+    const fuera = { ...valor };
+    delete fuera.anchos;
+    return pesos === undefined ? fuera : { ...fuera, anchos: pesos };
+  }
+
   function tieneCombinadas(valor) {
     if (!esRejilla(valor)) return false;
     return valor.filas.some((f) => f.some((c) => (c.colspan || 1) > 1 || (c.rowspan || 1) > 1));
@@ -225,14 +287,27 @@
 
   const huecoVacio = (r, c, bold, fondo) => ({ r, c, cs: 1, rs: 1, celda: conFondo(celdaNueva('', bold), fondo) });
 
-  // Una celda con el fondo puesto o quitado. `cual` sin valor BORRA la clave en lugar de guardarla
-  // como `undefined`: una celda con `fondo: undefined` no pasa la puerta igual que una sin la clave,
-  // y lo que se guarda tiene que ser lo que el importador escribiría.
-  function conFondo(celda, cual) {
+  // Una celda con una de las claves de estilo (`fondo`, `alineacion`, `tamano`) puesta o quitada.
+  // `cual` sin valor BORRA la clave en lugar de guardarla como `undefined`: una celda con
+  // `fondo: undefined` no pasa la puerta igual que una sin la clave, y lo que se guarda tiene que
+  // ser lo que el importador escribiría. Es una sola función para las tres por lo mismo que
+  // `fondoDeCelda` es una sola: la regla escrita tres veces se rompe en una de ellas.
+  function conClave(celda, clave, cual) {
     const fuera = { ...celda };
-    delete fuera.fondo;
-    return cual === undefined ? fuera : { ...fuera, fondo: cual };
+    delete fuera[clave];
+    return cual === undefined ? fuera : { ...fuera, [clave]: cual };
   }
+  const conFondo = (celda, cual) => conClave(celda, 'fondo', cual);
+
+  // ELEGIR EL VALOR POR OMISIÓN ES BORRAR LA CLAVE. Una celda con `alineacion: 'izquierda'` y una
+  // celda sin la clave imprimen exactamente lo mismo (`alineacionDeCelda` de core/estructurados.js
+  // devuelve null en los dos casos), así que guardar el nombre dejaría dos maneras de decir lo
+  // mismo y una tabla rehecha dejaría de parecerse a la importada.
+  //
+  // En el fondo no pasa esto: allí «ninguno» ANULA la regla que saca el color de la negrita, así
+  // que significa algo y se guarda.
+  const sinOmision = (cual, omision) => (cual === null || cual === undefined || cual === omision ? undefined : cual);
+
   const copia = (g) => g.celdas.map((x) => ({ ...x }));
 
   // La primera fila que se quedaría sin ninguna celda propia, o -1.
@@ -321,6 +396,7 @@
   // ---------------------------------------------------------------- lo que no se puede
 
   const MOTIVO_CLAVE_VALOR_CELDAS = 'Una tabla de clave y valor tiene un formato fijo (concepto en negrita, contenido normal): no se combinan celdas ni se cambia su negrita.';
+  const MOTIVO_CLAVE_VALOR_ANCHOS = 'Una tabla de clave y valor tiene las dos columnas fijas: el concepto a la izquierda y el resto del ancho para su contenido.';
 
   // Por qué no se puede una operación, o null si se puede. `args` es el de la operación. Es la
   // misma función para apagar el botón y para que `aplicar` se niegue: no pueden discrepar.
@@ -375,9 +451,30 @@
         if (claveValor) return 'Una tabla de clave y valor no tiene fila de cabecera.';
         if (!n) return 'La tabla no tiene filas: añade una antes de ponerle cabecera.';
         return null;
+      case 'ancho': {
+        if (claveValor) return MOTIVO_CLAVE_VALOR_ANCHOS;
+        if (!n) return 'La tabla no tiene filas: añade una fila antes de repartir las columnas.';
+        const cols = columnasDe(valor);
+        if (!Number.isInteger(args.columna) || args.columna < 0 || args.columna >= cols) return 'No hay esa columna.';
+        const peso = pesosDe(valor)[args.columna];
+        if (args.hacia === 'ensanchar') {
+          return peso + PESO_PASO <= PESO_MAX ? null
+            : 'Esta columna ya es lo más ancha que puede ser: estrecha las de al lado para darle más sitio.';
+        }
+        if (args.hacia === 'estrechar') {
+          return peso - PESO_PASO >= PESO_MIN ? null
+            : 'Esta columna ya es lo más estrecha que puede ser: ensancha las de al lado para quitarle sitio.';
+        }
+        return 'Una columna se ensancha o se estrecha.';
+      }
+      case 'anchos-automaticos':
+        if (claveValor) return MOTIVO_CLAVE_VALOR_ANCHOS;
+        return anchosDe(valor) ? null : 'Las columnas de esta tabla ya se reparten solas según su texto.';
       case 'combinar':
       case 'separar':
       case 'fondo':
+      case 'alineacion':
+      case 'tamano':
       case 'negrita': {
         if (claveValor) return MOTIVO_CLAVE_VALOR_CELDAS;
         const f = args.fila;
@@ -390,6 +487,16 @@
           return args.cual === null || args.cual === undefined || E.FONDOS_CELDA.indexOf(args.cual) >= 0
             ? null
             : 'Los fondos son ' + E.FONDOS_CELDA.join(', ') + ', o ninguno de ellos para que lo decida la negrita.';
+        }
+        if (op === 'alineacion') {
+          return args.cual === null || args.cual === undefined || E.ALINEACIONES_CELDA.indexOf(args.cual) >= 0
+            ? null
+            : 'Las alineaciones son ' + E.ALINEACIONES_CELDA.join(', ') + '.';
+        }
+        if (op === 'tamano') {
+          return args.cual === null || args.cual === undefined || E.TAMANOS_CELDA.indexOf(args.cual) >= 0
+            ? null
+            : 'Los tamaños de letra son ' + E.TAMANOS_CELDA.join(', ') + '.';
         }
         if (op === 'separar') {
           const celda = valor.filas[f][args.columna];
@@ -410,17 +517,22 @@
 
   // Aplica una operación. Operaciones y sus argumentos:
   //
-  //   texto            { fila, columna, valor }     el texto de una celda (o de la clave / el valor de un par)
-  //   anadir-fila      { despuesDe? }               sin `despuesDe`, al final
-  //   quitar-fila      { fila }
-  //   anadir-columna   { despuesDe? }               sin `despuesDe`, al final
-  //   quitar-columna   { columna }
-  //   cabecera         { puesta }                   true: primera fila en negrita; false: sin negrita
-  //   combinar         { fila, columna, hacia }     hacia 'derecha' o 'abajo'; `columna` es el índice de la celda en su fila
-  //   separar          { fila, columna }            la celda vuelve a 1 × 1
-  //   negrita          { fila, columna, puesta }    la negrita de una celda
+  //   texto                { fila, columna, valor }     el texto de una celda (o de la clave / el valor de un par)
+  //   anadir-fila          { despuesDe? }               sin `despuesDe`, al final
+  //   quitar-fila          { fila }
+  //   anadir-columna       { despuesDe? }               sin `despuesDe`, al final
+  //   quitar-columna       { columna }
+  //   cabecera             { puesta }                   true: primera fila en negrita; false: sin negrita
+  //   combinar             { fila, columna, hacia }     hacia 'derecha' o 'abajo'; `columna` es el índice de la celda en su fila
+  //   separar              { fila, columna }            la celda vuelve a 1 × 1
+  //   negrita              { fila, columna, puesta }    la negrita de una celda
+  //   fondo                { fila, columna, cual }      'cabecera', 'etiqueta', 'ninguno' o null
+  //   alineacion           { fila, columna, cual }      'izquierda' (borra), 'centro', 'derecha' o null
+  //   tamano               { fila, columna, cual }      'normal' (borra), 'pequena', 'grande' o null
+  //   ancho                { columna, hacia }           hacia 'ensanchar' o 'estrechar'
+  //   anchos-automaticos   { }                          las columnas vuelven a repartirse solas
   //
-  // En `anadir-columna` y `quitar-columna`, `columna` y `despuesDe` cuentan casillas de la
+  // En `anadir-columna`, `quitar-columna` y `ancho`, `columna` y `despuesDe` cuentan casillas de la
   // cuadrícula; en el resto, `columna` es el índice de la celda en su fila.
   //
   // `contexto.columnas` es el ancho con el que abrir una fila en una tabla que se ha quedado sin
@@ -490,10 +602,39 @@
       };
     }
 
+    // La alineación y el tamaño de letra de una celda. El nombre de la operación es el de la clave
+    // de la celda, y elegir el valor por omisión («izquierda», «normal») la BORRA: ver `sinOmision`.
+    if (op === 'alineacion' || op === 'tamano') {
+      const omision = op === 'alineacion' ? E.ALINEACION_CELDA_OMISION : E.TAMANO_CELDA_OMISION;
+      const cual = sinOmision(args.cual, omision);
+      if (filas[args.fila][args.columna][op] === cual) return valor;
+      return {
+        ...valor,
+        filas: filas.map((f, i) => (i !== args.fila ? f
+          : f.map((c, j) => (j === args.columna ? conClave(c, op, cual) : c)))),
+      };
+    }
+
+    // Mover el ancho de una columna. La primera pulsación sobre una tabla cuyas columnas se
+    // reparten solas las iguala y mueve esa: ver `pesosDe`.
+    if (op === 'ancho') {
+      const pesos = pesosDe(valor);
+      const paso = args.hacia === 'ensanchar' ? PESO_PASO : -PESO_PASO;
+      return conAnchos(valor, pesos.map((p, j) => (j === args.columna ? p + paso : p)));
+    }
+
+    // Volver al reparto automático: se borra la clave entera, no se guarda una lista «neutra».
+    if (op === 'anchos-automaticos') return conAnchos(valor, undefined);
+
     // Lo que queda cambia la forma: se hace sobre la cuadrícula colocada.
     const g = colocar(filas);
     let celdas;
     let n = g.n;
+    // LOS ANCHOS VIAJAN CON LAS COLUMNAS: una lista con un peso de más o de menos no se podría
+    // guardar, así que las dos operaciones que cambian el número de columnas la mueven con ellas.
+    // Las demás no la tocan, y una tabla que se queda sin filas la pierde (sin columnas no hay
+    // nada que repartir).
+    let pesos = anchosDe(valor) || undefined;
 
     if (op === 'anadir-fila') {
       const ancho = g.ncols || Math.min(Math.max(parseInt(contexto.columnas, 10) || 1, 1), E.MAX_COLUMNAS);
@@ -542,8 +683,12 @@
           ? { r, c: k, cs: 1, rs: 1, celda: celdaNueva(titulo, true) }
           : huecoVacio(r, k, false));
       }
+      // La columna nueva nace del ancho de la que tiene al lado: es lo que se espera al pulsar
+      // «añadir a la derecha de esta».
+      if (pesos) pesos = insertar(pesos, k, pesos[k - 1]);
     } else if (op === 'quitar-columna') {
       const col = args.columna;
+      if (pesos) pesos = pesos.filter((_, j) => j !== col);
       celdas = [];
       copia(g).forEach((x) => {
         if (x.c <= col && col < x.c + x.cs) {
@@ -578,7 +723,7 @@
     } else {
       return valor;
     }
-    return { ...valor, filas: aFilas(celdas, n) };
+    return conAnchos({ ...valor, filas: aFilas(celdas, n) }, n ? pesos : undefined);
   }
 
   // ---------------------------------------------------------------- para pintar
@@ -605,10 +750,19 @@
     return Estructurados().fondoDeCelda(valor.filas[fila][columna], fila === 0 && tieneCabecera(valor));
   }
 
+  // Lo mismo con la alineación y el tamaño de letra: null cuando la celda sale como siempre. Los
+  // deciden `alineacionDeCelda` y `tamanoDeCelda` de core/estructurados.js, las mismas funciones
+  // que traducen el PDF y el Word.
+  const celdaEnFila = (valor, fila, columna) => (esRejilla(valor) && valor.filas[fila] && valor.filas[fila][columna]) || null;
+  const alineacionEfectiva = (valor, fila, columna) => Estructurados().alineacionDeCelda(celdaEnFila(valor, fila, columna));
+  const tamanoEfectivo = (valor, fila, columna) => Estructurados().tamanoDeCelda(celdaEnFila(valor, fila, columna));
+
   const api = {
     esEditable, esClaveValor, esRejilla,
     columnasDe, filasDe, tieneCombinadas, tieneCabecera, celdaNueva, descripcion, valorDe,
-    motivoDeNo, puede, aplicar, paraPintar, posiciones, celdaEn, textoQueSeJunta, fondoEfectivo,
+    motivoDeNo, puede, aplicar, paraPintar, posiciones, celdaEn, textoQueSeJunta,
+    fondoEfectivo, alineacionEfectiva, tamanoEfectivo,
+    anchosDe, porcentajesDe,
   };
 
   global.Core = global.Core || {};

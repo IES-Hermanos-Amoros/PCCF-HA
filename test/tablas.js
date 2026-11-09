@@ -439,11 +439,58 @@ prueba('la forma de la celda es la del importador y ninguna clave más', () => {
   assert.ok(/no existe en una celda/.test(Est.motivoDeCampo(CAMPO_TABLA, { filas: [[{ text: 'a', color: 'red' }]] })));
   assert.ok(/«text»/.test(Est.motivoDeCampo(CAMPO_TABLA, { filas: [[{ colspan: 1 }]] })));
   assert.ok(/colspan/.test(Est.motivoDeCampo(CAMPO_TABLA, { filas: [[{ text: 'a', colspan: 0 }]] })));
-  assert.ok(/solo «filas»/.test(Est.motivoDeCampo(CAMPO_TABLA, { filas: [], anchos: [1] })));
+  assert.ok(/solo «filas» y «anchos»/.test(Est.motivoDeCampo(CAMPO_TABLA, { filas: [], columnas: 2 })));
   assert.ok(/lista de filas/.test(Est.motivoDeCampo(CAMPO_TABLA, { filas: 'no' })));
   assert.ok(/marca del procesador/.test(Est.motivoDeCampo(CAMPO_TABLA, { filas: [[{ text: 'a<o:p></o:p>' }]] })));
   assert.ok(/máximo son 12/.test(Est.motivoDeCampo(CAMPO_TABLA, { filas: [ancho(13)] })));
   assert.ok(/no es una tabla/.test(Est.motivoDeCampo(CAMPO_TABLA, null)));
+});
+
+prueba('la puerta acepta la alineación y el tamaño de letra por nombre, y nada que no sea uno de ellos', () => {
+  const vale = (celda) => Est.motivoDeCampo(CAMPO_TABLA, { filas: [[c('a', celda), c('b')]] });
+  for (const alineacion of ['izquierda', 'centro', 'derecha']) assert.equal(vale({ alineacion }), null, alineacion);
+  for (const tamano of ['pequena', 'normal', 'grande']) assert.equal(vale({ tamano }), null, tamano);
+  assert.equal(vale({ alineacion: 'centro', tamano: 'grande' }), null, 'las dos a la vez');
+  // Lo que no es uno de los nombres se niega, y el motivo los dice. Ni el valor de pdfmake, ni el
+  // de Word, ni una medida: el contrato es el nombre.
+  assert.ok(/las alineaciones son «izquierda», «centro», «derecha»/.test(vale({ alineacion: 'center' })));
+  assert.ok(/las alineaciones son/.test(vale({ alineacion: 'justificada' })));
+  assert.ok(/los tamaños son «pequena», «normal», «grande»/.test(vale({ tamano: 9.5 })));
+  assert.ok(/los tamaños son/.test(vale({ tamano: 'pequeña' })), 'el nombre se escribe sin eñe');
+  assert.ok(/no existe en una celda/.test(vale({ interlineado: 1.5 })));
+});
+
+prueba('la puerta acepta los anchos como proporciones, una por columna, y dice los dos números si no cuadran', () => {
+  const tabla = (anchos) => Est.motivoDeCampo(CAMPO_TABLA, { filas: [[c('a'), c('b'), c('c')]], anchos });
+  assert.equal(tabla([1, 2, 1]), null, 'tres pesos para tres columnas');
+  assert.equal(tabla([0.5, 1.25, 3]), null, 'los pesos pueden ser decimales');
+  assert.equal(Est.motivoDeCampo(CAMPO_TABLA, { filas: [[c('a'), c('b'), c('c')]] }), null, 'sin anchos se reparten solas');
+  // El largo: el mensaje tiene que decir cuántas proporciones trae y cuántas columnas hay.
+  assert.ok(/2 proporciones.*3 columnas/.test(tabla([1, 2])), tabla([1, 2]));
+  assert.ok(/4 proporciones.*3 columnas/.test(tabla([1, 1, 1, 1])));
+  assert.ok(/1 proporción.*3 columnas/.test(tabla([1])), 'una sola se dice en singular');
+  // Una tabla combinada cuenta columnas de la cuadrícula, no celdas de la primera fila.
+  assert.equal(Est.motivoDeCampo(CAMPO_TABLA, { filas: [[c('a', { colspan: 2 }), c('b')], ancho(3)], anchos: [1, 1, 1] }), null);
+  // Lo que no es una lista de números positivos finitos.
+  assert.ok(/no es una lista de proporciones/.test(tabla('1 2 1')));
+  assert.ok(/no es una lista de proporciones/.test(tabla({ 0: 1 })));
+  assert.ok(/está vacío/.test(tabla([])), 'una lista vacía no es «se reparten solas»: eso es no llevar la clave');
+  assert.ok(/no es un número positivo/.test(tabla([1, 0, 1])), 'cero dejaría una columna sin ancho');
+  assert.ok(/no es un número positivo/.test(tabla([1, -2, 1])));
+  assert.ok(/no es un número positivo/.test(tabla([1, Infinity, 1])));
+  assert.ok(/no es un número positivo/.test(tabla([1, NaN, 1])));
+  assert.ok(/no es un número positivo/.test(tabla([1, '2', 1])), 'una cadena que parece número tampoco');
+  // Y una tabla sin filas no tiene columnas que repartir.
+  assert.ok(/0 columnas/.test(Est.motivoDeCampo(CAMPO_TABLA, { filas: [], anchos: [1] })));
+});
+
+prueba('los anchos se exigen aunque la forma de la tabla no haya cambiado', () => {
+  // Lo torcido de una tabla importada se perdona para poder corregir una errata; los anchos no,
+  // porque ninguna tabla guardada los trae y aquí no hay nada heredado que respetar.
+  const guardada = { filas: [[c('Saberes', { rowspan: 4 }), c('a')], [c('b')]] };
+  const conAnchos = { ...guardada, anchos: [1, 2, 3] };
+  assert.ok(/3 proporciones.*2 columnas/.test(Est.motivoDeCampo(CAMPO_TABLA, conAnchos, { guardado: guardada })));
+  assert.equal(Est.motivoDeCampo(CAMPO_TABLA, { ...guardada, anchos: [1, 2] }, { guardado: guardada }), null);
 });
 
 prueba('una tabla importada que ya venía torcida se corrige celda a celda, pero no se cambia de forma', () => {

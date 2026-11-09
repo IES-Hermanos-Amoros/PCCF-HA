@@ -1,6 +1,7 @@
 // El editor de las tablas que se crean en la aplicación: escribir en las celdas, añadir y
-// quitar filas y columnas, combinar y separar celdas, poner la negrita celda a celda y poner o
-// quitar la fila de cabecera.
+// quitar filas y columnas, combinar y separar celdas, poner la negrita, el fondo, la alineación y
+// el tamaño de letra celda a celda, repartir el ancho de las columnas y poner o quitar la fila de
+// cabecera.
 //
 // ES UNA CÁSCARA. Qué pasa al añadir una columna, qué celdas se conservan al quitar una fila, qué
 // se hace con el texto de la celda que se absorbe al combinar, cómo se reparten las combinaciones
@@ -30,6 +31,11 @@
 // está en la ayuda plegada de la barra, y el botón de negrita dice en su `title` qué va a pasar con
 // ESTA celda, que es lo que hace falta en el momento de pulsarlo.
 //
+// LA ALINEACIÓN, EL TAMAÑO DE LETRA Y EL ANCHO DE LAS COLUMNAS, IGUAL. Los nombres que se guardan
+// son los de core/estructurados.js y la pantalla los consulta por `alineacionEfectiva` y
+// `tamanoEfectivo`; el ancho es una lista de proporciones de la tabla, y aquí solo se mueve de una
+// en una con `porcentajesDe` a la vista. Nadie escribe una proporción a mano.
+//
 // EL FOCO. Se mantiene en la tabla tras cada gesto, y no solo en el botón que se pulsó (que puede
 // desaparecer o apagarse): tras añadir una fila va a su primera celda; tras quitar una, a la celda
 // que ocupa su sitio; tras añadir o quitar una columna, a la celda de la primera fila que cae en
@@ -52,6 +58,15 @@ const nombreDeFila = (i, cabecera) => (i === 0 && cabecera ? 'fila 1 (la cabecer
 // Cómo se llama cada fondo en la pantalla. El nombre que se guarda es el de core/estructurados.js;
 // aquí solo se dice de qué color es, porque «etiqueta» no significa nada para quien lo lee.
 const NOMBRE_FONDO = { cabecera: 'azul claro', etiqueta: 'gris', ninguno: 'ninguno' };
+
+// Lo mismo con la alineación y el tamaño de letra: lo que se guarda es el nombre de
+// core/estructurados.js, y aquí se dice en castellano corriente («pequena» se escribe sin eñe en el
+// modelo y con eñe en la pantalla). Elegir el valor por omisión BORRA la clave de la celda
+// (core/tablas-edicion.js), así que el desplegable lo enseña seleccionado cuando no la lleva.
+const ALINEACIONES = [['izquierda', 'izquierda'], ['centro', 'centrado'], ['derecha', 'derecha']];
+const TAMANOS = [['pequena', 'pequeña'], ['normal', 'normal'], ['grande', 'grande']];
+const NOMBRE_ALINEACION = Object.fromEntries(ALINEACIONES);
+const NOMBRE_TAMANO = Object.fromEntries(TAMANOS);
 
 // La columna o columnas que ocupa una celda, para el nombre: «columna 2» o «columnas 2 a 3».
 const nombreDeColumnas = (pos) => (pos.ancho > 1
@@ -205,6 +220,36 @@ export default function EditorTabla({ campo, valor, onCambio }) {
     foco: () => ({ celda: llave(i, j) }),
   });
 
+  const alinear = (i, j, cual) => hacer('alineacion', { fila: i, columna: j, cual }, {
+    dice: `El texto de la celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} va a la ${NOMBRE_ALINEACION[cual]}.`,
+    foco: () => ({ celda: llave(i, j) }),
+  });
+  const ponerTamano = (i, j, cual) => hacer('tamano', { fila: i, columna: j, cual }, {
+    dice: `La letra de la celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} es ${NOMBRE_TAMANO[cual]}.`,
+    foco: () => ({ celda: llave(i, j) }),
+  });
+
+  // El ancho de una columna. El porcentaje que queda se dice en el aviso además de verse, porque
+  // mover una columna cambia el de todas las demás y eso no se adivina mirando un número.
+  const porcentajes = Edicion.porcentajesDe(valor);
+  const moverAncho = (j, hacia) => hacer('ancho', { columna: j, hacia }, {
+    dice: (s) => {
+      const p = Edicion.porcentajesDe(s);
+      return `La columna ${j + 1} ocupa el ${p[j]} % del ancho de la tabla. Reparto: ${p.map((x) => `${x} %`).join(' · ')}.`;
+    },
+    // El foco se queda en el botón pulsado, y si esa columna acaba de llegar a su tope —con lo que
+    // el botón se apaga y ya no puede recibirlo— pasa al de la dirección contraria.
+    foco: (s) => ({
+      boton: Edicion.puede(s, 'ancho', { columna: j, hacia })
+        ? `ancho:${hacia}:${j}`
+        : `ancho:${hacia === 'ensanchar' ? 'estrechar' : 'ensanchar'}:${j}`,
+    }),
+  });
+  const anchoAutomatico = () => hacer('anchos-automaticos', {}, {
+    dice: 'Las columnas vuelven a repartirse solas según la cantidad de texto de cada una.',
+    foco: () => ({ boton: 'anadir-columna' }),
+  });
+
   const negrita = (i, j, puesta) => hacer('negrita', { fila: i, columna: j, puesta }, {
     dice: puesta
       ? `La celda de la fila ${i + 1}, ${nombreDeColumnas(enRejilla(i, j))} va en negrita: saldrá sombreada.`
@@ -219,8 +264,11 @@ export default function EditorTabla({ campo, valor, onCambio }) {
   // y saldría de otro en el PDF. La negrita es una clase aparte porque ya no implica fondo.
   const claseCelda = (i, j, celda) => {
     const fondo = Edicion.fondoEfectivo(valor, i, j);
+    const alineacion = Edicion.alineacionEfectiva(valor, i, j);
+    const tamano = Edicion.tamanoEfectivo(valor, i, j);
     return [fondo === 'cabecera' ? 'celda-cab' : '', fondo === 'etiqueta' ? 'celda-neg' : '',
-      celda.bold === true ? 'celda-negrita' : ''].filter(Boolean).join(' ');
+      celda.bold === true ? 'celda-negrita' : '',
+      alineacion ? `celda-${alineacion}` : '', tamano ? `celda-${tamano}` : ''].filter(Boolean).join(' ');
   };
 
   const barra = (
@@ -269,6 +317,19 @@ export default function EditorTabla({ campo, valor, onCambio }) {
             La <strong>fila de cabecera</strong> es la primera cuando va entera en negrita, y es la que
             se repite arriba al cambiar de página en el PDF.
           </p>
+          <p>
+            <strong>Texto</strong> y <strong>Letra</strong> alinean una celda y le cambian el tamaño de
+            la letra. Son de la celda, no de la columna: una fila de cifras centradas conviven con una
+            de texto a la izquierda, y sale igual en el PDF y en el Word.
+          </p>
+          <p>
+            <strong>El ancho de cada columna</strong> se calcula solo, a partir de la cantidad de texto
+            que tiene: las columnas de marcas o de cifras salen estrechas y las de texto largo, anchas.
+            Con <strong>+</strong> y <strong>−</strong> debajo de una columna se reparte a mano, y
+            entonces se ve el porcentaje que ocupa cada una. Al tocar la primera, todas se igualan y
+            desde ahí se mueve la que haga falta. <strong>Anchos automáticos</strong> vuelve al cálculo
+            por texto y pierde el reparto hecho a mano.
+          </p>
         </Ayuda>
       )}
       <span className="ayuda">
@@ -291,7 +352,7 @@ export default function EditorTabla({ campo, valor, onCambio }) {
     const enNegrita = celda.bold === true;
     const sombreado = i === 0 && cabecera ? 'azul claro' : 'gris';
     return (
-      <div className="celda-herr" role="group" aria-label={`Combinar, separar y negrita de ${donde}`}>
+      <div className="celda-herr" role="group" aria-label={`Combinar, separar, negrita, fondo, alineación y tamaño de letra de ${donde}`}>
         <Boton valor={valor} refBoton={refBoton}
           op="combinar" args={{ fila: i, columna: j, hacia: 'derecha' }}
           etiqueta={`Combinar ${donde} con la de su derecha`} ayuda={avisoDe(juntaDerecha)}
@@ -338,6 +399,36 @@ export default function EditorTabla({ campo, valor, onCambio }) {
             <option value="cabecera">Fondo: azul claro</option>
             <option value="etiqueta">Fondo: gris</option>
             <option value="ninguno">Fondo: ninguno</option>
+          </select>
+        </label>
+        {/* La alineación y el tamaño de letra, también por nombre: el PDF los escribe en puntos y
+            el Word en medios puntos, y lo que se guarda es el nombre. Elegir el primero de la
+            lista (izquierda, normal) borra la clave de la celda, así que no hay dos maneras de
+            decir que una celda sale como siempre. */}
+        <label className="celda-fondo">
+          <span className="sr">{`Alineación de ${donde}`}</span>
+          <select
+            value={celda.alineacion === undefined ? Estructurados.ALINEACION_CELDA_OMISION : celda.alineacion}
+            disabled={!!motivoDe('alineacion', { fila: i, columna: j, cual: null })}
+            onChange={(e) => alinear(i, j, e.target.value)}
+            title={`Alineación de ${donde}`}
+          >
+            {ALINEACIONES.map(([nombre, como]) => (
+              <option key={nombre} value={nombre}>{`Texto: ${como}`}</option>
+            ))}
+          </select>
+        </label>
+        <label className="celda-fondo">
+          <span className="sr">{`Tamaño de la letra de ${donde}`}</span>
+          <select
+            value={celda.tamano === undefined ? Estructurados.TAMANO_CELDA_OMISION : celda.tamano}
+            disabled={!!motivoDe('tamano', { fila: i, columna: j, cual: null })}
+            onChange={(e) => ponerTamano(i, j, e.target.value)}
+            title={`Tamaño de la letra de ${donde}`}
+          >
+            {TAMANOS.map(([nombre, como]) => (
+              <option key={nombre} value={nombre}>{`Letra: ${como}`}</option>
+            ))}
           </select>
         </label>
       </div>
@@ -455,9 +546,40 @@ export default function EditorTabla({ campo, valor, onCambio }) {
                       >
                         ×
                       </Boton>
+                      {/* El ancho de la columna: nadie escribe proporciones, se mueve de una en una.
+                          Mientras no se toque, el porcentaje no se puede decir —lo calcula cada
+                          motor con la cantidad de texto—, así que se dice «automático». */}
+                      <span className="celda-ancho">
+                        <Boton valor={valor} refBoton={refBoton}
+                          nombre={`ancho:estrechar:${j}`} op="ancho" args={{ columna: j, hacia: 'estrechar' }}
+                          etiqueta={`Estrechar la columna ${j + 1}`}
+                          accion={() => moverAncho(j, 'estrechar')}
+                        >
+                          −
+                        </Boton>
+                        <span className="celda-ancho-pct">
+                          {porcentajes ? `${porcentajes[j]} %` : 'auto'}
+                        </span>
+                        <Boton valor={valor} refBoton={refBoton}
+                          nombre={`ancho:ensanchar:${j}`} op="ancho" args={{ columna: j, hacia: 'ensanchar' }}
+                          etiqueta={`Ensanchar la columna ${j + 1}`}
+                          accion={() => moverAncho(j, 'ensanchar')}
+                        >
+                          +
+                        </Boton>
+                      </span>
                     </td>
                   ))}
-                  <td />
+                  <td className="celda-acciones">
+                    <Boton valor={valor} refBoton={refBoton}
+                      op="anchos-automaticos" args={{}}
+                      etiqueta="Que las columnas vuelvan a repartirse solas"
+                      ayuda="Se pierden los anchos elegidos a mano y cada columna mide lo que diga su cantidad de texto."
+                      accion={() => anchoAutomatico()}
+                    >
+                      Anchos automáticos
+                    </Boton>
+                  </td>
                 </tr>
               </tfoot>
             )}
