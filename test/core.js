@@ -375,6 +375,83 @@ prueba('core/sa: cuando no se pierde nada el informe lo dice también', () => {
   assert.ok(inf.frase.indexOf('Se reconocen ' + inf.filas + ' filas') >= 0, inf.frase);
 });
 
+// ---------------------------------------------- core/sa: la estructura como parámetro
+
+// Una estructura a medida: «ce» renombrado, «mapa» y «extra» añadidos, «recursos» movido arriba
+// del todo, y «ampliacion» retirado.
+const A_MEDIDA = [
+  { id: 'recursos', etiqueta: 'Recursos del aula', ancho: 4 },
+  { id: 'ce', etiqueta: 'Evidencias de logro', ancho: 4 },
+  { id: 'mapa', etiqueta: 'Mapa conceptual', ancho: 2 },
+  { id: 'extra', etiqueta: 'Observaciones', ancho: 2 },
+  { id: 'ampliacion', etiqueta: 'Actividades de ampliación', ancho: 4, retirado: true },
+];
+
+prueba('core/sa: con la estructura por omisión nada cambia y CAMPOS sigue siendo la misma lista', () => {
+  assert.strictEqual(S.CAMPOS, S.CAMPOS_POR_OMISION);
+  assert.strictEqual(S.CAMPOS.length, 12, 'los campos de hoy');
+  const f = Object.assign(S.fichaVacia(1), { ce: ['a'], recursos: ['b'] });
+  assert.deepStrictEqual(S.filasDeFicha(f), S.filasDeFicha(f, S.CAMPOS_POR_OMISION));
+  assert.deepStrictEqual(S.fichaDeFilas(S.filasDeFicha(f)), S.fichaDeFilas(S.filasDeFicha(f), undefined, S.CAMPOS_POR_OMISION));
+});
+
+prueba('core/sa: estructura a medida, ida y vuelta sin perder nada', () => {
+  const f = Object.assign(S.fichaVacia(2, '1ª', A_MEDIDA), {
+    recursos: ['Pizarra', 'Proyector'], ce: ['RA1.a. Algo'], mapa: ['Nodo uno'], extra: ['Ojo'],
+  });
+  assert.ok(!('ampliacion' in f), 'el retirado no existe en la ficha vacía');
+  const filas = S.filasDeFicha(f, A_MEDIDA);
+  const texto = JSON.stringify(filas);
+  ['Recursos del aula', 'Evidencias de logro', 'Mapa conceptual', 'Observaciones'].forEach((e) => assert.ok(texto.includes(e), e));
+  assert.ok(!texto.includes('Criterios de evaluación'), 'la etiqueta renombrada sustituye a la vieja');
+  const etiquetas = filas.filter((r) => r.some((c) => c.campo)).map((r) => r.map((c) => c.campo));
+  assert.deepStrictEqual(etiquetas, [['recursos'], ['ce'], ['mapa', 'extra']], 'campos movidos y apilados por ancho');
+  const vuelta = S.fichaDeFilas(filas, undefined, A_MEDIDA);
+  ['recursos', 'ce', 'mapa', 'extra'].forEach((id) => assert.deepStrictEqual(vuelta[id], f[id], id));
+  assert.deepStrictEqual(S.filasDeFicha(vuelta, A_MEDIDA), filas, 'y rehecha da la misma tabla');
+  assert.strictEqual(S.filasSinCampo(filas, A_MEDIDA).length, 0);
+});
+
+prueba('core/sa: un campo retirado ni se imprime ni se lee', () => {
+  const f = Object.assign(S.fichaVacia(1, '', A_MEDIDA), { ampliacion: ['No debe salir'] });
+  assert.ok(!JSON.stringify(S.filasDeFicha(f, A_MEDIDA)).includes('ampliación'));
+  const filas = [[{ text: 'Situación de aprendizaje 1' }, { text: 'T' }], [{ text: 'Actividades de ampliación' }], [{ text: 'Algo' }]];
+  assert.ok(!('ampliacion' in S.fichaDeFilas(filas, undefined, A_MEDIDA)));
+  assert.strictEqual(S.filasSinCampo(filas, A_MEDIDA).length, 2, 'esas filas se cuentan como sin campo');
+  assert.strictEqual(S.esSemantica({ ampliacion: ['x'] }, A_MEDIDA), false);
+});
+
+prueba('core/sa: filasDeFicha marca `campo` en las etiquetas y en nada más', () => {
+  const filas = S.filasDeFicha(S.fichaVacia(1));
+  const conCampo = [];
+  filas.forEach((fila) => fila.forEach((c) => { if ('campo' in c) conCampo.push(c); }));
+  assert.deepStrictEqual(conCampo.map((c) => c.campo), S.CAMPOS.filter((c) => !c.solo_si_hay).map((c) => c.id));
+  conCampo.forEach((c) => assert.strictEqual(c.bold, true, 'y son celdas de etiqueta'));
+  assert.ok(filas.slice(0, 3).every((fila) => fila.every((c) => !('campo' in c))), 'la cabecera, no');
+  assert.ok(filas.every((fila) => fila.every((c) => !('campo' in c) || c.bold)), 'las de contenido, tampoco');
+});
+
+prueba('core/sa: el mapa de etiquetas se memoriza por lista', () => {
+  assert.strictEqual(S.porEtiqueta(A_MEDIDA), S.porEtiqueta(A_MEDIDA));
+  assert.strictEqual(S.porEtiqueta(), S.porEtiqueta(S.CAMPOS_POR_OMISION));
+  assert.notStrictEqual(S.porEtiqueta(A_MEDIDA), S.porEtiqueta());
+  assert.ok(S.porEtiqueta(A_MEDIDA).has('evidencias de logro'));
+  assert.ok(!S.porEtiqueta(A_MEDIDA).has('criterios de evaluacion'));
+});
+
+prueba('core/estructurados: la validación acepta los ids de la estructura a medida y sigue rechazando basura', () => {
+  const Est = require('../core/estructurados');
+  const f = Object.assign(S.fichaVacia(1, '1ª', A_MEDIDA), { mapa: ['x'] });
+  assert.strictEqual(Est.motivoFicha(f, undefined, A_MEDIDA), null);
+  assert.ok(Est.motivoFicha(f), 'con la de omisión «mapa» sobra');
+  assert.ok(Est.motivoFicha(Object.assign({}, f, { basura: 1 }), undefined, A_MEDIDA));
+  assert.strictEqual(Est.motivoFichas([f], {}, A_MEDIDA), null);
+  const conCampo = { ...S.fichaVacia(1), filas: S.filasDeFicha(S.fichaVacia(1)) };
+  assert.strictEqual(Est.motivoFicha(conCampo), null, 'la clave `campo` de la celda pasa');
+  const mala = { ...conCampo, filas: [[{ text: 'a', campo: '' }]] };
+  assert.ok(Est.motivoFicha(mala), 'pero vacía no');
+});
+
 // --------------------------------------------------------------- validaciones
 // La tabla de verdad de las comprobaciones del documento (core/validaciones.js). El convenio de los
 // criterios se pasa siempre explícito: el motor imprime con 'peso_del_ra' y la interfaz usa
