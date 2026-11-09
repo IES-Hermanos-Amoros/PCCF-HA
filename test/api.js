@@ -918,6 +918,40 @@ prueba('core/arbol.js: un apartado con las claves puestas y nada escrito cuenta 
   assert.equal(Arbol.algoEscrito({ texto: [{ type: 'p', text: 'Algo.' }] }), true);
 });
 
+prueba('core/arbol.js: el formato de una celda no es contenido, y un párrafo sin texto tampoco', async () => {
+  // Lo que se ve no es lo que se ha escrito. Una tabla a la que solo le han puesto la cabecera
+  // —negrita, sombreada, celdas unidas— no tiene nada dentro, y la barra lateral no la puede
+  // pintar como rellena. Importa de verdad al borrar para siempre: el aviso dice cuánto se pierde,
+  // y si contara el formato diría que hay contenido escrito en los once módulos de una tabla
+  // vacía, que es la clase de aviso que no se vuelve a leer.
+  assert.equal(Arbol.algoEscrito({ filas: [[{ text: '', bold: true }]] }), false, 'la negrita no es texto');
+  assert.equal(Arbol.algoEscrito({ filas: [[{ text: '', fondo: 'cabecera' }]] }), false, 'el sombreado no es texto');
+  assert.equal(Arbol.algoEscrito({ filas: [[{ text: '', colspan: 2, rowspan: 2 }]] }), false, 'unir celdas no es texto');
+  assert.equal(Arbol.algoEscrito({ texto: [{ type: 'p', text: '' }] }), false, 'un párrafo vacío no es texto');
+  assert.equal(Arbol.algoEscrito({ texto: [{ type: 'ul', items: [''] }] }), false, 'una lista de huecos vacíos no es texto');
+
+  // Y lo que sí se ha escrito sigue contando, aunque lleve formato encima.
+  assert.equal(Arbol.algoEscrito({ filas: [[{ text: 'RA1', bold: true }]] }), true);
+  assert.equal(Arbol.algoEscrito({ texto: [{ type: 'ul', items: ['uno'] }] }), true);
+});
+
+prueba('core/arbol.js: la lista de lo que no es contenido cubre el contrato entero de la celda', async () => {
+  // LA PRUEBA QUE IMPIDE QUE SE QUEDE CORTA. `NUNCA_ESCRITO` enumera las claves de formato de una
+  // celda, y el contrato de la celda vive en otro fichero: `CLAVES_CELDA` de core/estructurados.js.
+  // El día que la celda gane una clave de formato —una alineación, un tamaño de letra— esta prueba
+  // se pone roja y dice cuál, en lugar de dejar que el formato nuevo vuelva a contar como texto
+  // escrito sin que nadie se entere. `text` es la única clave que lleva texto, y por eso se excluye.
+  const Estructurados = require('../core/estructurados.js');
+  const formato = Estructurados.CLAVES_CELDA.filter((k) => k !== 'text');
+  const sinClasificar = formato.filter((k) => !Arbol.NUNCA_ESCRITO.has(k));
+  assert.deepEqual(sinClasificar, [], `core/arbol.js cuenta como texto escrito el formato de una celda: falta ${sinClasificar.join(', ')} en NUNCA_ESCRITO`);
+
+  // Y al revés: una celda con TODAS sus claves de formato puestas, pero sin texto, está vacía.
+  const celda = { text: '' };
+  for (const k of formato) celda[k] = k === 'bold' ? true : (k === 'colspan' || k === 'rowspan' ? 2 : 'cabecera');
+  assert.equal(Arbol.algoEscrito({ filas: [[celda]] }), false, 'una celda solo con formato cuenta como escrita');
+});
+
 // ================================================================ importación
 // POST /api/documentos/importar. Cada prueba sube su propio .docx y escribe en el repositorio
 // compartido: por eso las que dicen «no ha escrito nada» miran el número de documentos antes y

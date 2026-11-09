@@ -1295,7 +1295,11 @@ prueba('borrar exige el mismo permiso que los demás cambios de estructura', asy
   await esError(await borrar(null, doc._id, 'atencion-a-la-diversidad'), 401, 'sin_identificar');
   await esError(await borrar(u.pepe, doc._id, 'atencion-a-la-diversidad'), 404, 'no_encontrado');
   assert.deepStrictEqual(await instantanea(repo, doc._id), antes, 'un borrado sin permiso ha cambiado algo');
-  assert.ok(otro);
+
+  // Quien SÍ puede borrar en su documento tampoco llega al del departamento de al lado: es un 404 y
+  // no un 403, porque un documento que no se puede ver no se puede ni nombrar.
+  await esError(await borrar(u.jefa, otro._id, 'atencion-a-la-diversidad'), 404, 'no_encontrado');
+  assert.equal((await repo.documentos.obtener(otro._id)).plantillaVersion, 1, 'el documento de al lado ha cambiado de versión');
 
   // El soporte sí.
   await cambio(await borrar(u.admin, doc._id, 'atencion-a-la-diversidad'));

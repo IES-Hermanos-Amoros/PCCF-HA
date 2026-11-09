@@ -757,7 +757,7 @@
 
   const api = {
     TIPOS, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_TABLA, TIPO_CLAVE_VALOR,
-    CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES, FONDOS_CELDA,
+    CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES, FONDOS_CELDA, CLAVES_CELDA,
     seGuarda, fondoDeCelda,
     motivoDeFilas, motivoDeRejilla, motivoDeClaveValor,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,

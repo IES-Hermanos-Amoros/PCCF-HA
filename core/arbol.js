@@ -47,12 +47,31 @@
   // Mirar solo `Object.keys(valores).length` no sirve: un repetidor sin ítems es `{ items: [] }` y
   // una tabla sin importar es `{ filas: [] }`, que tienen clave y no tienen nada dentro. Es el
   // apartado que la interfaz tiene que pintar como vacío para que se vea qué queda por escribir.
+  // QUÉ CUENTA COMO ESCRITO: lo que alguien ha ESCRITO, no cómo se ve.
+  //
+  // El FORMATO no es contenido. Una celda en negrita, sombreada o combinada sigue estando vacía:
+  // el formato lo pone quien monta la tabla, no quien la rellena. Contarlo hace que la barra
+  // lateral pinte como relleno un apartado donde no hay nada, y que el aviso de «vas a perder lo
+  // escrito» al borrar para siempre mienta en el caso más común de todos: una tabla con la
+  // cabecera puesta y ni una palabra dentro. Lo mismo con el `type` de un bloque: 'p' dice qué
+  // clase de bloque es, no lo que pone en él.
+  //
+  // La lista son las claves de FORMATO de una celda —las de `CLAVES_CELDA` de
+  // core/estructurados.js menos `text`, que es la única que lleva texto— más el discriminante de
+  // un bloque. No se deriva de allí en caliente porque este fichero no depende de ningún otro y
+  // así sigue valiendo como <script> suelto; de que no se quede corta cuando el contrato de la
+  // celda crezca responde una prueba de test/api.js, que compara las dos listas y dice qué clave
+  // falta.
+  const NUNCA_ESCRITO = new Set(['type', 'colspan', 'rowspan', 'bold', 'fondo']);
+
   function algoEscrito(valor) {
     if (valor === null || valor === undefined) return false;
     if (typeof valor === 'string') return valor.trim() !== '';
     if (typeof valor === 'number' || typeof valor === 'boolean') return true;
     if (Array.isArray(valor)) return valor.some(algoEscrito);
-    if (typeof valor === 'object') return Object.values(valor).some(algoEscrito);
+    if (typeof valor === 'object') {
+      return Object.keys(valor).some((k) => !NUNCA_ESCRITO.has(k) && algoEscrito(valor[k]));
+    }
     return true;
   }
 
@@ -196,7 +215,7 @@
 
   // ---------------------------------------------------------------------- exportado
 
-  const api = { construirArbol, aplanar, resumen, algoEscrito };
+  const api = { construirArbol, aplanar, resumen, algoEscrito, NUNCA_ESCRITO };
 
   global.Core = global.Core || {};
   global.Core.arbol = api;
