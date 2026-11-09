@@ -78,6 +78,7 @@
     if (global.Core && global.Core[nombre]) return global.Core[nombre];
     if (typeof require === 'function') {
       if (nombre === 'campos') return require('./campos.js');
+      if (nombre === 'sa') return require('./sa.js');
     }
     throw new Error('core/plantilla.js necesita core/' + nombre + '.js');
   }
@@ -427,6 +428,7 @@
   const TIPOS = [
     'anadir', 'renombrar', 'mover', 'retirar', 'restaurar', 'borrar',
     'anadir_campo', 'retirar_campo', 'restaurar_campo', 'borrar_campo', 'renombrar_campo', 'mover_campo',
+    'anadir_campo_ficha', 'renombrar_campo_ficha', 'mover_campo_ficha', 'retirar_campo_ficha', 'restaurar_campo_ficha',
   ];
 
   // Cuántos campos puede tener un apartado, y cuántos se le pueden pedir al crearlo. Un
@@ -914,7 +916,203 @@
     };
   }
 
-  // Una sola puerta para los doce cambios, para que la ruta y el navegador no puedan tener
+  // ---------------------------------------------------------------- los cambios de la ficha
+
+  // LA ESTRUCTURA DE LA FICHA DE SITUACIÓN DE APRENDIZAJE es del documento entero y cuelga de la
+  // plantilla (`plantilla.estructuraFicha`), no de un campo ni de un apartado. El campo `ficha` está
+  // en dos secciones (la lista de situaciones y la ficha de cada una) y si cada una tuviera la suya,
+  // las fichas de un módulo acabarían con un formato distinto del de los demás. La garantía es que la
+  // ficha es LA MISMA en los once módulos, y solo una lista por documento lo asegura.
+  //
+  // AUSENTE SIGNIFICA «LA DE SIEMPRE». Un documento que nunca ha cambiado su ficha no tiene
+  // `estructuraFicha`, y quien pinta la ficha usa la lista por omisión de core/sa.js. Esta no se
+  // siembra en los documentos existentes, ni al leerlos ni al guardarlos: solo el primer cambio de la
+  // jefatura la materializa, y a partir de ahí es del documento. Así un documento sin cambios sigue
+  // siendo idéntico, y uno del curso pasado no se mueve aunque la lista por omisión llegue a cambiar.
+  //
+  // Valen las mismas reglas que para los campos de apartado: el id se acuña una vez y no vuelve a
+  // cambiar, y retirar no borra. No hay `borrar_campo_ficha`: lo escrito en la ficha vive bajo el id
+  // de la fila, en las fichas de todos los módulos, y destruirlo es una decisión que se toma antes con
+  // la jefatura, no un botón.
+
+  // Cuántas filas puede tener la ficha, contando solo las vigentes. La ficha es una tabla de cuatro
+  // columnas dentro de un A4 y hoy tiene 13 filas; con cuarenta no es una ficha, es un formulario que
+  // ocupa varias páginas por situación y deja de leerse. Veinte deja siete filas de margen sobre las
+  // actuales sin que el PDF deje de ser un documento que se pueda leer de un vistazo.
+  const MAX_CAMPOS_FICHA = 20;
+
+  // Las columnas de la tabla de la ficha: `ancho` es cuántas ocupa una fila (core/sa.js).
+  const ANCHO_MAX_FICHA = 4;
+  const LARGO_GRUPO_FICHA = 40;
+
+  // Ids que una fila de la ficha no puede tomar: son claves de la propia ficha (el número, el
+  // título, el resultado de aprendizaje, la tabla importada…) y una fila con ese id pisaría el dato.
+  const RESERVADOS_FICHA = ['items', 'num', 'titulo', 'sesiones', 'evaluacion', 'ra', 'filas'];
+
+  const fichaDe = (plantilla) => (plantilla && Array.isArray(plantilla.estructuraFicha)
+    ? plantilla.estructuraFicha : null);
+  const vigenteFicha = (c) => !!c && !c.retirado;
+
+  // La lista por omisión, copiada: vive en core/sa.js y se resuelve al usarla (ver `deCore`).
+  const porOmision = () => deCore('sa').CAMPOS.map((c) => ({ ...c }));
+
+  // Aplica `cambiar(lista)` a una COPIA de la lista de la ficha y devuelve la plantilla con ella. Si
+  // el documento no tiene `estructuraFicha` empieza por materializar la de omisión. Nunca toca la
+  // plantilla que recibe, y si el cambio se rechaza no devuelve nada a medias.
+  function conFicha(plantilla, cambiar) {
+    const copia = clonar(plantilla);
+    const lista = fichaDe(copia) || porOmision();
+    const hecho = cambiar(lista);
+    if (hecho.motivo) return hecho;
+    copia.estructuraFicha = lista;
+    return { plantilla: copia, ...hecho };
+  }
+
+  const nombreFicha = (c) => c.etiqueta || c.id;
+  const buscarFicha = (lista, id) => lista.find((c) => c && c.id === id) || null;
+  const sinFila = (id) => no(`La ficha no tiene ninguna fila «${id}».`);
+
+  // Afecta a las fichas de los once módulos: es lo que advierte `deUnidades`.
+  const cambioFicha = (tipo, c, extra) => ({
+    tipo, campoFicha: c.id, etiqueta: nombreFicha(c), deUnidades: true, ...extra,
+  });
+
+  function limpiarEtiquetaFicha(etiqueta) {
+    const largo = Campos().LARGO_ETIQUETA;
+    const limpia = String(etiqueta == null ? '' : etiqueta).replace(/\s+/g, ' ').trim();
+    if (!limpia) return no('Hace falta un nombre: la etiqueta es lo que se pinta en la primera celda de la fila.');
+    if (limpia.length > largo) return no(`El nombre de la fila no puede pasar de ${largo} caracteres.`);
+    return { etiqueta: limpia };
+  }
+
+  // AÑADIR UNA FILA. `posicion` es el sitio que ocupará entre las filas vigentes, contando desde 1;
+  // sin ella va al final. El id se acuña aquí, de la etiqueta con la que nace, y se queda.
+  function anadirCampoFicha(plantilla, { etiqueta, posicion, ancho, grupo, solo_si_hay: soloSiHay } = {}) {
+    const e = limpiarEtiquetaFicha(etiqueta);
+    if (e.motivo) return e;
+
+    const a = ancho === undefined || ancho === null ? ANCHO_MAX_FICHA : ancho;
+    if (!Number.isInteger(a) || a < 1 || a > ANCHO_MAX_FICHA) {
+      return no(`El ancho es cuántas de las ${ANCHO_MAX_FICHA} columnas de la tabla ocupa la fila: un número entero del 1 al ${ANCHO_MAX_FICHA}.`);
+    }
+    let g;
+    if (grupo !== undefined && grupo !== null && grupo !== '') {
+      g = typeof grupo === 'string' ? grupo.trim() : '';
+      if (!g || g.length > LARGO_GRUPO_FICHA) return no(`El grupo tiene que ser un texto de hasta ${LARGO_GRUPO_FICHA} caracteres.`);
+    }
+    if (soloSiHay !== undefined && soloSiHay !== null && typeof soloSiHay !== 'boolean') {
+      return no('«solo_si_hay» es sí o no: si la fila solo se pinta cuando algún módulo la escribe.');
+    }
+
+    return conFicha(plantilla, (lista) => {
+      const vigentes = lista.filter(vigenteFicha);
+      if (vigentes.length >= MAX_CAMPOS_FICHA) {
+        return no(`La ficha ya tiene ${MAX_CAMPOS_FICHA} filas, que es lo máximo: es una tabla de ${ANCHO_MAX_FICHA} columnas en una página y con más deja de leerse. Retira alguna antes de añadir otra.`);
+      }
+      let sitio = vigentes.length + 1;
+      if (posicion !== undefined && posicion !== null) {
+        if (!Number.isInteger(posicion) || posicion < 1 || posicion > vigentes.length + 1) {
+          return no(`La posición es el sitio que ocupará la fila, de 1 a ${vigentes.length + 1}: la ficha tiene ${vigentes.length} filas.`);
+        }
+        sitio = posicion;
+      }
+
+      // Los retirados también ocupan su id: van a volver, con lo que tuvieran escrito.
+      const id = Campos().idDeCampo(e.etiqueta, 'campo', lista.map((c) => c.id).concat(RESERVADOS_FICHA));
+      const nueva = { id, etiqueta: e.etiqueta, ancho: a };
+      if (g) nueva.grupo = g;
+      if (soloSiHay === true) nueva.solo_si_hay = true;
+
+      // Delante de la vigente que ocupa ese sitio; si es el último, detrás de la última vigente.
+      if (sitio <= vigentes.length) lista.splice(lista.indexOf(vigentes[sitio - 1]), 0, nueva);
+      else lista.splice(vigentes.length ? lista.indexOf(vigentes[vigentes.length - 1]) + 1 : lista.length, 0, nueva);
+
+      return { cambio: cambioFicha('campo_ficha_anadido', nueva, { posicion: sitio, filas: vigentes.length + 1 }) };
+    });
+  }
+
+  // RENOMBRAR UNA FILA. Cambia la `etiqueta` y nada más: el id es la clave de lo escrito en cada
+  // ficha, y uno que siguiera a la etiqueta dejaría huérfano el texto de todas (ver la cabecera).
+  function renombrarCampoFicha(plantilla, { campoFicha, etiqueta } = {}) {
+    const e = limpiarEtiquetaFicha(etiqueta);
+    if (e.motivo) return e;
+    return conFicha(plantilla, (lista) => {
+      const c = buscarFicha(lista, campoFicha);
+      if (!c) return sinFila(campoFicha);
+      if (c.retirado) return no(`La fila «${nombreFicha(c)}» está retirada: restáurala antes de renombrarla.`);
+      const antes = nombreFicha(c);
+      c.etiqueta = e.etiqueta;
+      return { cambio: cambioFicha('campo_ficha_renombrado', c, { antes }) };
+    });
+  }
+
+  // MOVER UNA FILA entre las vigentes. Los retirados no cuentan para los sitios, por lo mismo que en
+  // `moverCampo`, y conservan su sitio relativo.
+  function moverCampoFicha(plantilla, { campoFicha, delta } = {}) {
+    const d = typeof delta === 'number' ? delta : Number(delta);
+    if (!Number.isInteger(d) || d === 0) {
+      return no('«delta» es cuántos sitios se mueve la fila: -1 para subirla, 1 para bajarla.');
+    }
+    return conFicha(plantilla, (lista) => {
+      const c = buscarFicha(lista, campoFicha);
+      if (!c) return sinFila(campoFicha);
+      const nombre = nombreFicha(c);
+      if (c.retirado) return no(`La fila «${nombre}» está retirada: restáurala antes de moverla.`);
+      const vigentes = lista.filter(vigenteFicha);
+      const i = vigentes.indexOf(c);
+      const j = i + d;
+      if (vigentes.length < 2) return no(`«${nombre}» es la única fila de la ficha: no hay sitio donde moverla.`);
+      const arriba = i;
+      const abajo = vigentes.length - 1 - i;
+      const filas = (n) => `${n} fila${n === 1 ? '' : 's'}`;
+      if (j < 0) {
+        return no(arriba === 0
+          ? `«${nombre}» ya es la primera fila de la ficha: no se puede subir más.`
+          : `«${nombre}» solo tiene ${filas(arriba)} por encima: no se puede subir ${-d} sitios.`);
+      }
+      if (j >= vigentes.length) {
+        return no(abajo === 0
+          ? `«${nombre}» ya es la última fila de la ficha: no se puede bajar más.`
+          : `«${nombre}» solo tiene ${filas(abajo)} por debajo: no se puede bajar ${d} sitios.`);
+      }
+      const objetivo = vigentes[j];
+      lista.splice(lista.indexOf(c), 1);
+      const destino = lista.indexOf(objetivo);
+      lista.splice(d < 0 ? destino : destino + 1, 0, c);
+      return { cambio: cambioFicha('campo_ficha_movido', c, { delta: d, posicion: j + 1, filas: vigentes.length }) };
+    });
+  }
+
+  // RETIRAR UNA FILA: no borra. Deja de pintarse y de imprimirse, y lo escrito en ella se conserva.
+  function retirarCampoFicha(plantilla, { campoFicha } = {}) {
+    return conFicha(plantilla, (lista) => {
+      const c = buscarFicha(lista, campoFicha);
+      if (!c) return sinFila(campoFicha);
+      if (c.retirado) return no(`La fila «${nombreFicha(c)}» ya está retirada.`);
+      if (lista.filter(vigenteFicha).length < 2) {
+        return no(`«${nombreFicha(c)}» es la única fila de la ficha: una ficha sin filas no tiene nada que rellenar.`);
+      }
+      c.retirado = true;
+      return { cambio: cambioFicha('campo_ficha_retirado', c) };
+    });
+  }
+
+  // RESTAURAR UNA FILA: vuelve a su sitio con todo lo que tenía escrito. Se quita la marca y no se
+  // deja un `retirado: false`, para que retirar y restaurar devuelva la lista idéntica.
+  function restaurarCampoFicha(plantilla, { campoFicha } = {}) {
+    return conFicha(plantilla, (lista) => {
+      const c = buscarFicha(lista, campoFicha);
+      if (!c) return sinFila(campoFicha);
+      if (!c.retirado) return no(`La fila «${nombreFicha(c)}» no está retirada: no hay nada que restaurar.`);
+      if (lista.filter(vigenteFicha).length >= MAX_CAMPOS_FICHA) {
+        return no(`La ficha ya tiene ${MAX_CAMPOS_FICHA} filas, que es lo máximo: no cabe una más. Retira otra antes de restaurar «${nombreFicha(c)}».`);
+      }
+      delete c.retirado;
+      return { cambio: cambioFicha('campo_ficha_restaurado', c) };
+    });
+  }
+
+  // Una sola puerta para los diecisiete cambios, para que la ruta y el navegador no puedan tener
   // ideas distintas sobre lo que se puede hacer. Devuelve { plantilla, cambio } o { motivo }.
   function aplicar(plantilla, peticion) {
     const p = peticion || {};
@@ -931,6 +1129,11 @@
       case 'borrar_campo': return borrarCampo(plantilla, p);
       case 'renombrar_campo': return renombrarCampo(plantilla, p);
       case 'mover_campo': return moverCampo(plantilla, p);
+      case 'anadir_campo_ficha': return anadirCampoFicha(plantilla, p);
+      case 'renombrar_campo_ficha': return renombrarCampoFicha(plantilla, p);
+      case 'mover_campo_ficha': return moverCampoFicha(plantilla, p);
+      case 'retirar_campo_ficha': return retirarCampoFicha(plantilla, p);
+      case 'restaurar_campo_ficha': return restaurarCampoFicha(plantilla, p);
       default: return no(`«${p.tipo}» no es un cambio de estructura: ${TIPOS.join(', ')}.`);
     }
   }
@@ -959,10 +1162,11 @@
   // ---------------------------------------------------------------------- exportado
 
   const api = {
-    slug, idLocal, limpiarTitulo, mismoTitulo, LARGO_TITULO, CAMPO_NUEVO, TIPOS, MAX_CAMPOS, MAX_CAMPOS_AL_CREAR,
+    slug, idLocal, limpiarTitulo, mismoTitulo, LARGO_TITULO, CAMPO_NUEVO, TIPOS, MAX_CAMPOS, MAX_CAMPOS_AL_CREAR, MAX_CAMPOS_FICHA,
     loQueHayQueEscribir, confirmaTitulo, LARGO_CONFIRMACION,
     buscar, rama, contar, vigente, retirados, camposRetirados, estructura,
-    renombrar, anadir, mover, retirar, restaurar, borrar, anadirCampo, retirarCampo, restaurarCampo, borrarCampo, renombrarCampo, moverCampo, aplicar,
+    renombrar, anadir, mover, retirar, restaurar, borrar, anadirCampo, retirarCampo, restaurarCampo, borrarCampo, renombrarCampo, moverCampo,
+    anadirCampoFicha, renombrarCampoFicha, moverCampoFicha, retirarCampoFicha, restaurarCampoFicha, aplicar,
     siguienteVersion, registrar,
   };
 
