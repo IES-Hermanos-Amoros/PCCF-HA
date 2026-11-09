@@ -821,6 +821,19 @@ prueba('el informe no escribe «undefined» cuando el cambio no dice el sitio', 
   assert.ok(conSitio.estado.indexOf('7.ª de 12') > 0, conSitio.estado);
 });
 
+prueba('el recuento dice de que modulo es: el ambito entra en todas las frases', () => {
+  const donde = 'de este módulo';
+  const ficha = (rej) => (rej ? { filas: [[{ text: 'x' }]], ce: ['a'] } : { ce: ['a'] });
+  const todas = FE.recuento([ficha(1), ficha(1), ficha(1)], CAMPOS_FE);
+  assert.strictEqual(FE.fraseDeTablaPropia(todas, donde).indexOf('Las 3 fichas de este módulo conservan la tabla tal como vino del Word'), 0);
+  assert.ok(FE.fraseDeTablaPropia(FE.recuento([ficha(1)], CAMPOS_FE), donde).indexOf('La única ficha de este módulo conserva') === 0);
+  assert.ok(FE.fraseDeTablaPropia(FE.recuento([], CAMPOS_FE), donde).indexOf('ninguna ficha escrita de este módulo') > 0);
+  const ret = FE.informeDeCambio({ tipo: 'campo_ficha_retirado', campoFicha: 'ce', etiqueta: 'Criterios' }, todas, donde);
+  assert.ok(ret.alerta.indexOf('«Criterios» en 3 de las 3 fichas de este módulo') >= 0, ret.alerta);
+  const uno = FE.recuento([ficha(0)], CAMPOS_FE);
+  assert.ok(FE.avisoAntesDeRetirar(CAMPOS_FE[0], uno, donde).indexOf('en la única ficha de este módulo') >= 0);
+});
+
 // ----------------------------------------------------------------- resumen
 
 console.log(fallos ? `\n${fallos} prueba(s) con fallos` : '\nTodas las pruebas correctas');

@@ -64,22 +64,32 @@
 
   const fichas = (n) => (n === 1 ? '1 ficha' : n + ' fichas');
   const nombre = (c) => '«' + ((c && (c.etiqueta || c.id)) || '') + '»';
+  // «3 de las 6 fichas de este módulo», «la única ficha de este módulo»; sin `donde`, el «3 fichas de 6»
+  // de siempre. El recuento es de las fichas que la pantalla tiene delante, que son las de UN módulo, y el
+  // texto tiene que decirlo: un número sin su ámbito se lee como el del documento entero.
+  const cuantasDe = (n, total, donde) => {
+    if (!donde) return fichas(n) + ' de ' + total;
+    if (total === 1) return 'la única ficha ' + donde;
+    return n + ' de las ' + total + ' fichas ' + donde;
+  };
   const conTextoEn = (r, id) => (r && r.porCampo && r.porCampo[id] ? r.porCampo[id].conTexto : 0);
 
   // CUÁNTAS FICHAS SIGUEN CON LA TABLA QUE VINO DEL WORD, que es lo que contesta a «¿esto cambia las
   // fichas que ya están?». Sin tecnicismos: quien lo lee es la jefatura, no quien escribió el código.
-  function fraseDeTablaPropia(r) {
+  // `donde` es el ámbito del recuento («de este módulo»): se añade al sujeto.
+  function fraseDeTablaPropia(r, donde) {
     const n = r ? r.conRejilla : 0;
     const total = r ? r.total : 0;
-    if (!total) return 'Todavía no hay ninguna ficha escrita.';
-    if (!n) return (total === 1 ? 'La única ficha sigue' : 'Las ' + total + ' fichas siguen') + ' la estructura: lo que cambies aquí cambia todas.';
+    const ambito = donde ? ' ' + donde : '';
+    if (!total) return 'Todavía no hay ninguna ficha escrita' + ambito + '.';
+    if (!n) return (total === 1 ? 'La única ficha' + ambito + ' sigue' : 'Las ' + total + ' fichas' + ambito + ' siguen') + ' la estructura: lo que cambies aquí cambia todas.';
     if (n === total) {
-      return (total === 1 ? 'La única ficha conserva' : 'Las ' + total + ' fichas conservan')
+      return (total === 1 ? 'La única ficha' + ambito + ' conserva' : 'Las ' + total + ' fichas' + ambito + ' conservan')
         + ' la tabla tal como vino del Word y se imprime esa tabla: cambiar la estructura no cambia'
         + ' ninguna ficha de las que hay.';
     }
     const otras = total - n;
-    return (n === 1 ? '1 ficha de las ' + total + ' conserva' : n + ' fichas de las ' + total + ' conservan')
+    return (n === 1 ? '1 ficha de las ' + total + ambito + ' conserva' : n + ' fichas de las ' + total + ambito + ' conservan')
       + ' la tabla tal como vino del Word y se imprime esa tabla: cambiar la estructura no las'
       + ' cambia. ' + (otras === 1 ? 'La otra sigue' : 'Las otras ' + otras + ' siguen')
       + ' la estructura.';
@@ -96,7 +106,7 @@
   // (`{ tipo, campoFicha, etiqueta, antes?, posicion?, filas? }`) y `r` el recuento. Devuelve
   // `{ estado, alerta }`: `estado` dice qué ha pasado y `alerta` lo que deja de imprimirse (o sale en
   // blanco), nombrándolo; null si no hay nada que avisar.
-  function informeDeCambio(cambio, r) {
+  function informeDeCambio(cambio, r, donde) {
     const c = cambio || {};
     const et = '«' + (c.etiqueta || c.campoFicha || '') + '»';
     const n = conTextoEn(r, c.campoFicha);
@@ -106,14 +116,14 @@
         return {
           estado: 'Fila ' + et + ' retirada de la ficha. No se ha borrado nada.',
           alerta: n
-            ? 'Deja de imprimirse el texto de ' + et + ' en ' + fichas(n) + ' de ' + total
+            ? 'Deja de imprimirse el texto de ' + et + ' en ' + cuantasDe(n, total, donde)
               + ': sigue guardado y vuelve al restaurar la fila.'
             : null,
         };
       case 'campo_ficha_restaurado':
         return {
           estado: 'Fila ' + et + ' restaurada en la ficha.',
-          alerta: n ? 'Vuelve a imprimirse el texto de ' + et + ' en ' + fichas(n) + ' de ' + total + '.' : null,
+          alerta: n ? 'Vuelve a imprimirse el texto de ' + et + ' en ' + cuantasDe(n, total, donde) + '.' : null,
         };
       case 'campo_ficha_renombrado':
         return {
@@ -139,10 +149,10 @@
   }
 
   // LO QUE VA A LLEVARSE POR DELANTE RETIRAR, dicho antes de pulsar.
-  function avisoAntesDeRetirar(campo, r) {
+  function avisoAntesDeRetirar(campo, r, donde) {
     const n = conTextoEn(r, campo && campo.id);
     return n
-      ? 'Retirar ' + nombre(campo) + ' deja de imprimir lo escrito en ' + fichas(n) + ' de ' + r.total + '. No se borra.'
+      ? 'Retirar ' + nombre(campo) + ' deja de imprimir lo escrito en ' + cuantasDe(n, r.total, donde) + '. No se borra.'
       : 'Retirar ' + nombre(campo) + ': ninguna ficha tiene nada escrito en esa fila.';
   }
 
