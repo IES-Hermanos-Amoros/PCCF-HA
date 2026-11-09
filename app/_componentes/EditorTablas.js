@@ -58,11 +58,13 @@
 // dónde se lee: `claseCelda` pinta en cada casilla el fondo, la alineación, el tamaño y la negrita
 // que le salen de verdad, los que dice core/.
 //
-// EL FOCO. Se mantiene en la tabla tras cada gesto, y no solo en el botón que se pulsó (que puede
-// desaparecer o apagarse): tras añadir una fila va a su primera celda; tras quitar una, a la celda
+// EL FOCO. Se mantiene en la tabla tras cada gesto, y no solo en el botón que se pulsó, que puede
+// desaparecer o apagarse: tras añadir una fila va a su primera celda; tras quitar una, a la celda
 // que ocupa su sitio; tras añadir o quitar una columna, a la celda de la primera fila que cae en
-// esa columna; tras combinar o separar, a la celda elegida; tras la negrita y tras mover un ancho
-// se queda en el botón del panel. Lo que ha pasado se anuncia en una región `aria-live`.
+// esa columna; tras la negrita, unir, separar y mover un ancho se queda en el botón del panel que se
+// pulsó, y si la operación lo ha dejado apagado, en el de al lado o en la celda elegida. Cada gesto
+// dice sus destinos EN ORDEN y se queda con el primero que de verdad pueda recibirlo. Lo que ha
+// pasado se anuncia en una región `aria-live`.
 
 'use client';
 
@@ -146,12 +148,24 @@ export default function EditorTabla({ campo, valor, onCambio }) {
   const ancho = useRef((campo.inicial && campo.inicial.columnas) || 1);
   if (columnas) ancho.current = columnas;
 
+  // ¿Puede este elemento quedarse el foco? Existir no basta: un botón que la operación acaba de
+  // apagar —la columna ha llegado a su tope, la celda ya no se puede unir— no lo recibe, y
+  // pedírselo lo manda al principio de la página.
+  const utilizable = (n) => !!n && typeof n.focus === 'function' && !n.disabled;
+
+  // `foco` devuelve los destinos EN ORDEN y se queda con el primero que pueda: detrás de cada botón
+  // va una celda, que siempre puede. Si ninguno puede, se intenta el primero que exista, y si no
+  // existe ninguno no se toca el foco.
   useLayoutEffect(() => {
     const p = pendiente.current;
     if (!p) return;
     pendiente.current = null;
-    const destino = (p.celda && celdas.current.get(p.celda)) || (p.boton && botones.current.get(p.boton));
-    if (destino && typeof destino.focus === 'function') destino.focus();
+    const nodos = p
+      .filter((d) => d && (d.celda || d.boton))
+      .map((d) => (d.celda ? celdas.current.get(d.celda) : botones.current.get(d.boton)));
+    const destino = nodos.find(utilizable)
+      || nodos.find((n) => !!n && typeof n.focus === 'function');
+    if (destino) destino.focus();
   });
 
   const refCelda = (i, j, nodo) => {
@@ -194,14 +208,14 @@ export default function EditorTabla({ campo, valor, onCambio }) {
     const nueva = despuesDe == null ? filas : despuesDe + 1;
     hacer('anadir-fila', { despuesDe }, {
       dice: `Fila ${nueva + 1} añadida. La tabla tiene ${filas + 1} filas.`,
-      foco: () => ({ celda: llave(nueva, 0), boton: 'anadir-fila' }),
+      foco: () => [{ celda: llave(nueva, 0) }, { boton: 'anadir-fila' }],
     });
   };
   const quitarFila = (i) => hacer('quitar-fila', { fila: i }, {
     dice: (s) => `Quitada la ${nombreDeFila(i, cabecera)}. Quedan ${textoNumero(Edicion.filasDe(s), 'fila', 'filas')}.`,
     foco: (s) => (Edicion.filasDe(s)
-      ? { celda: llave(Math.min(i, Edicion.filasDe(s) - 1), 0), boton: 'anadir-fila' }
-      : { boton: 'anadir-fila' }),
+      ? [{ celda: llave(Math.min(i, Edicion.filasDe(s) - 1), 0) }, { boton: 'anadir-fila' }]
+      : [{ boton: 'anadir-fila' }]),
   });
   const anadirColumna = (despuesDe) => {
     const nueva = despuesDe == null ? columnas : despuesDe + 1;
@@ -209,7 +223,7 @@ export default function EditorTabla({ campo, valor, onCambio }) {
       dice: `Columna ${nueva + 1} añadida. La tabla tiene ${columnas + 1} columnas.`,
       foco: (s) => {
         const e = Edicion.celdaEn(s, 0, nueva);
-        return { celda: e ? llave(e.fila, e.columna) : null, boton: 'anadir-columna' };
+        return [e ? { celda: llave(e.fila, e.columna) } : null, { boton: 'anadir-columna' }];
       },
     });
   };
@@ -218,7 +232,7 @@ export default function EditorTabla({ campo, valor, onCambio }) {
       + (Edicion.filasDe(s) < filas ? ` y ${textoNumero(Edicion.filasDe(s), 'fila', 'filas')}: una fila se quedaba sin celdas propias y se ha quitado.` : '.'),
     foco: (s) => {
       const e = Edicion.celdaEn(s, 0, Math.min(j, Edicion.columnasDe(s) - 1));
-      return { celda: e ? llave(e.fila, e.columna) : null, boton: 'anadir-columna' };
+      return [e ? { celda: llave(e.fila, e.columna) } : null, { boton: 'anadir-columna' }];
     },
   });
   const ponerCabecera = (puesta) => hacer('cabecera', { puesta }, {
@@ -243,12 +257,14 @@ export default function EditorTabla({ campo, valor, onCambio }) {
     hacer('combinar', { fila: enFila, columna: enCol, hacia }, {
       dice: `${donde} se ha combinado con la de ${hacia === 'derecha' ? 'su derecha' : 'debajo'}.`
         + (juntado ? ' Su texto se ha añadido al de esta celda, en otra línea.' : ''),
-      foco: () => ({ boton: `fmt:unir:${hacia}` }),
+      // Unir puede dejar la celda contra el borde, y entonces este botón se apaga: detrás va la
+      // celda, para no perder el foco a mitad de camino.
+      foco: () => [{ boton: `fmt:unir:${hacia}` }, { celda: llave(enFila, enCol) }],
     });
   };
   const separar = () => hacer('separar', { fila: enFila, columna: enCol }, {
     dice: `${donde} se ha separado: cada casilla vuelve a ser una celda. El texto se queda en la primera.`,
-    foco: () => ({ boton: 'fmt:separar' }),
+    foco: () => [{ boton: 'fmt:separar' }, { celda: llave(enFila, enCol) }],
   });
 
   // El fondo elegido a mano manda sobre la negrita, así que el botón de negrita no puede prometer
@@ -269,7 +285,7 @@ export default function EditorTabla({ campo, valor, onCambio }) {
     dice: puesta
       ? `${donde} va en negrita: saldrá sombreada.`
       : `${donde} ya no va en negrita ni sombreada.`,
-    foco: () => ({ boton: 'fmt:negrita' }),
+    foco: () => [{ boton: 'fmt:negrita' }, { celda: llave(enFila, enCol) }],
   });
 
   // El foco de los desplegables no se mueve: se queda donde se eligió, que es el propio
@@ -296,16 +312,22 @@ export default function EditorTabla({ campo, valor, onCambio }) {
         + ` Reparto: ${p.map((x) => `${x} %`).join(' · ')}.`;
     },
     // El foco se queda en el botón pulsado, y si esa columna acaba de llegar a su tope —con lo que
-    // el botón se apaga y ya no puede recibirlo— pasa al de la dirección contraria.
-    foco: (s) => ({
-      boton: Edicion.puede(s, 'ancho', { columna: enColRejilla, hacia })
-        ? `ancho:${hacia}`
-        : `ancho:${hacia === 'ensanchar' ? 'estrechar' : 'ensanchar'}`,
-    }),
+    // el botón se apaga— pasa al de la dirección contraria, y si tampoco, a la celda.
+    foco: () => [
+      { boton: `ancho:${hacia}` },
+      { boton: `ancho:${hacia === 'ensanchar' ? 'estrechar' : 'ensanchar'}` },
+      { celda: llave(enFila, enCol) },
+    ],
   });
   const anchoAutomatico = () => hacer('anchos-automaticos', {}, {
     dice: 'Las columnas vuelven a repartirse solas según la cantidad de texto de cada una.',
-    foco: () => ({ boton: 'ancho:ensanchar' }),
+    // Este botón se apaga al pulsarlo —ya no hay anchos a mano que quitar—, así que el foco se va
+    // a la celda elegida, y si no hay ninguna, a la barra de arriba.
+    foco: () => [
+      elegida ? { celda: llave(elegida.fila, elegida.columna) } : null,
+      { boton: 'ancho:ensanchar' },
+      { boton: 'anadir-columna' },
+    ],
   });
 
   // El camino de vuelta del panel a la celda. Es un `focus()` directo y no un `pendiente`: aquí no
@@ -326,7 +348,7 @@ export default function EditorTabla({ campo, valor, onCambio }) {
     elegir(i, j);
     const n = yaEstaba && botones.current.get('fmt:fondo');
     if (n && typeof n.focus === 'function') n.focus();
-    else pendiente.current = { boton: 'fmt:fondo' };
+    else pendiente.current = [{ boton: 'fmt:fondo' }];
   };
 
   // ---------------------------------------------------------------- piezas
