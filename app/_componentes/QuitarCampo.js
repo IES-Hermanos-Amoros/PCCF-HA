@@ -5,18 +5,28 @@
 // lo dice el servidor en cada campo de la lectura de la estructura
 // (`puedeRetirar`), y aquí no se decide: el botón refleja ese candado. Los
 // campos que no se pueden quitar desde la aplicación (los del Word importado,
-// las fichas, las ponderaciones) salen sin botón y con la razón escrita.
+// las fichas, las ponderaciones) salen sin botón y con la razón escrita donde
+// estaría el botón: lo que a una fila no se le puede hacer se lee igual de bien
+// que lo que sí.
 //
-// La confirmación es en dos pasos y el foco va al botón de confirmar, igual que
-// al retirar un apartado entero en Estructura.js.
+// LA CONFIRMACIÓN ES EN DOS PASOS Y EL FOCO NO SE DECIDE AQUÍ. Las tres
+// confirmaciones de la aplicación usan el mismo gancho (confirmar-cliente.js) y
+// la misma decisión (core/confirmar.js, con pruebas): al abrir, el foco va al
+// botón de confirmar; al cancelar, vuelve al botón de quitar de ESA fila; al
+// terminar, al aviso, porque la fila del campo ya no existe.
+//
+// EL AVISO VA FUERA DE LA LISTA. Al quitar el último campo la lista se queda
+// vacía; si el aviso estuviera dentro de la fila se iría con ella y no se
+// anunciaría. Está siempre montado y es `role="status"`.
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { BorrarCampo } from './BorrarDefinitivo';
 import {
   avisoDeContenidoSinDestruir, cambiarEstructura, yaDiceQueNoHaCambiado,
 } from './estructura-cliente';
+import useConfirmacion from './confirmar-cliente';
 
 const mensajeDeError = (error) => (error ? error.message : null);
 
@@ -31,15 +41,10 @@ const yEnTodas = (r, enTodas) => (r && r.afectaUnidades && r.unidades > 1
 export function QuitarCampos({
   documentoId, seccion, tituloApartado, fila, plantillaVersion, enTodas, onCambiado,
 }) {
-  const [confirma, setConfirma] = useState(null);
+  const confirma = useConfirmacion();
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);
-  const refConfirmar = useRef(null);
-
-  useEffect(() => {
-    if (confirma && refConfirmar.current) refConfirmar.current.focus();
-  }, [confirma]);
 
   const campos = fila && Array.isArray(fila.campos) ? fila.campos.filter((c) => !c.retirado) : [];
   // Sin campos que listar solo queda el aviso del que se acaba de quitar.
@@ -56,11 +61,11 @@ export function QuitarCampos({
         campo: c.id,
         cuerpo: { esperaPlantillaVersion: plantillaVersion },
       });
-      setConfirma(null);
       setAviso(`Campo «${nombre(c)}» quitado de «${tituloApartado}». No se ha borrado: lo escrito`
         + ' sigue guardado y vuelve al restaurarlo desde la portada del documento.'
         + (campos.length < 2 ? ' El apartado se ha quedado sin campos.' : '')
         + yEnTodas(r, enTodas));
+      confirma.terminar();
       if (onCambiado) await onCambiado('retirar_campo', r || {});
     } catch (e) {
       setError(e);
@@ -71,43 +76,67 @@ export function QuitarCampos({
 
   return (
     <div className="quitar-campo">
-      <ul className="lista-retirados">
+      {/* Qué es esta lista. Sin este rótulo eran unas filas sueltas dentro de la tarjeta. */}
+      <div className="linea-estructura">
+        <span className="suave">Campos de este apartado</span>
+        <span className="chip chip-cod">{campos.length}</span>
+      </div>
+      <ul className="lista-retirados" aria-label={`Campos de «${tituloApartado}»`}>
         {campos.map((c) => (
           <li key={c.id}>
-            <span>{nombre(c)}</span>
-            {confirma === c.id ? (
-              <>
-                <button className="mini" type="button" ref={refConfirmar} onClick={() => quitar(c)} disabled={enviando}>
-                  {enviando ? 'Quitando…' : `Sí, quitar el campo «${nombre(c)}»${enTodas ? ` de ${enTodas}` : ''}`}
-                </button>
-                <button className="mini" type="button" onClick={() => setConfirma(null)} disabled={enviando}>
-                  Cancelar
-                </button>
-              </>
-            ) : c.puedeRetirar ? (
+            <span className="retirado-nombre">{nombre(c)}</span>
+            {c.puedeRetirar ? (
+              /* El botón de quitar no desaparece al abrir la confirmación: se queda en su sitio,
+                 apagado, para que la fila no cambie de forma y para que el foco tenga a dónde
+                 volver al cancelar. */
               <button
                 className="mini"
                 type="button"
-                onClick={() => { setConfirma(c.id); setAviso(null); setError(null); }}
-                disabled={enviando}
+                ref={confirma.refAbrir(c.id)}
+                onClick={() => { confirma.abrir(c.id); setAviso(null); setError(null); }}
+                disabled={enviando || confirma.estaAbierta(c.id)}
+                aria-expanded={confirma.estaAbierta(c.id)}
+                aria-label={`Quitar el campo «${nombre(c)}» de «${tituloApartado}»`}
+                title={`Quitar el campo «${nombre(c)}» de «${tituloApartado}»`}
               >
-                Quitar el campo «{nombre(c)}» de «{tituloApartado}»
+                Quitar
               </button>
             ) : (
-              <span className="ayuda">Este campo no se quita desde aquí.</span>
+              <span className="motivo-no">No se quita desde aquí</span>
             )}
+            {confirma.estaAbierta(c.id) ? (
+              <div className="confirmacion" role="group" aria-label={`Quitar el campo «${nombre(c)}»`}>
+                {/* EL AVISO DE CONSECUENCIA, en el momento de pulsar, a peso completo y dentro de
+                    la fila del campo del que habla: antes salía al final de la lista, lejos del
+                    campo que se iba a quitar. */}
+                <p>
+                  «{nombre(c)}» deja de salir en el documento y en el PDF
+                  {enTodas ? `, y en ${enTodas} a la vez` : ''}
+                  {campos.length === 1 ? ', y el apartado se queda sin campos' : ''}
+                  . <strong>No se borra nada</strong>: lo escrito se conserva entero y vuelve al
+                  restaurarlo desde la portada del documento.
+                </p>
+                <p className="confirmacion-botones">
+                  <button className="mini" type="button" ref={confirma.refPaso} onClick={() => quitar(c)} disabled={enviando}>
+                    {enviando ? 'Quitando…' : `Sí, quitar «${nombre(c)}»${enTodas ? ` de ${enTodas}` : ''}`}
+                  </button>
+                  <button className="mini" type="button" onClick={confirma.cancelar} disabled={enviando}>
+                    Cancelar
+                  </button>
+                </p>
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>
-      {confirma ? (
-        <p className="suave">
-          El campo deja de salir en el documento y en el PDF
-          {enTodas ? `, y en ${enTodas} a la vez` : ''}
-          {campos.length === 1 ? ', y el apartado se queda sin campos' : ''}
-          . <strong>No se borra nada</strong>: lo escrito se conserva entero y vuelve al restaurarlo.
-        </p>
-      ) : null}
-      <p className={aviso ? 'bien' : 'sr'} role="status">{aviso || ''}</p>
+      <p
+        className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'}
+        role="status"
+        ref={confirma.refAviso}
+        tabIndex={-1}
+      >
+        {aviso || ''}
+      </p>
       {error ? (
         <div className="nota nota-error" role="alert">
           <div>
@@ -129,6 +158,10 @@ export function QuitarCampos({
 export function CamposRetirados({
   documentoId, retirados, plantillaVersion, cuantasUnidades, comoSeLlaman, onCambiado,
 }) {
+  // Aquí la confirmación en dos pasos está dentro de BorrarCampo, una por fila; este gancho se usa
+  // solo por el aviso, que es de la lista entera y es donde tiene que acabar el foco cuando la fila
+  // que se estaba borrando desaparece.
+  const confirma = useConfirmacion();
   const [enviando, setEnviando] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);
@@ -144,6 +177,7 @@ export function CamposRetirados({
       // Si la destrucción del contenido falló DESPUÉS del cambio, se dice: el campo se ha ido, pero
       // lo escrito puede seguir guardado y nadie iría a buscarlo.
       + (avisoDeContenidoSinDestruir(r) || ''));
+    confirma.terminar();
     if (onCambiado) await onCambiado('borrar_campo', r);
   };
   const restaurar = async (x) => {
@@ -178,14 +212,14 @@ export function CamposRetirados({
           sigue guardado, y al restaurarlos vuelven con su texto.
         </p>
       ) : null}
-      <ul className="lista-retirados">
+      <ul className="lista-retirados" aria-label="Campos quitados del documento">
         {lista.map((x) => (
           <li key={clave(x)}>
-            <span>{x.etiqueta || x.campo}</span>
-            <span className="suave">en «{x.titulo}»</span>
+            <span className="retirado-nombre">{x.etiqueta || x.campo}</span>
+            <span className="retirado-donde">en «{x.titulo}»</span>
             {x.deUnidades ? <span className="chip chip-vacio">de los módulos</span> : null}
             {x.apartadoRetirado ? (
-              <span className="ayuda">El apartado está retirado: restáuralo primero.</span>
+              <span className="motivo-no">El apartado está retirado: restáuralo primero</span>
             ) : (
               <>
                 <button
@@ -193,10 +227,10 @@ export function CamposRetirados({
                   type="button"
                   onClick={() => restaurar(x)}
                   disabled={!!enviando}
+                  aria-label={`Restaurar el campo «${x.etiqueta || x.campo}» de «${x.titulo}»`}
+                  title={`Restaurar el campo «${x.etiqueta || x.campo}» de «${x.titulo}»`}
                 >
-                  {enviando === clave(x)
-                    ? 'Restaurando…'
-                    : `Restaurar el campo «${x.etiqueta || x.campo}» de «${x.titulo}»`}
+                  {enviando === clave(x) ? 'Restaurando…' : 'Restaurar'}
                 </button>
                 <BorrarCampo
                   documentoId={documentoId}
@@ -212,7 +246,14 @@ export function CamposRetirados({
           </li>
         ))}
       </ul>
-      <p className={aviso ? 'bien' : 'sr'} role="status">{aviso || ''}</p>
+      <p
+        className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'}
+        role="status"
+        ref={confirma.refAviso}
+        tabIndex={-1}
+      >
+        {aviso || ''}
+      </p>
       {error ? (
         <div className="nota nota-error" role="alert">
           <div>
