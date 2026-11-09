@@ -344,7 +344,7 @@ const campoCreado = (peticion) => Campos.crearCampo(peticion, []).campo;
 
 // ================================================================ 1. las operaciones sobre el valor
 
-prueba('se editan las tablas creadas y las importadas; las listas de tablas y los demás tipos, no', () => {
+prueba('se editan las tablas creadas y las importadas; los demás tipos, no', () => {
   assert.equal(Edicion.esEditable(campoCreado({ tipo: 'tabla' })), true);
   assert.equal(Edicion.esEditable(campoCreado({ tipo: 'tabla_clave_valor' })), true);
   // Un campo importado no trae `inicial`: se edita igual, y se sabe que vino del Word.
@@ -353,9 +353,9 @@ prueba('se editan las tablas creadas y las importadas; las listas de tablas y lo
   assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor', etiqueta: 'Ficha' }), true);
   assert.equal(Edicion.esImportada(importada), true);
   assert.equal(Edicion.esImportada(campoCreado({ tipo: 'tabla' })), false);
-  // Una lista de tablas importada sigue en lectura: son varias tablas en un solo valor.
-  assert.equal(Edicion.esEditable({ ...importada, multiple: true }), false);
-  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor', multiple: true }), false);
+  // Una lista de tablas también se edita (una tabla por vez, ver el final de este fichero).
+  assert.equal(Edicion.esEditable({ ...importada, multiple: true }), true);
+  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor', multiple: true }), true);
   // Con el valor guardado: una clave y valor que solo quedó como `filas` se abre como rejilla; un valor que no es de su tipo, no.
   assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor' }, { pares: [] }), true);
   assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor' }, { filas: [[c('a'), c('b')]] }), true);
@@ -364,7 +364,7 @@ prueba('se editan las tablas creadas y las importadas; las listas de tablas y lo
   assert.equal(Edicion.esEditable(importada, { filas: [[c('a')]] }), true);
   assert.equal(Edicion.esEditable(importada, [{ filas: [] }]), false);
   assert.equal(Edicion.esEditable(campoCreado({ tipo: 'texto_largo' })), false);
-  assert.equal(Edicion.esEditable({ ...campoCreado({ tipo: 'tabla' }), multiple: true }), false);
+  assert.equal(Edicion.esEditable({ ...campoCreado({ tipo: 'texto_largo' }), multiple: true }), false);
   assert.equal(Edicion.esEditable({ id: 'p', tipo: 'ponderacion_ra_ce', inicial: {} }), false);
   assert.equal(Edicion.esEditable(null), false);
 });
@@ -1908,6 +1908,111 @@ prueba('editar una celda de una clave y valor importada cambia lo que sale en el
   assert.equal(cambiada.pares[0].valor, 'DOS');
   assert.deepEqual(textosDelPdf(campo, cambiada), ['A', 'DOS']);
   assert.deepEqual(await textosDelWord(campo, cambiada), ['A', 'DOS']);
+});
+
+// ================================================================ un campo que guarda varias tablas
+
+const CAMPO_VARIAS = { id: 'varias', tipo: 'tabla', etiqueta: 'Varias', multiple: true };
+const CAMPO_VARIAS_KV = { id: 'varias_kv', tipo: 'tabla_clave_valor', etiqueta: 'Varias kv', multiple: true };
+const tablaDe = (...textos) => ({ filas: [textos.map((t) => c(t))] });
+// Como las de la PD real: filas y los pares de los que salieron.
+const kvDe = (a, b) => ({ filas: [[c(a), c(b)]], pares: [{ etiqueta: a, valor: b }] });
+
+prueba('una lista de tablas o de clave y valor se edita; las ponderaciones y las fichas siguen con su editor', () => {
+  assert.equal(Edicion.esEditable(CAMPO_VARIAS, undefined), true, 'sin valor se abre con una');
+  assert.equal(Edicion.esEditable(CAMPO_VARIAS, [tablaDe('a'), tablaDe('b')]), true);
+  assert.equal(Edicion.esEditable(CAMPO_VARIAS, []), true, 'una lista vacía se abre para poder añadirle una');
+  assert.equal(Edicion.esEditable(CAMPO_VARIAS_KV, [kvDe('x', 'y'), { pares: [{ etiqueta: 'p', valor: 'q' }] }]), true);
+  assert.equal(Edicion.esEditable(CAMPO_VARIAS, tablaDe('a')), false, 'una tabla suelta en un campo de lista no se abre');
+  assert.equal(Edicion.esEditable(CAMPO_VARIAS, [tablaDe('a'), { raro: true }]), false, 'un elemento sin forma de tabla tampoco');
+  assert.equal(Edicion.esEditable({ id: 'p', tipo: 'ponderacion_ra_ce', multiple: true }, []), false);
+  assert.equal(Edicion.esEditable({ id: 'f', tipo: 'ficha_situacion_aprendizaje', multiple: true }, []), false);
+  assert.equal(Edicion.esEditable({ id: 'una', tipo: 'tabla' }, tablaDe('a')), true, 'y la suelta sigue igual');
+});
+
+prueba('cambiar una tabla de la lista deja las otras EXACTAMENTE como estaban', () => {
+  const lista = [kvDe('a', 'b'), tablaDe('c'), kvDe('d', 'e')];
+  const nueva = { filas: [[c('cambiada')]] };
+  const r = Edicion.cambiarTabla(CAMPO_VARIAS_KV, lista, 1, nueva);
+  assert.equal(r.length, 3);
+  assert.equal(r[0], lista[0], 'la primera es el mismo objeto, con sus pares');
+  assert.equal(r[1], nueva);
+  assert.equal(r[2], lista[2]);
+  assert.ok(lista[0].pares, 'y no se ha tocado la lista de partida');
+});
+
+prueba('al abrir una tabla clave-valor de la lista por su rejilla, sus pares viejos se van; vaciarla no los hace reaparecer', () => {
+  const lista = [kvDe('a', 'b'), kvDe('c', 'd')];
+  const abiertas = Edicion.tablasDe(CAMPO_VARIAS_KV, lista);
+  for (const t of abiertas) {
+    assert.equal(t.pares, undefined);
+    assert.equal(Edicion.esRejilla(t), true, 'se edita lo que se imprime: la rejilla');
+  }
+  assert.ok(lista[1].pares, 'la guardada conserva los suyos hasta que se edita');
+  const uno = Edicion.unaTabla(CAMPO_VARIAS_KV);
+  const vacia = Edicion.aplicar(abiertas[1], 'quitar-fila', { fila: 0 }, { campo: uno });
+  const guardada = Edicion.cambiarTabla(CAMPO_VARIAS_KV, lista, 1, vacia);
+  assert.equal(guardada[1].pares, undefined);
+  assert.notEqual(Est.queSeImprime(null, guardada[1]), 'pares', 'lo borrado no reaparece');
+  assert.equal(Est.motivoDeCampo(CAMPO_VARIAS_KV, guardada, { guardado: lista }), null, 'y la puerta lo deja pasar');
+});
+
+prueba('añadir y quitar tablas: el tope, la última que no se quita y el motivo de cada negativa', () => {
+  const lista = [tablaDe('a'), tablaDe('b')];
+  const mas = Edicion.aplicarEnCampo(CAMPO_VARIAS, lista, 'anadir-tabla');
+  assert.equal(mas.length, 3);
+  assert.equal(mas[0], lista[0]);
+  assert.deepEqual(mas[2], { filas: [] });
+  assert.equal(Est.motivoDeCampo(CAMPO_VARIAS, mas, { guardado: lista }), null);
+
+  const menos = Edicion.aplicarEnCampo(CAMPO_VARIAS, mas, 'quitar-tabla', { indice: 0 });
+  assert.deepEqual(menos, [lista[1], { filas: [] }]);
+
+  const una = [tablaDe('a')];
+  assert.ok(/al menos una tabla/.test(Edicion.motivoDeNoEnCampo(CAMPO_VARIAS, una, 'quitar-tabla', { indice: 0 })));
+  assert.equal(Edicion.aplicarEnCampo(CAMPO_VARIAS, una, 'quitar-tabla', { indice: 0 }), una, 'no se puede: mismo objeto');
+  assert.ok(Edicion.motivoDeNoEnCampo(CAMPO_VARIAS, lista, 'quitar-tabla', { indice: 5 }));
+  assert.ok(Edicion.motivoDeNoEnCampo(CAMPO_VARIAS, lista, 'quitar-tabla', {}));
+
+  const llena = Array.from({ length: Est.MAX_TABLAS }, (_, i) => tablaDe('t' + i));
+  assert.ok(new RegExp(String(Est.MAX_TABLAS)).test(Edicion.motivoDeNoEnCampo(CAMPO_VARIAS, llena, 'anadir-tabla')));
+  assert.equal(Edicion.aplicarEnCampo(CAMPO_VARIAS, llena, 'anadir-tabla'), llena);
+  const demasiadas = [...llena, tablaDe('x')];
+  assert.ok(/máximo/.test(Est.motivoDeCampo(CAMPO_VARIAS, demasiadas, {})), 'la puerta también lo dice');
+});
+
+prueba('un campo de lista sin valor guardado se abre con una tabla y al añadir parte de ella', () => {
+  assert.equal(Edicion.tablasDe(CAMPO_VARIAS, undefined).length, 1);
+  const r = Edicion.aplicarEnCampo(CAMPO_VARIAS, undefined, 'anadir-tabla');
+  assert.equal(r.length, 2);
+  assert.equal(Est.motivoDeCampo(CAMPO_VARIAS, r, {}), null);
+});
+
+// Lo que sale en el PDF y en el Word de un campo, para compararlo antes y después de abrirlo.
+const salidasDe = async (campo, valor) => ({
+  pdf: JSON.stringify(comparable(buildDocDefinition({ ...motoresDe(campo, valor), titulo: 'T', subtitulo: 'S' }))),
+  word: Buffer.from(await exportarDocx({ ...motoresDe(campo, valor), titulo: 'T' })).length,
+});
+
+prueba('abrir una lista sin tocarla, o añadir una tabla y quitarla, deja el PDF y el Word iguales', async () => {
+  const casos = [
+    [CAMPO_VARIAS, [tablaDe('a', 'b')]],
+    [CAMPO_VARIAS, [tablaDe('a', 'b'), tablaDe('c', 'd')]],
+    [CAMPO_VARIAS, [tablaDe('a'), tablaDe('b'), tablaDe('c')]],
+    [CAMPO_VARIAS_KV, [kvDe('a', 'b')]],
+    [CAMPO_VARIAS_KV, [kvDe('a', 'b'), kvDe('c', 'd')]],
+    [CAMPO_VARIAS_KV, [kvDe('a', 'b'), kvDe('c', 'd'), kvDe('e', 'f')]],
+  ];
+  for (const [campo, lista] of casos) {
+    const antes = await salidasDe(campo, lista);
+    const copia = JSON.parse(JSON.stringify(lista));
+    Edicion.tablasDe(campo, lista);
+    assert.deepEqual(lista, copia, 'abrir no cambia lo guardado');
+    const ida = Edicion.aplicarEnCampo(campo, lista, 'anadir-tabla');
+    const vuelta = Edicion.aplicarEnCampo(campo, ida, 'quitar-tabla', { indice: ida.length - 1 });
+    assert.deepEqual(vuelta, lista);
+    assert.deepEqual(await salidasDe(campo, vuelta), antes);
+  }
 });
 
 // ---------------------------------------------------------------- ejecución

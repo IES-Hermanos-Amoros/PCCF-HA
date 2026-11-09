@@ -129,6 +129,9 @@
   const MAX_FILAS = 200;
   const MAX_COLUMNAS = 12;
   const MAX_PARES = 100;
+  // Cuántas tablas caben en un campo que guarda una lista (`multiple`). El Word trae a lo sumo unas
+  // pocas bajo un epígrafe; el tope está para que la lista no crezca sin límite.
+  const MAX_TABLAS = 20;
 
   const seGuarda = (campo) => !!campo && TIPOS.indexOf(campo.tipo) >= 0;
 
@@ -581,6 +584,7 @@
       return motivoDeUna(valor, 'la tabla', guardado);
     }
     if (!Array.isArray(valor)) return 'este campo es una lista de tablas, y esto no es una lista.';
+    if (valor.length > MAX_TABLAS) return `este campo tiene ${valor.length} tablas: el máximo son ${MAX_TABLAS}.`;
     for (let i = 0; i < valor.length; i += 1) {
       const m = motivoDeUna(valor[i], `la tabla ${i + 1}`, Array.isArray(guardado) ? guardado[i] : undefined);
       if (m) return m;
@@ -950,7 +954,7 @@
 
   const api = {
     TIPOS, TIPOS_EDITABLES, TIPOS_REJILLA, TIPOS_CON_PARES, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_TABLA, TIPO_CLAVE_VALOR,
-    CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES, CLAVES_CELDA,
+    CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES, MAX_TABLAS, CLAVES_CELDA,
     FONDOS_CELDA, ALINEACIONES_CELDA, TAMANOS_CELDA,
     ALINEACION_CELDA_OMISION, TAMANO_CELDA_OMISION,
     seGuarda, queSeImprime, fondoDeCelda, alineacionDeCelda, tamanoDeCelda, cabeceraDeTabla, cabeceraFijaDelCampo,
