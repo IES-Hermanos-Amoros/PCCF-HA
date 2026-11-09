@@ -14,8 +14,8 @@
 //   ponderacion_ra_ce                la tabla de pesos, con la suma en vivo     E4
 //   ficha_situacion_aprendizaje      las fichas: ver, cambiar, crear, mover     E4
 //   derivado.resumen_situaciones     la tabla resumen SA × RA, CALCULADA        E4
-//   tabla y clave y valor CREADAS en la aplicación (campo.inicial)              EditorTablas.js
-//   lo demás (ficha del módulo, RA y CE, contenidos, rejillas importadas)       sin editor
+//   tabla y clave y valor, creadas aquí o importadas (no las listas)            EditorTablas.js
+//   lo demás (ficha del módulo, RA y CE, contenidos, listas de tablas)          sin editor
 //
 // Lo que no tiene editor se sigue viendo en lectura, con el mismo `Valores.js`
 // de siempre y un aviso de que su editor no está. Esto es deliberado: un
@@ -61,6 +61,7 @@
 'use client';
 
 import Edicion from '../../core/tablas-edicion';
+import Ayuda from './Ayuda';
 import EditorBloques from './Editor';
 import EditorTabla from './EditorTablas';
 import Ponderaciones from './Ponderaciones';
@@ -174,8 +175,9 @@ export default function ApartadoEditable({
 
   const dePonderacion = campos.filter((c) => c.tipo === TIPO_PONDERACION);
   const editables = campos.filter((c) => c.tipo === 'texto_largo' || esListaDeBloques(valores[c.id]));
-  // Las tablas que nacieron aquí se editan; las que trajo el Word siguen en lectura (EditorTablas.js).
-  const deTabla = campos.filter((c) => Edicion.esEditable(c));
+  // Las tablas se editan, las haya creado alguien aquí o las haya traído el Word; las listas de
+  // tablas y las que el editor no sabe abrir siguen en lectura (EditorTablas.js).
+  const deTabla = campos.filter((c) => Edicion.esEditable(c, valores[c.id]));
   const yaPintados = new Set([...editables, ...dePonderacion, ...deFichas, ...deResumen, ...deTabla]);
   const otros = campos.filter((c) => !yaPintados.has(c));
 
@@ -193,6 +195,22 @@ export default function ApartadoEditable({
     <section className="tarjeta" key={campo.id}>
       <header className="tarjeta-cab">
         <h2>{campo.etiqueta || campo.id}</h2>
+        {/* Quien edita una tabla del Word tiene que saber que lo que escriba ya no coincidirá con el
+            documento original: es prosa de referencia, plegada (docs/interfaz-web.md §3.6). */}
+        {Edicion.esImportada(campo) ? (
+          <Ayuda sobre="esta tabla importada del Word">
+            <p>
+              Esta tabla vino del Word. Puedes corregirla a mano, pero lo que cambies deja de coincidir
+              con el documento original.
+            </p>
+            <p>
+              Si el Word la trajo con un defecto de maquetación (más de 12 columnas, una fila más corta
+              o más larga que la primera, una celda combinada que se sale por abajo), se puede escribir en
+              ella y darle estilo, pero no añadirle ni quitarle filas o columnas ni combinar celdas: esos
+              botones salen apagados y dicen el motivo.
+            </p>
+          </Ayuda>
+        ) : null}
         {/* Una tabla recién creada se abre con su forma de nacimiento, que no está guardada hasta
             que se escribe algo: sin valor no sale en el PDF. */}
         {valores[campo.id] === undefined || valores[campo.id] === null
@@ -202,6 +220,7 @@ export default function ApartadoEditable({
       <EditorTabla
         campo={campo}
         valor={Edicion.valorDe(campo, valores[campo.id])}
+        guardada={valores[campo.id]}
         onCambio={(v) => cambiar(campo.id, v)}
       />
     </section>

@@ -12,11 +12,26 @@
 //                      bold?, fondo?, alineacion?, tamano? }
 //   tabla_clave_valor  { pares: [{ etiqueta, valor }] }
 //
-// Y solo las que se CREARON en la aplicación (`esEditable`): las que trajo el importador del Word
-// se ven y no se editan, porque el criterio de aceptación del importador es que el PDF salga
-// idéntico y una tabla importada que se reescribe celda a celda deja de ser la del Word. Las dos
-// clases son el mismo tipo de campo; lo que las distingue es `campo.inicial`, la forma con la que
-// nació la creada (core/campos.js).
+// LAS CREADAS EN LA APLICACIÓN Y LAS IMPORTADAS DEL WORD SE EDITAN IGUAL (`esEditable`). Son el
+// mismo tipo de campo y el mismo valor; lo que las distingue es `campo.inicial`, la forma con la
+// que nació la creada (core/campos.js), y es lo que usa `esImportada`. Lo que decide si hay editor
+// es el TIPO del campo y que no sea una lista de tablas (`multiple`).
+//
+// UNA IMPORTADA QUE NADIE TOCA SALE IDÉNTICA. Editar no cambia el valor hasta que se hace un gesto:
+// `aplicar` devuelve el mismo objeto cuando la operación no cambia nada, el importador no se toca y
+// los motores leen el mismo valor, así que el PDF y el Word de lo no editado son byte a byte los de
+// antes. Solo cuando alguien la edita pasa a ser suya y deja de coincidir con el Word.
+//
+// UNA IMPORTADA PUEDE TRAER DEFECTOS DE MAQUETACIÓN que una creada aquí nunca tiene: más de doce
+// columnas, una fila más corta o más larga que la primera, un `rowspan` que se sale por el final.
+// La puerta (`motivoDeRejilla` de core/estructurados.js) los perdona mientras la FORMA de la tabla
+// no cambie, de modo que escribir y dar estilo se puede siempre; y en cuanto la forma cambia exige
+// la tabla entera. `motivoDeNo` hace esa misma pregunta antes de dejar pulsar: sobre una tabla de
+// partida que no pasaría la puerta, añadir o quitar filas o columnas y combinar o separar celdas se
+// niegan, con el defecto por delante y lo que sí se puede hacer.
+//
+// Quedan fuera las listas de tablas (`multiple`): un campo con varias tablas guarda un array, cada
+// tabla con su cuadrícula y su forma guardada por separado, y el editor trabaja con UN valor.
 //
 // TODA OPERACIÓN DEVUELVE UN VALOR QUE PASA LA PUERTA
 //
@@ -137,13 +152,26 @@
 
   // ---------------------------------------------------------------- qué es y qué forma tiene
 
-  // ¿Este campo tiene editor? Una tabla o una tabla de clave y valor NACIDA en la aplicación y
-  // que no es una lista de tablas. Las importadas siguen en solo lectura.
-  function esEditable(campo) {
+  // ¿Este campo tiene editor? Una tabla o una tabla de clave y valor que no es una lista de tablas,
+  // la haya creado alguien aquí o la haya traído el Word.
+  //
+  // `guardado`, si se pasa, es el valor que tiene el campo, y sirve para descartar lo que el editor
+  // no sabe abrir: el de una tabla de clave y valor que el importador no supo leer en pares y dejó
+  // solo como `filas` (se editaría como una rejilla y el servidor no admite en ese tipo ni los
+  // anchos de columna), y cualquier valor que no tenga la forma de su tipo. Sin valor guardado se
+  // abre con el de nacimiento del campo y no hay nada que descartar.
+  function esEditable(campo, guardado) {
     const E = Estructurados();
-    if (!campo || (campo.tipo !== E.TIPO_TABLA && campo.tipo !== E.TIPO_CLAVE_VALOR)) return false;
-    return esObjeto(campo.inicial) && !campo.multiple;
+    if (!campo || (campo.tipo !== E.TIPO_TABLA && campo.tipo !== E.TIPO_CLAVE_VALOR) || campo.multiple) return false;
+    if (guardado === undefined || guardado === null) return true;
+    if (!esObjeto(guardado)) return false;
+    return campo.tipo === E.TIPO_TABLA ? Array.isArray(guardado.filas) : Array.isArray(guardado.pares);
   }
+
+  // ¿Vino del Word? Lo que deja el importador es un campo sin `inicial`, que es la señal de que se
+  // creó aquí (core/campos.js). Para avisar a quien edita de que lo que escriba ya no coincide con el
+  // documento original.
+  const esImportada = (campo) => !!campo && !esObjeto(campo.inicial);
 
   const esClaveValor = (valor) => esObjeto(valor) && Array.isArray(valor.pares);
   const esRejilla = (valor) => esObjeto(valor) && Array.isArray(valor.filas) && !Array.isArray(valor.pares);
@@ -404,6 +432,20 @@
 
   // ---------------------------------------------------------------- lo que no se puede
 
+  // Un motivo de la puerta sin su punto final, para meterlo dentro de otra frase.
+  const sinPunto = (texto) => String(texto).replace(/\.$/, '');
+
+  // Las operaciones que cambian la forma de la tabla, con lo que NO se podrá hacer en una tabla
+  // torcida, dicho para completar la frase «pero no …».
+  const OPERACIONES_DE_FORMA = {
+    'anadir-fila': 'añadirle filas',
+    'quitar-fila': 'quitarle filas',
+    'anadir-columna': 'añadirle columnas',
+    'quitar-columna': 'quitarle columnas',
+    combinar: 'combinar sus celdas',
+    separar: 'separar sus celdas',
+  };
+
   const MOTIVO_CLAVE_VALOR_CELDAS = 'Una tabla de clave y valor tiene un formato fijo (concepto en negrita, contenido normal): no se combinan celdas ni se cambia su negrita.';
   const MOTIVO_CLAVE_VALOR_ANCHOS = 'Una tabla de clave y valor tiene las dos columnas fijas: el concepto a la izquierda y el resto del ancho para su contenido.';
 
@@ -415,12 +457,16 @@
     if (!claveValor && !esRejilla(valor)) return 'Esto no es una tabla.';
     const n = filasDe(valor);
 
-    // Las operaciones de forma razonan sobre la cuadrícula, y esa tiene que cuadrar.
-    if (!claveValor && ['anadir-fila', 'quitar-fila', 'anadir-columna', 'quitar-columna', 'combinar', 'separar'].includes(op)
-      && n && !colocar(valor.filas)) {
-      const porque = E.motivoDeRejilla(valor, 'la tabla');
-      return 'Las celdas combinadas de esta tabla no cuadran' + (porque ? ' (' + porque + ')' : '')
-        + ': corrígelo antes de cambiar sus filas o sus columnas.';
+    // Las operaciones de forma razonan sobre la cuadrícula, y la tabla de partida tiene que pasar la
+    // puerta entera: una importada con un defecto de maquetación solo se guarda mientras su forma no
+    // cambie (ver el principio del fichero), y cada una de estas operaciones la cambia.
+    if (!claveValor && OPERACIONES_DE_FORMA[op] && n) {
+      const porque = E.motivoDeForma(valor.filas, 'la tabla');
+      if (porque || !colocar(valor.filas)) {
+        return 'Esta tabla venía del Word con un defecto de maquetación (' + sinPunto(porque || 'sus celdas combinadas no cuadran')
+          + '). Se puede escribir en ella y darle estilo (negrita, fondo, alineación, tamaño de letra), pero no '
+          + OPERACIONES_DE_FORMA[op] + '.';
+      }
     }
 
     switch (op) {
@@ -464,6 +510,18 @@
         if (claveValor) return MOTIVO_CLAVE_VALOR_ANCHOS;
         if (!n) return 'La tabla no tiene filas: añade una fila antes de repartir las columnas.';
         const cols = columnasDe(valor);
+        // Los anchos son un peso por columna, y las columnas que dibuja el generador son hasta donde
+        // llega la fila más ancha. Si la primera fila no llega, los pesos que cuadraran con ella los
+        // descartaría el motor y la tabla seguiría repartiéndose sola: mejor no dejar poner unos que
+        // no se van a ver, y decirlo. Una tabla de más de doce columnas o con una fila corta sí
+        // cuadra, y se reparte.
+        const dibujadas = E.columnasDeRejilla(valor.filas);
+        if (dibujadas !== cols) {
+          const porque = E.motivoDeForma(valor.filas, 'la tabla');
+          return 'Esta tabla venía del Word con una fila más ancha que la primera (' + cols + ' columnas la primera, '
+            + dibujadas + ' la más ancha): no está claro cuántas columnas tiene y no se pueden repartir sus anchos a mano'
+            + (porque ? ' (' + sinPunto(porque) + ')' : '') + '. Se puede escribir en ella y darle estilo; las columnas se repartirán solas según el texto.';
+        }
         if (!Number.isInteger(args.columna) || args.columna < 0 || args.columna >= cols) return 'No hay esa columna.';
         const peso = pesosDe(valor)[args.columna];
         if (args.hacia === 'ensanchar') {
@@ -829,7 +887,7 @@
   const api = {
     esEditable, esClaveValor, esRejilla,
     columnasDe, filasDe, tieneCombinadas, tieneCabecera, celdaNueva, descripcion, valorDe,
-    motivoDeNo, puede, aplicar, paraPintar, posiciones, celdaEn, textoQueSeJunta,
+    esImportada, motivoDeNo, puede, aplicar, paraPintar, posiciones, celdaEn, textoQueSeJunta,
     fondoEfectivo, alineacionEfectiva, tamanoEfectivo,
     anchosDe, porcentajesDe,
     elegirCelda, formatoDeCelda,

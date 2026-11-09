@@ -178,7 +178,8 @@ const PLANTILLA = {
   generada: '2026-01-01T00:00:00.000Z',
   secciones: [
     { id: 'introduccion', titulo: 'Introducción', nivel: 1, edita: 'jefe_departamento', presencia: 1,
-      campos: [campoTexto, { id: 'tabla_normativa', tipo: 'tabla', etiqueta: 'Normativa aplicable' }],
+      campos: [campoTexto, { id: 'tabla_normativa', tipo: 'tabla', etiqueta: 'Normativa aplicable' },
+        { id: 'tabla_torcida', tipo: 'tabla', etiqueta: 'Calendario del Word' }],
       hijos: [
         { id: 'introduccion/contextualizacion', titulo: 'Contextualización', nivel: 2, presencia: 1,
           campos: [campoTexto], hijos: [] },
@@ -232,6 +233,8 @@ const datosDe = (u) => ({
     introduccion: {
       texto: [{ type: 'p', text: 'Esta programación la escribe el departamento de Informática.' }],
       tabla_normativa: { filas: TABLA_NORMATIVA },
+      // Como las del Word con un defecto: una fila más corta que la primera.
+      tabla_torcida: { filas: [[c('Norma', { bold: true }), c('Año', { bold: true })], [c('LOE')], [c('LOMLOE'), c('2020')]] },
     },
     'atencion-a-la-diversidad': { texto: [{ type: 'p', text: 'Medidas de nivel II y III.' }] },
     // 'introduccion/contextualizacion' y 'anexos/actas' no están: nadie las ha escrito todavía.
@@ -341,11 +344,23 @@ const campoCreado = (peticion) => Campos.crearCampo(peticion, []).campo;
 
 // ================================================================ 1. las operaciones sobre el valor
 
-prueba('solo se edita lo creado en la aplicación: una tabla importada y las demás siguen en lectura', () => {
+prueba('se editan las tablas creadas y las importadas; las listas de tablas y los demás tipos, no', () => {
   assert.equal(Edicion.esEditable(campoCreado({ tipo: 'tabla' })), true);
   assert.equal(Edicion.esEditable(campoCreado({ tipo: 'tabla_clave_valor' })), true);
-  assert.equal(Edicion.esEditable({ id: 't', tipo: 'tabla', etiqueta: 'Normativa', columnas: ['a', 'b'] }), false);
-  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor', etiqueta: 'Ficha' }), false);
+  // Un campo importado no trae `inicial`: se edita igual, y se sabe que vino del Word.
+  const importada = { id: 't', tipo: 'tabla', etiqueta: 'Normativa', columnas: ['a', 'b'] };
+  assert.equal(Edicion.esEditable(importada), true);
+  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor', etiqueta: 'Ficha' }), true);
+  assert.equal(Edicion.esImportada(importada), true);
+  assert.equal(Edicion.esImportada(campoCreado({ tipo: 'tabla' })), false);
+  // Una lista de tablas importada sigue en lectura: son varias tablas en un solo valor.
+  assert.equal(Edicion.esEditable({ ...importada, multiple: true }), false);
+  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor', multiple: true }), false);
+  // Con el valor guardado: una clave y valor que solo quedó como `filas` no se abre, ni un valor que no es de su tipo.
+  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor' }, { pares: [] }), true);
+  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor' }, { filas: [[c('a'), c('b')]] }), false);
+  assert.equal(Edicion.esEditable(importada, { filas: [[c('a')]] }), true);
+  assert.equal(Edicion.esEditable(importada, [{ filas: [] }]), false);
   assert.equal(Edicion.esEditable(campoCreado({ tipo: 'texto_largo' })), false);
   assert.equal(Edicion.esEditable({ ...campoCreado({ tipo: 'tabla' }), multiple: true }), false);
   assert.equal(Edicion.esEditable({ id: 'p', tipo: 'ponderacion_ra_ce', inicial: {} }), false);
@@ -688,7 +703,7 @@ prueba('posiciones y celdaEn dicen dónde cae cada celda de la fila en la cuadr�
   // Una tabla que no cuadra no tiene posiciones, y las operaciones de forma se niegan con el porqué.
   const rota = { filas: [[c('a'), c('b')], [c('c')]] };
   assert.equal(Edicion.posiciones(rota), null);
-  niega(rota, 'anadir-fila', {}, /no cuadran.*más corta que la primera/);
+  niega(rota, 'anadir-fila', {}, /defecto de maquetación.*más corta que la primera/);
 });
 
 prueba('las celdas combinadas no se pierden al escribir ni al poner la cabecera', () => {
@@ -1026,12 +1041,17 @@ prueba('una tabla de clave y valor se crea, se rellena y se imprime con la clave
   assert.equal(tabla.table.body[0][0].bold, true);
 });
 
-prueba('la tabla importada del Word no se ofrece al editor, aunque se pueda guardar por la API', async () => {
+prueba('la tabla importada del Word se ofrece al editor, se corrige por la API y sale en el PDF', async () => {
   const { u, doc } = await escenario();
-  const { campo } = await abrir(u.jefa, doc._id, 'introduccion', 'tabla_normativa');
+  const { a, campo, valor } = await abrir(u.jefa, doc._id, 'introduccion', 'tabla_normativa');
   assert.equal(campo.tipo, 'tabla');
-  assert.equal(Edicion.esEditable(campo), false);
+  assert.equal(Edicion.esEditable(campo, a.valores.tabla_normativa), true);
+  assert.equal(Edicion.esImportada(campo), true);
   assert.equal((await abrir(u.jefa, doc._id, 'introduccion', 'texto')).campo.tipo, 'texto_largo');
+  const v = Edicion.aplicar(valor, 'texto', { fila: 0, columna: 0, valor: 'Texto corregido a mano' });
+  assert.notEqual(v, valor);
+  assert.equal((await guardarValor(u.jefa, doc._id, 'introduccion', a, 'tabla_normativa', v)).status, 200);
+  assert.ok(impreso(await definicionDe(u.jefa, doc._id), 'Texto corregido a mano'));
 });
 
 prueba('añadir una tabla a un apartado que ya existe: aparece con su valor inicial y se rellena', async () => {
@@ -1537,6 +1557,159 @@ prueba('el formato de una celda combinada dice en qué columna de la cuadrícula
   const abajo = Edicion.formatoDeCelda(ancha, { fila: 1, columna: 2 });
   assert.deepEqual([abajo.columna, abajo.columnaRejilla], [2, 2]);
   assert.equal(abajo.porcentaje, pct[2]);
+});
+
+// ================================================================ las importadas torcidas
+
+// Las cuatro maneras en que el Word deja una tabla que una creada aquí nunca tendría, y que la
+// puerta solo perdona mientras la forma no cambie.
+const TORCIDAS = {
+  'diecisiete columnas': { filas: [ancho17('cab', true), ancho17('a'), ancho17('b')] },
+  'una fila más corta que la primera': { filas: [[c('A', { bold: true }), c('B', { bold: true }), c('C', { bold: true })], [c('1'), c('2')], [c('3'), c('4'), c('5')]] },
+  'una fila más larga que la primera': { filas: [[c('A', { bold: true }), c('B', { bold: true })], [c('1'), c('2'), c('3')], [c('4'), c('5')]] },
+  'un rowspan que se sale por el final': { filas: [[c('A', { bold: true }), c('B', { bold: true })], [c('Saberes', { rowspan: 4 }), c('x')], [c('y')]] },
+};
+function ancho17(prefijo, negrita) {
+  return Array.from({ length: 17 }, (_, j) => c(`${prefijo}${j + 1}`, negrita ? { bold: true } : undefined));
+}
+const CAMPO_IMPORTADO = { id: 't', tipo: 'tabla', etiqueta: 'Tabla del Word', columnas: ['a'] };
+
+// Lo que dice la puerta del servidor de un cambio, con la tabla guardada delante.
+const puertaConGuardada = (nuevo, guardada) => Est.motivoDeCampo(CAMPO_IMPORTADO, nuevo, { guardado: guardada });
+
+prueba('en una importada torcida se puede escribir y dar estilo, y la puerta del servidor lo acepta', () => {
+  for (const [nombre, t] of Object.entries(TORCIDAS)) {
+    assert.ok(puerta(t), `${nombre}: la tabla de partida no pasa la puerta entera`);
+    assert.equal(puertaConGuardada(t, t), null, `${nombre}: tal cual se guarda`);
+    const cambios = [
+      ['texto', { fila: 0, columna: 0, valor: 'corregido' }],
+      ['negrita', { fila: 1, columna: 0, puesta: true }],
+      ['fondo', { fila: 1, columna: 0, cual: 'etiqueta' }],
+      ['alineacion', { fila: 1, columna: 0, cual: 'centro' }],
+      ['tamano', { fila: 1, columna: 0, cual: 'grande' }],
+    ];
+    for (const [op, args] of cambios) {
+      assert.equal(Edicion.motivoDeNo(t, op, args), null, `${nombre}: ${op}`);
+      const r = Edicion.aplicar(t, op, args);
+      assert.notEqual(r, t, `${nombre}: ${op} no hizo nada`);
+      assert.equal(puertaConGuardada(r, t), null, `${nombre}: ${op} no pasa la puerta con lo guardado`);
+    }
+  }
+});
+
+prueba('en una importada torcida las operaciones de forma se niegan con el defecto y lo que sí se puede hacer', () => {
+  const formas = [
+    ['anadir-fila', {}, /añadirle filas/],
+    ['quitar-fila', { fila: 1 }, /quitarle filas/],
+    ['anadir-columna', {}, /añadirle columnas/],
+    ['quitar-columna', { columna: 0 }, /quitarle columnas/],
+    ['combinar', { fila: 1, columna: 0, hacia: 'derecha' }, /combinar sus celdas/],
+    ['separar', { fila: 1, columna: 0 }, /separar sus celdas/],
+  ];
+  const defecto = {
+    'diecisiete columnas': /17 columnas: el máximo son 12/,
+    'una fila más corta que la primera': /fila 2 de la tabla es más corta que la primera/,
+    'una fila más larga que la primera': /fila 2 de la tabla es más ancha que la primera/,
+    'un rowspan que se sale por el final': /se combina con 3 filas hacia abajo/,
+  };
+  for (const [nombre, t] of Object.entries(TORCIDAS)) {
+    for (const [op, args, accion] of formas) {
+      const m = Edicion.motivoDeNo(t, op, args);
+      assert.ok(m, `${nombre}: ${op} debía negarse`);
+      assert.ok(/venía del Word/.test(m) && defecto[nombre].test(m), `${nombre}: ${op}: ${m}`);
+      assert.ok(/Se puede escribir en ella y darle estilo/.test(m) && accion.test(m), `${nombre}: ${op}: ${m}`);
+      assert.ok(!/\.\./.test(m), `punto doble: ${m}`);
+      assert.equal(Edicion.aplicar(t, op, args), t);
+    }
+  }
+  // Y la puerta del servidor diría 400 a lo que los botones apagados impiden.
+  const t = TORCIDAS['diecisiete columnas'];
+  const masFilas = { filas: [...t.filas, ancho17('n')] };
+  assert.ok(puertaConGuardada(masFilas, t), 'un cambio de forma en la misma tabla se rechaza');
+  const mas = Edicion.motivoDeNo(t, 'anadir-columna', {});
+  assert.ok(/17 columnas/.test(mas) && /no añadirle columnas|pero no añadirle columnas/.test(mas));
+});
+
+prueba('una importada que cuadra sigue pudiendo cambiar de forma, y una creada aquí no cambia', () => {
+  const t = plana(['a', 'b'], ['c', 'd']);
+  assert.equal(Edicion.motivoDeNo(t, 'anadir-fila', {}), null);
+  assert.equal(Edicion.motivoDeNo(t, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' }), null);
+  // Con doce columnas exactas se puede quitar, y añadir se niega por el tope, no por «venía del Word».
+  const doce = { filas: [Array.from({ length: 12 }, (_, j) => c('x' + j))] };
+  assert.equal(Edicion.motivoDeNo(doce, 'quitar-columna', { columna: 0 }), null);
+  assert.ok(/más de 12 columnas/.test(Edicion.motivoDeNo(doce, 'anadir-columna', {})));
+});
+
+prueba('los anchos en una importada torcida: sí en 17 columnas, con fila corta y con rowspan; no con una fila más larga', () => {
+  const ancha = TORCIDAS['diecisiete columnas'];
+  assert.equal(Edicion.motivoDeNo(ancha, 'ancho', { columna: 16, hacia: 'ensanchar' }), null);
+  const conAnchos = Edicion.aplicar(ancha, 'ancho', { columna: 16, hacia: 'ensanchar' });
+  assert.equal(conAnchos.anchos.length, 17);
+  assert.equal(puertaConGuardada(conAnchos, ancha), null, 'los anchos de una tabla de 17 columnas se guardan');
+  assert.equal(Est.columnasDeRejilla(ancha.filas), 17);
+
+  for (const nombre of ['una fila más corta que la primera', 'un rowspan que se sale por el final']) {
+    const t = TORCIDAS[nombre];
+    assert.equal(Est.columnasDeRejilla(t.filas), Edicion.columnasDe(t), nombre);
+    const r = Edicion.aplicar(t, 'ancho', { columna: 0, hacia: 'ensanchar' });
+    assert.notEqual(r, t, nombre);
+    assert.equal(r.anchos.length, Edicion.columnasDe(t));
+    assert.equal(puertaConGuardada(r, t), null, nombre);
+  }
+
+  // Con una fila más ancha que la primera, el generador dibuja 3 columnas y la primera fila cuenta 2.
+  const larga = TORCIDAS['una fila más larga que la primera'];
+  assert.equal(Edicion.columnasDe(larga), 2);
+  assert.equal(Est.columnasDeRejilla(larga.filas), 3);
+  const m = Edicion.motivoDeNo(larga, 'ancho', { columna: 0, hacia: 'ensanchar' });
+  assert.ok(/fila más ancha que la primera/.test(m) && /se repartirán solas/.test(m), m);
+  assert.equal(Edicion.aplicar(larga, 'ancho', { columna: 0, hacia: 'ensanchar' }), larga);
+  // Los dos anchos a mano que no encajan con lo que dibuja el generador los rechaza la puerta.
+  assert.ok(/2 proporciones.*3 columnas/.test(puertaConGuardada({ ...larga, anchos: [1, 1] }, larga)));
+  assert.equal(puertaConGuardada({ ...larga, anchos: [1, 1, 1] }, larga), null);
+  // Sin anchos guardados no hay nada que volver a automático, y lo dice.
+  assert.ok(/ya se reparten solas/.test(Edicion.motivoDeNo(larga, 'anchos-automaticos', {})));
+});
+
+prueba('una importada que nadie toca da exactamente la misma definición del PDF, aunque se abra y se guarde tal cual', async () => {
+  const { u, doc } = await escenario();
+  const antes = JSON.stringify(tablasDe(await definicionDe(u.jefa, doc._id)));
+  const { a, valor } = await abrir(u.jefa, doc._id, 'introduccion', 'tabla_normativa');
+  assert.equal(valor, a.valores.tabla_normativa, 'abrirla no cambia el valor');
+  // Los gestos que no cambian nada devuelven el mismo objeto: no hay nada que guardar.
+  let v = valor;
+  v = Edicion.aplicar(v, 'texto', { fila: 0, columna: 0, valor: v.filas[0][0].text });
+  v = Edicion.aplicar(v, 'negrita', { fila: 0, columna: 0, puesta: v.filas[0][0].bold === true });
+  v = Edicion.aplicar(v, 'alineacion', { fila: 0, columna: 0, cual: 'izquierda' });
+  v = Edicion.aplicar(v, 'tamano', { fila: 0, columna: 0, cual: 'normal' });
+  v = Edicion.aplicar(v, 'fondo', { fila: 0, columna: 0, cual: null });
+  assert.equal(v, valor);
+  assert.equal((await guardarValor(u.jefa, doc._id, 'introduccion', a, 'tabla_normativa', v)).status, 200);
+  assert.equal(JSON.stringify(tablasDe(await definicionDe(u.jefa, doc._id))), antes);
+});
+
+prueba('una importada torcida se guarda por el PATCH con un cambio de texto o de estilo, y un cambio de forma da 400', async () => {
+  const { u, doc } = await escenario();
+  const { a, campo, valor } = await abrir(u.jefa, doc._id, 'introduccion', 'tabla_torcida');
+  assert.equal(Edicion.esEditable(campo, a.valores.tabla_torcida), true);
+  assert.ok(puerta(valor), 'de partida no pasaría la puerta entera');
+
+  const escrita = Edicion.aplicar(valor, 'texto', { fila: 1, columna: 0, valor: 'LOE (derogada)' });
+  assert.notEqual(escrita, valor);
+  assert.equal((await guardarValor(u.jefa, doc._id, 'introduccion', a, 'tabla_torcida', escrita)).status, 200);
+  assert.ok(impreso(await definicionDe(u.jefa, doc._id), 'LOE (derogada)'));
+
+  const leida = await abrir(u.jefa, doc._id, 'introduccion', 'tabla_torcida');
+  const estilo = Edicion.aplicar(Edicion.aplicar(leida.valor, 'negrita', { fila: 2, columna: 0, puesta: true }),
+    'alineacion', { fila: 2, columna: 0, cual: 'centro' });
+  assert.equal((await guardarValor(u.jefa, doc._id, 'introduccion', leida.a, 'tabla_torcida', estilo)).status, 200);
+
+  // El editor no deja llegar a esto (el botón sale apagado), pero el servidor tiene que cerrarlo igual.
+  const otra = await abrir(u.jefa, doc._id, 'introduccion', 'tabla_torcida');
+  const deForma = { ...otra.valor, filas: [...otra.valor.filas, [c('x'), c('y')]] };
+  const r = await guardarValor(u.jefa, doc._id, 'introduccion', otra.a, 'tabla_torcida', deForma);
+  assert.equal(r.status, 400);
+  assert.ok(/más corta que la primera/.test(JSON.stringify(await r.json())));
 });
 
 // ---------------------------------------------------------------- ejecución

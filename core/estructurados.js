@@ -354,6 +354,47 @@
     return null;
   }
 
+  // LAS COLUMNAS QUE TIENE DE VERDAD UNA REJILLA: las que coloca el generador (`rejilla()` de
+  // motor/render-generico.js y su gemela del Word), que es hasta donde llega la fila más ancha, no
+  // lo que mide la primera. En una tabla que cuadra son lo mismo; en una con una fila más ancha que
+  // la primera, los motores dibujan más columnas de las que la primera fila deja contar, y unos
+  // «anchos» con una proporción por cada columna de la primera fila no encajarían: el motor los
+  // descartaría y repartiría las columnas según el texto sin avisar.
+  function columnasDeRejilla(filas) {
+    const ocupado = filas.map(() => []);
+    let ncols = 0;
+    for (let i = 0; i < filas.length; i += 1) {
+      let col = 0;
+      for (let j = 0; j < filas[i].length; j += 1) {
+        while (ocupado[i][col]) col += 1;
+        const cs = filas[i][j].colspan || 1;
+        const rs = filas[i][j].rowspan || 1;
+        for (let dr = 0; dr < rs && i + dr < filas.length; dr += 1) {
+          for (let dc = 0; dc < cs; dc += 1) ocupado[i + dr][col + dc] = true;
+        }
+        col += cs;
+        ncols = Math.max(ncols, col);
+      }
+    }
+    return ncols;
+  }
+
+  // Por qué la FORMA de una rejilla no es la de una tabla escrita en la aplicación: demasiadas
+  // filas, filas que no cuadran con sus combinaciones o demasiadas columnas. Es la parte de la
+  // puerta que se perdona cuando la forma no cambia, y la pregunta que se hace el editor ANTES de
+  // dejar añadir una fila, una columna o una combinación: si la tabla de partida no la pasaría, un
+  // cambio de forma sería un 400 y el botón tiene que estar apagado y decir por qué.
+  function motivoDeForma(filas, donde) {
+    if (filas.length > MAX_FILAS) return `${donde} tiene ${filas.length} filas: el máximo son ${MAX_FILAS}.`;
+    const c = motivoDeCuadricula(filas, donde);
+    if (c) return c;
+    const ancho = filas.length ? filas[0].reduce((a, x) => a + (x.colspan || 1), 0) : 0;
+    if (ancho > MAX_COLUMNAS) {
+      return `${donde} tiene ${ancho} columnas: el máximo son ${MAX_COLUMNAS}, porque con más no caben en el ancho de la hoja.`;
+    }
+    return null;
+  }
+
   // UNA REJILLA ESCRITA EN LA APLICACIÓN: `{ filas: [[celda, …], …], anchos? }`. La forma de la
   // celda y la comprobación celda a celda son las de `motivoDeFilas`; aquí se añade lo que solo
   // importa cuando alguien la escribe: que las filas cuadren, los topes, los anchos y la cabecera.
@@ -387,20 +428,18 @@
     if (valor.filas === undefined) return `falta «filas» en ${donde}: una tabla sin filas es { filas: [] }.`;
     const m = motivoDeFilas(valor.filas, donde);
     if (m) return m;
-    const ancho = valor.filas.length ? valor.filas[0].reduce((a, x) => a + (x.colspan || 1), 0) : 0;
     const igual = esObjeto(guardada) && Array.isArray(guardada.filas) && formaDe(guardada.filas) === formaDe(valor.filas);
     if (!igual) {
-      if (valor.filas.length > MAX_FILAS) return `${donde} tiene ${valor.filas.length} filas: el máximo son ${MAX_FILAS}.`;
-      const c = motivoDeCuadricula(valor.filas, donde);
-      if (c) return c;
-      if (ancho > MAX_COLUMNAS) {
-        return `${donde} tiene ${ancho} columnas: el máximo son ${MAX_COLUMNAS}, porque con más no caben en el ancho de la hoja.`;
-      }
+      const f = motivoDeForma(valor.filas, donde);
+      if (f) return f;
     }
-    // Los anchos se exigen SIEMPRE, también cuando la forma no ha cambiado: no hay ninguna tabla
-    // guardada que los traiga mal (las importadas no los llevan), así que aquí no hay nada heredado
-    // que perdonar, y una lista con más proporciones que columnas no sabría qué columna estira.
-    const a = motivoDeAnchos(valor.anchos, ancho, donde);
+    // Los anchos se exigen SIEMPRE, también cuando la forma no ha cambiado: ninguna tabla guardada
+    // los trae (el importador no los escribe), así que no hay nada heredado que perdonar, y una
+    // lista con más proporciones que columnas no sabría qué columna estira. Se cuentan las columnas
+    // que dibuja el generador (`columnasDeRejilla`) y no las de la primera fila: en una importada
+    // con una fila más ancha que la primera no coinciden, y los anchos que cuadraran con la primera
+    // fila los descartaría el motor sin avisar.
+    const a = motivoDeAnchos(valor.anchos, columnasDeRejilla(valor.filas), donde);
     if (a) return a;
     for (let i = 0; i < valor.filas.length; i += 1) {
       for (let j = 0; j < valor.filas[i].length; j += 1) {
@@ -831,7 +870,7 @@
     FONDOS_CELDA, ALINEACIONES_CELDA, TAMANOS_CELDA,
     ALINEACION_CELDA_OMISION, TAMANO_CELDA_OMISION,
     seGuarda, fondoDeCelda, alineacionDeCelda, tamanoDeCelda,
-    motivoDeFilas, motivoDeRejilla, motivoDeClaveValor,
+    motivoDeFilas, motivoDeRejilla, motivoDeForma, columnasDeRejilla, motivoDeClaveValor,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,
     motivoItems, renumerarItems,

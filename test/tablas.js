@@ -1113,6 +1113,26 @@ prueba('la cabecera de la tabla no depende de «fondo»', async () => {
   assert.equal(await cabeceras(abajo), 1);
 });
 
+prueba('motivoDeForma dice por qué una forma no vale, y columnasDeRejilla cuenta lo que dibuja el generador', () => {
+  assert.equal(Est.motivoDeForma([ancho(3), ancho(3)], 'la tabla'), null);
+  assert.equal(Est.motivoDeForma([], 'la tabla'), null);
+  assert.ok(/17 columnas: el máximo son 12/.test(Est.motivoDeForma([ancho(17)], 'la tabla')));
+  assert.ok(/más corta que la primera/.test(Est.motivoDeForma([ancho(3), ancho(2)], 'la tabla')));
+  assert.ok(/más ancha que la primera/.test(Est.motivoDeForma([ancho(2), ancho(3)], 'la tabla')));
+  assert.ok(/hacia abajo/.test(Est.motivoDeForma([[c('a', { rowspan: 5 }), c('b')]], 'la tabla')));
+  // Las columnas son hasta donde llega la fila más ancha, como en rejilla() del generador.
+  assert.equal(Est.columnasDeRejilla([ancho(3), ancho(2)]), 3);
+  assert.equal(Est.columnasDeRejilla([ancho(2), ancho(3)]), 3);
+  assert.equal(Est.columnasDeRejilla([[c('a', { rowspan: 2 }), c('b')], [c('c')]]), 2);
+  assert.equal(Est.columnasDeRejilla([]), 0);
+});
+
+prueba('los anchos de una importada con una fila más ancha que la primera cuentan las columnas del generador', () => {
+  const guardada = { filas: [ancho(2), ancho(3)] };
+  assert.ok(/2 proporciones.*3 columnas/.test(Est.motivoDeCampo(CAMPO_TABLA, { ...guardada, anchos: [1, 1] }, { guardado: guardada })));
+  assert.equal(Est.motivoDeCampo(CAMPO_TABLA, { ...guardada, anchos: [1, 1, 1] }, { guardado: guardada }), null);
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {
