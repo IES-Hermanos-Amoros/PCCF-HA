@@ -120,6 +120,49 @@
     return a !== '' && a === norm(titulo);
   };
 
+  // QUÉ HAY QUE TECLEAR PARA CONFIRMAR UN BORRADO, exactamente.
+  //
+  // Los títulos reales del departamento son largos: de 466 apartados, 143 pasan de 40 caracteres y
+  // el más largo tiene 124. Teclear 124 caracteres no es deliberar, es una barrera, y una barrera
+  // así se salta copiando y pegando —que es precisamente lo que anula la deliberación que la
+  // confirmación busca—. Así que de un título largo se piden sus PRIMERAS PALABRAS, hasta
+  // `LARGO_CONFIRMACION` caracteres, y nunca una palabra cortada por la mitad: media palabra no se
+  // sabe escribir sin mirar letra por letra.
+  //
+  // El recorte es ESTA regla y no el de `slug`: `slug` recorta a 50 caracteres para generar
+  // identificadores y puede partir una palabra. Tomarlo prestado dejaría la confirmación atada a
+  // una función que está para otra cosa.
+  //
+  // La cadena que esto devuelve se escribe LITERALMENTE en la pantalla
+  // (app/_componentes/BorrarDefinitivo.js): pedir «las primeras palabras» sin decir cuáles son
+  // obligaría a adivinarlas, y entonces la confirmación no se podría cumplir a propósito.
+  //
+  // Un título de una sola palabra más larga que el tope se pide entero: es lo único que hay.
+  const LARGO_CONFIRMACION = 40;
+
+  function loQueHayQueEscribir(titulo) {
+    const t = String(titulo === undefined || titulo === null ? '' : titulo).replace(/\s+/g, ' ').trim();
+    if (t.length <= LARGO_CONFIRMACION) return t;
+    const palabras = t.split(' ');
+    let pedido = palabras[0];
+    for (let i = 1; i < palabras.length; i += 1) {
+      const mas = pedido + ' ' + palabras[i];
+      if (mas.length > LARGO_CONFIRMACION) break;
+      pedido = mas;
+    }
+    return pedido;
+  }
+
+  // ¿VALE LO ESCRITO para confirmar el borrado de este apartado? Vale la cadena que se pide, y vale
+  // TAMBIÉN el título completo: el título entero está escrito dos líneas más arriba, en el aviso de
+  // lo que se va a perder, y quien lo escriba todo ha hecho más de lo que se le pedía, no menos.
+  // Negárselo sería un cuadro que rechaza la respuesta correcta.
+  //
+  // Comparar lo sigue haciendo `mismoTitulo`: perdona tildes, mayúsculas, puntuación y espacios de
+  // sobra, y no perdona nada más. Un cuadro vacío no confirma nada.
+  const confirmaTitulo = (escrito, titulo) => mismoTitulo(escrito, loQueHayQueEscribir(titulo))
+    || mismoTitulo(escrito, titulo);
+
   // El último tramo de un id: 'modulos/metodologia' -> 'metodologia'. Los ids son rutas con
   // '/', igual que los que produce el importador, y lo que tiene que ser único es el tramo
   // entre hermanos: con el prefijo del padre, la ruta entera lo es sola.
@@ -793,6 +836,7 @@
 
   const api = {
     slug, idLocal, limpiarTitulo, mismoTitulo, LARGO_TITULO, CAMPO_NUEVO, TIPOS, MAX_CAMPOS, MAX_CAMPOS_AL_CREAR,
+    loQueHayQueEscribir, confirmaTitulo, LARGO_CONFIRMACION,
     buscar, rama, contar, vigente, retirados, camposRetirados, estructura,
     renombrar, anadir, mover, retirar, restaurar, borrar, anadirCampo, retirarCampo, restaurarCampo, borrarCampo, aplicar,
     siguienteVersion, registrar,

@@ -56,6 +56,7 @@ import {
   yaDiceQueNoHaCambiado,
 } from './estructura-cliente';
 import AnadirCampo from './AnadirCampo';
+import useConfirmacion from './confirmar-cliente';
 import { BorrarApartado } from './BorrarDefinitivo';
 import { QuitarCampos } from './QuitarCampo';
 import { CamposDelApartadoNuevo } from './NuevoCampo';
@@ -82,15 +83,16 @@ export default function Estructura({
   const [enviando, setEnviando] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);
-  const [confirmaRetirar, setConfirmaRetirar] = useState(false);
   const [anadido, setAnadido] = useState(null);
+  // La confirmación de la retirada: el mismo gancho y la misma decisión de foco que las otras dos
+  // de la aplicación (confirmar-cliente.js sobre core/confirmar.js, con pruebas).
+  const confirma = useConfirmacion();
   // Los campos con los que nacerá el apartado nuevo: [{ peticion, resumen }]. Vacía, nace con un
   // campo de texto.
   const [camposNuevos, setCamposNuevos] = useState([]);
 
   const refSubir = useRef(null);
   const refBajar = useRef(null);
-  const refConfirmar = useRef(null);
   // Qué botón de mover se pulsó y en qué posición estaba el apartado: hace falta
   // para devolverle el foco cuando el árbol vuelva ya reordenado.
   const esperaFoco = useRef(null);
@@ -116,13 +118,6 @@ export default function Estructura({
     const destino = pulsado && !pulsado.disabled ? pulsado : otro;
     if (destino) destino.focus();
   });
-
-  // El botón de confirmar la retirada aparece donde estaba el de retirar, así que
-  // se le lleva el foco: si no, quien va con el teclado pulsa «retirar», no pasa
-  // nada visible para él y el foco se queda en un botón que ya no está.
-  useEffect(() => {
-    if (confirmaRetirar && refConfirmar.current) refConfirmar.current.focus();
-  }, [confirmaRetirar]);
 
   if (!nodo || !nodo.seccion) return null;
 
@@ -223,11 +218,11 @@ export default function Estructura({
 
   const retirar = () => {
     if (ocupado) return;
-    setConfirmaRetirar(false);
-    mandar('retirar', { seccion: nodo.seccion, cuerpo: {} }, () => {
-      // El aviso de después lo da el visor, que es quien se mueve al padre: este
-      // apartado ya no existe en el árbol y esta tarjeta se va con él.
-    });
+    // El aviso de después lo da el visor, que es quien se mueve al padre: este apartado ya no
+    // existe en el árbol y esta tarjeta se va con él. Así que se cierra sin mover el foco: aquí no
+    // queda nada a lo que llevarlo, y el aviso de esta tarjeta no dice nada de la retirada.
+    confirma.cerrar();
+    mandar('retirar', { seccion: nodo.seccion, cuerpo: {} });
   };
 
   // Cuántos apartados se lleva por delante: él y lo que tenga dentro. Lo dice el
@@ -409,12 +404,12 @@ export default function Estructura({
         >
           ↓ bajar
         </button>
-        {confirmaRetirar ? (
+        {confirma.estaAbierta() ? (
           <>
-            <button className="mini" type="button" ref={refConfirmar} onClick={retirar}>
+            <button className="mini" type="button" ref={confirma.refPaso} onClick={retirar}>
               sí, retirarlo{enTodas ? ` de ${enTodas}` : ''}
             </button>
-            <button className="mini" type="button" onClick={() => setConfirmaRetirar(false)}>
+            <button className="mini" type="button" onClick={confirma.cancelar}>
               cancelar
             </button>
           </>
@@ -422,7 +417,8 @@ export default function Estructura({
           <button
             className="mini"
             type="button"
-            onClick={() => setConfirmaRetirar(true)}
+            ref={confirma.refAbrir()}
+            onClick={() => confirma.abrir()}
             disabled={ocupado}
           >
             {enviando === 'retirar' ? 'Retirando…' : 'retirar del documento'}
@@ -439,12 +435,14 @@ export default function Estructura({
 
       {/* Lo que se va a llevar por delante la retirada, dicho en el momento de
           decidirlo: un apartado se va con lo que tenga dentro. */}
-      {confirmaRetirar ? (
-        <p className="suave">
-          Deja de salir en el documento y en el PDF
-          {dentro ? `, y con él ${cuantos(dentro)} que tiene dentro` : ''}
-          . <strong>No se borra nada</strong>: lo escrito se conserva entero y vuelve al restaurarlo.
-        </p>
+      {confirma.estaAbierta() ? (
+        <div className="confirmacion">
+          <p>
+            Deja de salir en el documento y en el PDF
+            {dentro ? `, y con él ${cuantos(dentro)} que tiene dentro` : ''}
+            . <strong>No se borra nada</strong>: lo escrito se conserva entero y vuelve al restaurarlo.
+          </p>
+        </div>
       ) : null}
 
       {/* QUE RETIRAR NO BORRA SE DICE AQUÍ, NO EN UN AVISO QUE SALGA DESPUÉS, y
@@ -464,7 +462,12 @@ export default function Estructura({
           prototipo esto era un `toast`, que es exactamente lo que no se oye.
           Siempre montada —si apareciera y desapareciera no se anunciaría—, y
           fuera de la vista mientras no haya nada que decir. */}
-      <p className={aviso || anadido ? 'bien' : 'sr'} role="status">
+      <p
+        className={aviso || anadido ? 'bien aviso-hecho' : 'sr aviso-hecho'}
+        role="status"
+        ref={confirma.refAviso}
+        tabIndex={-1}
+      >
         {aviso || ''}
         {anadido ? (
           <>
@@ -513,6 +516,10 @@ export default function Estructura({
 export function ApartadosRetirados({
   documentoId, retirados, plantillaVersion, cuantasUnidades, comoSeLlaman, onCambiado,
 }) {
+  // La confirmación en dos pasos de cada fila está dentro de BorrarApartado; este gancho se usa
+  // aquí solo por el aviso, que es de la lista entera y es donde tiene que acabar el foco cuando la
+  // fila que se estaba borrando desaparece.
+  const confirma = useConfirmacion();
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null);
@@ -531,6 +538,7 @@ export function ApartadosRetirados({
       // Si la destrucción del contenido falló DESPUÉS del cambio, se dice: el apartado se ha ido,
       // pero lo escrito puede seguir guardado y nadie iría a buscarlo.
       + (avisoDeContenidoSinDestruir(r) || ''));
+    confirma.terminar();
     if (onCambiado) await onCambiado('borrar', r);
   };
 
@@ -563,10 +571,12 @@ export function ApartadosRetirados({
         <strong>No se han borrado.</strong> No salen en el documento ni en el PDF, su contenido
         sigue guardado, y al restaurarlos vuelven con su texto.
       </p>
-      <ul className="lista-retirados">
+      <ul className="lista-retirados" aria-label="Apartados retirados del documento">
         {lista.map((x) => (
           <li key={x.seccion}>
-            <span>{x.titulo || <span className="suave">sin título</span>}</span>
+            <span className="retirado-nombre">
+              {x.titulo || <span className="suave">sin título</span>}
+            </span>
             <code>{x.seccion}</code>
             {/* Lo que se lleva dentro y si es de la plantilla de las unidades:
                 restaurar un apartado de módulo lo devuelve a los once. */}
@@ -577,8 +587,10 @@ export function ApartadosRetirados({
               type="button"
               onClick={() => restaurar(x.seccion)}
               disabled={!!enviando}
+              aria-label={`Restaurar «${x.titulo || x.seccion}» en el documento`}
+              title={`Restaurar «${x.titulo || x.seccion}» en el documento`}
             >
-              {enviando === x.seccion ? 'restaurando…' : 'restaurar'}
+              {enviando === x.seccion ? 'Restaurando…' : 'Restaurar'}
             </button>
             {/* La otra salida, y la única que destruye. Primero hay que haberlo retirado: por eso
                 está aquí y en ningún otro sitio. */}
@@ -594,7 +606,14 @@ export function ApartadosRetirados({
           </li>
         ))}
       </ul>
-      <p className={aviso ? 'bien' : 'sr'} role="status">{aviso || ''}</p>
+      <p
+        className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'}
+        role="status"
+        ref={confirma.refAviso}
+        tabIndex={-1}
+      >
+        {aviso || ''}
+      </p>
       {error ? (
         <div className="nota nota-error" role="alert">
           <div>

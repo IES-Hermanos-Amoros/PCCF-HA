@@ -413,9 +413,68 @@ mark.pon { background: color-mix(in srgb, var(--verde) 26%, transparent); color:
   background: var(--panel-2); padding: 6px 9px; outline: none;
 }
 .linea-estructura input:focus { border-color: var(--acento); background: var(--panel); }
+/* LAS LISTAS DE FILAS CON ACCIONES: los campos de un apartado, los campos quitados y los
+   apartados retirados. Las tres dicen lo mismo de un vistazo —qué es cada fila, qué se le puede
+   hacer y qué no se le puede hacer y por qué—, y por eso comparten estilo. Los tres sitios
+   reutilizaban `.mini` sobre una lista sin estilo, y una fila no se distinguía de la siguiente.
+
+   El nombre de la fila es lo que crece, así que todo lo que va detrás —los datos, los botones, el
+   motivo de que no haya botón— queda alineado a la derecha sin necesidad de envolverlo en nada. */
 .lista-retirados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.lista-retirados li { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
-.lista-retirados code { flex: 1; color: var(--suave); }
+.lista-retirados li {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12.5px;
+  padding: 7px 10px; border: 1px solid var(--borde); border-left: 3px solid var(--borde);
+  border-radius: 8px; background: var(--panel-2);
+}
+.lista-retirados .retirado-nombre {
+  flex: 1 1 14ch; min-width: 0; font-weight: 600; color: var(--texto); overflow-wrap: anywhere;
+}
+.lista-retirados .retirado-donde, .lista-retirados .suave { color: var(--suave); }
+.lista-retirados code { color: var(--suave); font-size: 11px; }
+/* Lo que a una fila NO se le puede hacer, y por qué, donde estaría el botón: los campos que vinieron
+   del Word no se quitan desde aquí y un campo de un apartado retirado no se restaura solo. Sin esto
+   eran una línea de texto diminuto perdida al final de la fila. */
+.motivo-no {
+  font-size: 11px; color: var(--suave); line-height: 1.4;
+  border: 1px dashed var(--borde); border-radius: 999px; padding: 2px 9px;
+}
+/* UNA CONFIRMACIÓN ABIERTA CAE DENTRO DE SU FILA, EN SU PROPIA LÍNEA: el nombre y los botones de la
+   fila no se mueven de sitio, y las filas de al lado no cambian de ancho. Y la fila se marca por el
+   filo, en dos niveles: ámbar lo que se deshace, rojo lo que no. */
+.lista-retirados li:has(.confirmacion) { border-left-color: var(--ambar); background: var(--panel); }
+.lista-retirados li:has(.borrado) { border-left-color: var(--rojo); background: var(--panel); }
+.confirmacion, .borrado {
+  flex: 1 1 100%; display: flex; flex-direction: column; gap: 7px;
+  margin: 3px 0 0; padding: 9px 11px; border-radius: 8px;
+}
+.confirmacion p, .borrado p { margin: 0; line-height: 1.55; font-size: 12.5px; }
+.confirmacion { border: 1px solid var(--ambar); background: color-mix(in srgb, var(--ambar) 7%, var(--panel)); }
+.borrado { border: 1px solid var(--rojo); background: color-mix(in srgb, var(--rojo) 7%, var(--panel)); }
+.confirmacion-botones, .borrado-botones { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.confirmacion .mini, .borrado .mini { padding: 4px 10px; font-size: 12px; }
+.confirmacion .mini:disabled, .borrado .mini:disabled { opacity: .5; cursor: not-allowed; }
+/* El botón de lo que destruye lleva el color de lo que destruye, aquí y en la fila. */
+.mini-rojo { border-color: var(--rojo); color: var(--rojo); }
+.mini-rojo:hover:enabled { color: var(--rojo); border-color: var(--rojo); background: color-mix(in srgb, var(--rojo) 12%, transparent); }
+/* El cuadro donde se escribe el título, y la cadena exacta que se pide, que va literal. */
+.borrado-escribir { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.borrado-escribir > .ayuda { flex: 1 1 100%; }
+.borrado-pedido {
+  font-family: var(--mono); font-size: 12px; color: var(--texto); overflow-wrap: anywhere;
+  background: var(--panel-2); border: 1px solid var(--borde); border-radius: 5px; padding: 1px 6px;
+}
+.borrado input[type="text"] {
+  flex: 1 1 22ch; min-width: 18ch; border: 1px solid var(--borde); border-radius: 8px;
+  background: var(--panel); color: var(--texto); padding: 6px 9px; outline: none;
+}
+.borrado input[type="text"]:focus { border-color: var(--rojo); }
+/* El aviso de lo que ha pasado recibe el foco al terminar una confirmación (confirmar-cliente.js),
+   porque la fila que la contenía ya no está. Se ve cuando lo tiene. */
+.aviso-hecho:focus-visible { outline: 2px solid var(--acento); outline-offset: 3px; border-radius: 6px; }
+/* La lista de campos de un apartado lleva su rótulo en una línea de estructura, y ahí el rótulo no
+   tiene que reservar el ancho de una etiqueta de formulario. */
+.quitar-campo > .linea-estructura { margin-bottom: 6px; }
+.quitar-campo > .linea-estructura > .suave { min-width: 0; }
 
 /* ------------------------------------------------------------ panel derecho */
 .panel { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; }
@@ -1009,7 +1068,7 @@ del > mark.quita { text-decoration-thickness: 2px; }
 .editor-tabla { gap: 8px; }
 .editor-tabla .toolbar { margin-bottom: 0; }
 .tb-cabecera { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; cursor: pointer; }
-.tabla-editable { table-layout: auto; }
+.tabla-editable { table-layout: auto; font-size: 13px; }
 .tabla-editable td { padding: 3px; vertical-align: top; }
 /* El fondo y la negrita son independientes: una celda puede ir sombreada sin negrita y al revés. */
 .tabla-editable .celda-cab { background: var(--azul-suave); }
@@ -1021,26 +1080,64 @@ del > mark.quita { text-decoration-thickness: 2px; }
 .tabla-editable .celda-derecha .celda-campo { text-align: right; }
 .tabla-editable .celda-pequena .celda-campo { font-size: 85%; }
 .tabla-editable .celda-grande .celda-campo { font-size: 126%; }
-.celda-fondo select { font-size: 11.5px; padding: 1px 2px; max-width: 15ch; }
-/* El ancho de una columna se mueve de una en una y el porcentaje va entre los dos botones. */
-.celda-ancho { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; }
 .celda-ancho-pct { font-size: 11px; color: var(--suave); min-width: 4ch; text-align: center; }
+/* LA CASILLA ES PARA ESCRIBIR. Dentro solo hay el cuadro de texto, que se queda con el ancho, y un
+   botón estrecho que lleva al panel de formato de esa celda. Con doce columnas —las tablas reales
+   del departamento llegan ahí—, siete controles por casilla dejaban la casilla sin sitio. */
+.celda-caja { display: flex; align-items: stretch; gap: 2px; }
+.celda-caja > .celda-campo { flex: 1 1 auto; width: auto; min-width: 0; }
+.celda-formato {
+  flex: none; width: 22px; padding: 0; border: 1px solid transparent; border-radius: 5px;
+  background: transparent; color: var(--suave); font-size: 10.5px; font-weight: 600;
+  letter-spacing: -.2px; cursor: pointer;
+}
+.celda-formato:hover { color: var(--acento); border-color: var(--acento); }
+.celda-formato:focus-visible { outline: 2px solid var(--acento); outline-offset: -1px; }
 .celda-campo {
-  display: block; width: 100%; min-width: 7ch; min-height: 2em; box-sizing: border-box;
+  display: block; width: 100%; min-width: 9ch; min-height: 2.6em; box-sizing: border-box;
   border: 1px solid transparent; border-radius: 5px; background: transparent; color: inherit;
-  font: inherit; line-height: 1.4; padding: 3px 5px; resize: none; outline: none; overflow: hidden;
+  font: inherit; line-height: 1.45; padding: 4px 6px; resize: none; outline: none; overflow: hidden;
   field-sizing: content;
 }
 .celda-campo:hover { border-color: var(--borde); }
 .celda-campo:focus { border-color: var(--acento); background: var(--panel); }
+/* Qué celda está elegida se ve EN LA CELDA, no solo en el panel que la formatea. Es un filo por
+   dentro y no un fondo: el fondo de la celda es el que se va a imprimir y no se puede tapar. */
+.tabla-editable .celda-elegida { box-shadow: inset 0 0 0 2px var(--acento); }
 .tabla-editable .celda-acciones { white-space: nowrap; width: 1%; vertical-align: middle; }
 .tabla-editable tfoot .celda-acciones { text-align: center; width: auto; border-style: dashed; }
 .tabla-editable .celda-acciones .mini { margin: 0 1px; }
 .tabla-editable .celda-acciones .mini:disabled { opacity: .45; cursor: not-allowed; }
-.celda-herr { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
-.celda-herr .mini { padding: 1px 6px; font-size: 11.5px; }
-.celda-herr .mini:disabled { opacity: .45; cursor: not-allowed; }
-.celda-herr .mini[aria-pressed="true"] { background: var(--azul-suave); border-color: var(--acento); font-weight: 700; }
+
+/* EL PANEL DE FORMATO DE LA CELDA ELEGIDA: uno para toda la tabla, en el sitio donde está la barra
+   de filas y columnas. No es un modal —en esta aplicación no hay ninguno—, es otra barra: así el
+   formato tiene un solo sitio y la tabla no salta cuando se cambia de celda. */
+.panel-celda {
+  display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center;
+  padding: 8px 10px; background: var(--panel-2);
+  border: 1px solid var(--borde); border-left: 3px solid var(--acento); border-radius: 9px;
+}
+.panel-celda .sep { width: 1px; align-self: stretch; min-height: 20px; background: var(--borde); margin: 0 3px; }
+/* En qué celda estamos, con el mismo aire que `.tb-donde` de la barra de al lado. */
+.panel-celda-donde {
+  font-size: 11.5px; color: var(--acento); font-weight: 600; white-space: nowrap;
+  border: 1px solid var(--acento); border-radius: 999px; padding: 2px 10px;
+}
+.panel-celda-sin { border-left-color: var(--borde); }
+.panel-celda-sin .panel-celda-donde { color: var(--suave); border-color: var(--borde); border-style: dashed; }
+.panel-celda-grupo { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.panel-celda-grupo > .ayuda { white-space: nowrap; }
+.panel-celda > .ayuda { flex: 1 1 100%; line-height: 1.45; }
+.panel-celda-campo { display: inline-flex; }
+.panel-celda select {
+  font-size: 11.5px; max-width: 24ch; padding: 3px 5px; color: var(--texto);
+  border: 1px solid var(--borde); border-radius: 6px; background: var(--panel);
+}
+.panel-celda select:focus { border-color: var(--acento); outline: none; }
+.panel-celda .mini[aria-pressed="true"] {
+  background: var(--azul-suave); border-color: var(--acento); color: var(--texto); font-weight: 700;
+}
+.panel-celda .mini:disabled, .panel-celda select:disabled { opacity: .45; cursor: not-allowed; }
 
 .nuevo-campo {
   display: flex; flex-direction: column; gap: 12px; margin: 4px 0 10px;

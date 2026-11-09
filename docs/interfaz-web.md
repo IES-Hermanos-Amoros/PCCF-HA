@@ -177,6 +177,71 @@ abrirla pantalla por pantalla.
 Esconder de más es el error contrario, y es peor, porque no se nota hasta que alguien se
 equivoca. Ante la duda, el texto se queda visible y se acorta.
 
+### 3.7 Confirmar en dos pasos: el foco y el aviso
+
+Hay tres confirmaciones: quitar un campo de un apartado, retirar un apartado y borrar algo
+para siempre. Las tres tienen los mismos tres elementos —el botón que abre, el **paso** que
+hay que dar (el botón de «sí», o el cuadro donde se escribe el título) y el **aviso** de lo
+que ha pasado— y la misma regla de foco:
+
+| Gesto | A dónde va el foco | Por qué |
+|---|---|---|
+| **abrir** | al paso | el botón que se pulsó ya no está en el árbol; si el foco se queda ahí, vuelve al principio de la página y quien va con el teclado se pierde |
+| **cancelar** | al botón de abrir | de ahí salió, y existe otra vez |
+| **terminar** | al aviso | la fila entera puede haberse ido, y el aviso es lo único que queda y además dice qué ha pasado |
+
+Tres reglas sobre esto, y las tres se incumplían en alguno de los tres sitios antes:
+
+1. **La decisión vive en `core/confirmar.js`**, que es puro y tiene pruebas (`test/core.js`).
+   No hay pruebas de DOM en este repositorio —ni jsdom ni playwright—, así que lo único que se
+   puede fijar es la decisión; el `focus()` lo da `app/_componentes/confirmar-cliente.js`, que
+   es el único sitio que toca el DOM y está escrito una vez en lugar de tres.
+2. **No se manda el foco a un elemento que no existe.** Cada gesto no tiene un destino fijo
+   sino una lista de preferencia, y se elige el primero que está de verdad en la pantalla. Si
+   no hay ninguno, no se toca el foco: dejarlo donde está es mejor que mandarlo a un sitio
+   cualquiera. La retirada de un apartado es el caso límite —la tarjeta entera se va con el
+   cambio y el aviso lo da la pantalla siguiente—, y ahí se cierra sin mover nada (`cerrar`).
+3. **El aviso va FUERA de la fila**, en el componente que pinta la lista, siempre montado y con
+   `role="status"`. Al quitar el último campo o borrar el último apartado retirado la lista se
+   queda vacía: si el aviso estuviera dentro de la fila se iría con ella, y ni se anunciaría ni
+   habría dónde dejar el foco.
+
+**Lo que hay que teclear para confirmar un borrado está escrito en la pantalla, literalmente.**
+De los 466 apartados reales del departamento, 143 pasan de 40 caracteres y el más largo tiene
+124: a esa longitud la confirmación se cumple copiando y pegando, que es exactamente lo que
+anula la deliberación que busca. De un título largo se piden sus **primeras palabras** —palabras
+enteras, hasta 40 caracteres—, la cadena exacta se enseña tal cual para que no haya nada que
+adivinar, y el título completo también vale. La regla es `Plantilla.loQueHayQueEscribir` y
+`Plantilla.confirmaTitulo` (`core/plantilla.js`, con pruebas en `test/estructura.js`): no está
+en el componente, y no hereda el recorte a 50 caracteres de `slug`, que está para generar
+identificadores y puede partir una palabra por la mitad.
+
+### 3.8 Dar formato a una celda de tabla
+
+Escribir en la tabla es lo que se hace casi todo el tiempo; dar formato es ocasional. Cuando
+cada celda llevaba cuatro botones y tres desplegables incrustados, y el pie de la tabla tres
+controles más por columna, lo ocasional le quitaba el sitio a lo frecuente: con las doce
+columnas a las que llegan las tablas reales del departamento, la casilla donde se teclea era lo
+más pequeño de la pantalla y el pie de la tabla no se podía leer.
+
+Así que dentro de la casilla hay **dos cosas**: el cuadro de texto, que se queda con el ancho, y
+un botón estrecho —`Aa`— que lleva al panel de formato de esa celda. El **panel es uno para toda
+la tabla**, va donde la barra de filas y columnas, y habla siempre de **la celda elegida**: fondo,
+alineación, tamaño de letra, negrita, unir, separar y el ancho de su columna.
+
+- **No es un diálogo modal.** En esta aplicación no hay ninguno y este no iba a ser el primero:
+  es otra barra, no tapa la tabla y no hay que cerrarla.
+- **Con el teclado se llega igual.** Entrar en una celda con el tabulador la elige, el tabulador
+  siguiente cae en su botón `Aa`, y ese botón lleva el foco al panel; «Volver a la celda» hace el
+  camino inverso. No hay ningún atajo que haya que saberse.
+- **Qué celda está elegida se ve en la celda** —un filo de color y no un fondo: el fondo de la
+  celda es el que se va a imprimir y no se puede tapar—, y **qué formato lleva se sigue viendo en
+  la celda**: el panel es desde dónde se cambia, no dónde se lee.
+- **Qué celda está elegida es estado, no estilo**, y vive en el componente; que la elección siga
+  apuntando a una celda de verdad después de quitar una fila, quitar una columna o combinar dos
+  celdas, y qué formato lleva, lo deciden `elegirCelda` y `formatoDeCelda` de
+  `core/tablas-edicion.js`, con pruebas en `test/editor-tablas.js`.
+
 ---
 
 ## 4. Roadmap

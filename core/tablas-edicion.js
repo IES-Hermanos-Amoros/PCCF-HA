@@ -60,6 +60,15 @@
 // ella mandan las proporciones. Quien edita no escribe ninguna proporción: ensancha o estrecha una
 // columna de una en una, ve el porcentaje que le queda, y «automático» borra la clave entera.
 //
+// LA CELDA ELEGIDA
+//
+// El formato (fondo, alineación, tamaño, negrita) y el ancho de la columna se dan desde un panel
+// que habla de UNA celda: la elegida. Cuál es eso es estado de la pantalla, pero que siga siendo
+// una celda de verdad no lo es: quitar una fila, quitar una columna o combinar dos celdas puede
+// dejar la elección apuntando a una casilla que ya no existe. `elegirCelda` devuelve la elección
+// que vale para ESTE valor, y `formatoDeCelda` todo lo que el panel enseña de ella en una sola
+// lectura, para que la pantalla no deduzca ningún formato por su cuenta.
+//
 // LAS CELDAS COMBINADAS
 //
 // Una celda combinada es una que lleva `colspan` o `rowspan` mayor que 1 y que ocupa varias
@@ -757,12 +766,73 @@
   const alineacionEfectiva = (valor, fila, columna) => Estructurados().alineacionDeCelda(celdaEnFila(valor, fila, columna));
   const tamanoEfectivo = (valor, fila, columna) => Estructurados().tamanoDeCelda(celdaEnFila(valor, fila, columna));
 
+  // ---------------------------------------------------------------- la celda elegida
+
+  // QUÉ CELDA ESTÁ ELEGIDA, SEGÚN ESTE VALOR. El panel de formato del editor actúa sobre una celda
+  // y la elección se guarda como { fila, columna } —el índice de la celda DENTRO de su fila, el
+  // mismo que usan `texto`, `negrita`, `fondo`, `combinar` y `separar`—, así que no sobrevive sola a
+  // un cambio de forma: quitar la última fila, quitar una columna o combinar dos celdas deja la
+  // elección fuera de la tabla.
+  //
+  // La regla es la misma que ya usa el foco al quitar una fila: la celda que ocupa su sitio. Se
+  // acerca la fila a la última que haya y, dentro de ella, la celda a la última que tenga —una fila
+  // puede tener menos celdas que columnas si una combinación de arriba le ocupa casillas—. Sin
+  // filas no hay celda elegida y el panel lo dice en lugar de inventarse una.
+  function elegirCelda(valor, eleccion) {
+    if (!esRejilla(valor) || !valor.filas.length) return null;
+    if (!eleccion) return null;
+    const { fila, columna } = eleccion;
+    if (!Number.isInteger(fila) || !Number.isInteger(columna) || fila < 0 || columna < 0) return null;
+    const f = Math.min(fila, valor.filas.length - 1);
+    const ancho = valor.filas[f].length;
+    if (!ancho) return null;
+    return { fila: f, columna: Math.min(columna, ancho - 1) };
+  }
+
+  // TODO LO QUE EL PANEL DE FORMATO ENSEÑA DE LA CELDA ELEGIDA, de una vez. Se distingue lo que la
+  // celda lleva ESCRITO (`fondo`, `alineacion`, `tamano`: la clave, o null cuando no la lleva, que es
+  // lo que el desplegable tiene que enseñar seleccionado) de lo que le sale DE VERDAD
+  // (`fondoEfectivo`, `alineacionEfectiva`, `tamanoEfectivo`: lo que deciden core/estructurados.js y
+  // la negrita, y lo que se imprime). Son dos cosas distintas y la pantalla no puede deducir una de
+  // la otra: una celda sin `fondo` sale sombreada si va en negrita.
+  //
+  // `columnaRejilla` es la columna de la CUADRÍCULA donde empieza la celda, que es la que se
+  // ensancha o se estrecha; `columna` es su índice dentro de la fila, que es lo que piden las
+  // operaciones. Confundirlas en una tabla con combinaciones da formato a otra celda.
+  function formatoDeCelda(valor, eleccion) {
+    const d = elegirCelda(valor, eleccion);
+    if (!d) return null;
+    const celda = valor.filas[d.fila][d.columna];
+    const pos = posiciones(valor);
+    const p = (pos && pos[d.fila] && pos[d.fila][d.columna]) || { columna: d.columna, ancho: 1, alto: 1 };
+    const pct = porcentajesDe(valor);
+    const clave = (x) => (x === undefined ? null : x);
+    return {
+      fila: d.fila,
+      columna: d.columna,
+      columnaRejilla: p.columna,
+      ancho: p.ancho,
+      alto: p.alto,
+      combinada: p.ancho > 1 || p.alto > 1,
+      enCabecera: d.fila === 0 && tieneCabecera(valor),
+      negrita: celda.bold === true,
+      fondo: clave(celda.fondo),
+      fondoEfectivo: fondoEfectivo(valor, d.fila, d.columna),
+      alineacion: clave(celda.alineacion),
+      alineacionEfectiva: alineacionEfectiva(valor, d.fila, d.columna),
+      tamano: clave(celda.tamano),
+      tamanoEfectivo: tamanoEfectivo(valor, d.fila, d.columna),
+      porcentaje: pct ? pct[p.columna] : null,
+    };
+  }
+
   const api = {
     esEditable, esClaveValor, esRejilla,
     columnasDe, filasDe, tieneCombinadas, tieneCabecera, celdaNueva, descripcion, valorDe,
     motivoDeNo, puede, aplicar, paraPintar, posiciones, celdaEn, textoQueSeJunta,
     fondoEfectivo, alineacionEfectiva, tamanoEfectivo,
     anchosDe, porcentajesDe,
+    elegirCelda, formatoDeCelda,
   };
 
   global.Core = global.Core || {};

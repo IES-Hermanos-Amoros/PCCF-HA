@@ -1444,6 +1444,101 @@ prueba('lo que la pantalla pinta es lo que se imprime: la alineación y el tama�
   assert.equal(ultimas[1], ultimas[2], 'las otras dos se reparten por igual en el Word');
 });
 
+// ================================================================ la celda elegida y su formato
+//
+// El editor da el formato desde un panel que habla de UNA celda —la elegida— en lugar de meterle
+// siete controles a cada casilla. Cuál está elegida es estado de la pantalla; que siga siendo una
+// celda de verdad y qué formato lleva, no: eso es core/, y es lo que se prueba aquí.
+
+prueba('la celda elegida sigue siendo una celda de verdad después de cambiar la forma de la tabla', () => {
+  const t = plana(['a', 'b', 'c'], ['d', 'e', 'f'], ['g', 'h', 'i']);
+  assert.deepEqual(Edicion.elegirCelda(t, { fila: 1, columna: 2 }), { fila: 1, columna: 2 });
+
+  // Quitar la última fila: la elección baja a la que ocupa su sitio en lugar de quedarse fuera.
+  const menos = hacer(t, 'quitar-fila', { fila: 2 });
+  assert.deepEqual(Edicion.elegirCelda(menos, { fila: 2, columna: 0 }), { fila: 1, columna: 0 });
+
+  // Quitar una columna: la elección se acerca a la última celda que le queda a su fila.
+  const estrecha = hacer(t, 'quitar-columna', { columna: 2 });
+  assert.deepEqual(Edicion.elegirCelda(estrecha, { fila: 0, columna: 2 }), { fila: 0, columna: 1 });
+
+  // Combinar deja la fila con menos celdas que columnas, y la elección cabe igual.
+  const unida = hacer(t, 'combinar', { fila: 0, columna: 0, hacia: 'derecha' });
+  assert.equal(unida.filas[0].length, 2);
+  assert.deepEqual(Edicion.elegirCelda(unida, { fila: 0, columna: 2 }), { fila: 0, columna: 1 });
+
+  // Una tabla sin filas no tiene celda elegida, y el panel lo dice en lugar de inventarse una.
+  let vacia = t;
+  for (let i = 0; i < 3; i += 1) vacia = hacer(vacia, 'quitar-fila', { fila: 0 });
+  assert.equal(Edicion.filasDe(vacia), 0);
+  assert.equal(Edicion.elegirCelda(vacia, { fila: 0, columna: 0 }), null);
+
+  // Y lo que no es una elección tampoco lo es: sin elegir nada, y una tabla de clave y valor, que
+  // tiene formato fijo y no trae panel.
+  assert.equal(Edicion.elegirCelda(t, null), null);
+  assert.equal(Edicion.elegirCelda(t, { fila: -1, columna: 0 }), null);
+  assert.equal(Edicion.elegirCelda(t, { fila: 0, columna: 1.5 }), null);
+  assert.equal(Edicion.elegirCelda({ pares: [{ etiqueta: 'a', valor: 'b' }] }, { fila: 0, columna: 0 }), null);
+});
+
+prueba('el panel de formato distingue lo que la celda lleva escrito de lo que le sale de verdad', () => {
+  let v = plana(['a', 'b'], ['c', 'd']);
+  v = hacer(v, 'cabecera', { puesta: true });
+
+  // Una celda de la cabecera sin «fondo» escrito: la clave es null —el desplegable enseña «según
+  // la negrita»— y el sombreado que sale de verdad es el azul de la cabecera.
+  const cab = Edicion.formatoDeCelda(v, { fila: 0, columna: 0 });
+  assert.equal(cab.fondo, null, 'el desplegable enseñaría un color que la celda no lleva escrito');
+  assert.equal(cab.fondoEfectivo, 'cabecera');
+  assert.deepEqual([cab.negrita, cab.enCabecera], [true, true]);
+  assert.deepEqual([cab.alineacion, cab.alineacionEfectiva], [null, null]);
+  assert.deepEqual([cab.tamano, cab.tamanoEfectivo], [null, null]);
+  assert.equal(cab.porcentaje, null, 'sin «anchos» el porcentaje no se puede decir: lo calcula el motor');
+
+  // Una celda con las tres claves escritas: lo escrito y lo efectivo coinciden.
+  v = hacer(v, 'fondo', { fila: 1, columna: 1, cual: 'etiqueta' });
+  v = hacer(v, 'alineacion', { fila: 1, columna: 1, cual: 'centro' });
+  v = hacer(v, 'tamano', { fila: 1, columna: 1, cual: 'pequena' });
+  const puesto = Edicion.formatoDeCelda(v, { fila: 1, columna: 1 });
+  assert.deepEqual([puesto.fondo, puesto.alineacion, puesto.tamano], ['etiqueta', 'centro', 'pequena']);
+  assert.deepEqual([puesto.fondoEfectivo, puesto.alineacionEfectiva, puesto.tamanoEfectivo],
+    ['etiqueta', 'centro', 'pequena']);
+  assert.equal(puesto.combinada, false);
+
+  // Y una en negrita FUERA de la cabecera sale gris sin llevar «fondo»: lo escrito sigue siendo
+  // null, y el panel no puede deducir uno del otro.
+  v = hacer(v, 'negrita', { fila: 1, columna: 0, puesta: true });
+  const gris = Edicion.formatoDeCelda(v, { fila: 1, columna: 0 });
+  assert.equal(gris.fondo, null);
+  assert.equal(gris.fondoEfectivo, 'etiqueta');
+  assert.equal(gris.enCabecera, false);
+
+  // Sin celda no hay formato: el panel se apaga en lugar de hablar de una celda que no está.
+  assert.equal(Edicion.formatoDeCelda({ filas: [] }, { fila: 0, columna: 0 }), null);
+  assert.equal(Edicion.formatoDeCelda(v, null), null);
+});
+
+prueba('el formato de una celda combinada dice en qué columna de la cuadrícula empieza, que es la que se ensancha', () => {
+  let v = plana(['a', 'b', 'c'], ['d', 'e', 'f']);
+  v = hacer(v, 'combinar', { fila: 0, columna: 1, hacia: 'derecha' });
+
+  const f = Edicion.formatoDeCelda(v, { fila: 0, columna: 1 });
+  assert.equal(f.columna, 1, 'el índice dentro de la fila, que es lo que piden las operaciones');
+  assert.equal(f.columnaRejilla, 1, 'la columna de la cuadrícula, que es la que se ensancha');
+  assert.deepEqual([f.ancho, f.alto, f.combinada], [2, 1, true]);
+
+  // El porcentaje es el de ESA columna de la cuadrícula.
+  const ancha = hacer(v, 'ancho', { columna: 1, hacia: 'ensanchar' });
+  const pct = Edicion.porcentajesDe(ancha);
+  assert.equal(Edicion.formatoDeCelda(ancha, { fila: 0, columna: 1 }).porcentaje, pct[1]);
+
+  // Una celda de debajo de la combinación conserva su columna: el índice en la fila y la columna de
+  // la cuadrícula coinciden ahí, y confundirlas daría formato o ancho a otra.
+  const abajo = Edicion.formatoDeCelda(ancha, { fila: 1, columna: 2 });
+  assert.deepEqual([abajo.columna, abajo.columnaRejilla], [2, 2]);
+  assert.equal(abajo.porcentaje, pct[2]);
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {

@@ -1211,6 +1211,59 @@ prueba('si el contenido no se puede destruir, el cambio ya esta hecho y la respu
   assert.equal(limpio.contenidoSinDestruir, undefined, 'avisa de un fallo que no ha habido');
 });
 
+prueba('de un título largo se pide teclear sus primeras palabras, y la cadena es exacta', async () => {
+  // Teclear el título entero es la confirmación, pero hay títulos reales de 124 caracteres y 143 de
+  // los 466 apartados del departamento pasan de 40: a esa longitud la confirmación se cumple
+  // copiando y pegando, que es lo que anula la deliberación que busca. Así que de un título largo
+  // se piden sus primeras palabras, y la cadena exacta va escrita en la pantalla.
+  const largo = 'Criterios generales sobre la organización, comunicación y desarrollo del proceso de evaluación del aprendizaje';
+  assert.ok(largo.length > Plantilla.LARGO_CONFIRMACION, 'la prueba no vale si el título es corto');
+  const pedido = Plantilla.loQueHayQueEscribir(largo);
+  assert.equal(pedido, 'Criterios generales sobre la');
+  assert.ok(pedido.length <= Plantilla.LARGO_CONFIRMACION, `se piden ${pedido.length} caracteres`);
+  // Palabras enteras: media palabra no se sabe escribir sin mirarla letra por letra.
+  assert.ok(largo.startsWith(pedido), 'lo que se pide no es el principio del título');
+  assert.ok(!/\s$/.test(pedido) && !/^\s/.test(pedido));
+  assert.equal(largo[pedido.length], ' ', 'se ha cortado una palabra por la mitad');
+
+  // Lo que se pide confirma, con las tildes y sin ellas.
+  assert.equal(Plantilla.confirmaTitulo(pedido, largo), true);
+  assert.equal(Plantilla.confirmaTitulo('criterios generales sobre la', largo), true, 'exige las tildes');
+  assert.equal(Plantilla.confirmaTitulo('  CRITERIOS   Generales sobre la ', largo), true);
+  // Y el título completo también: está escrito en el aviso de lo que se va a perder, y quien lo
+  // escriba todo ha hecho más de lo que se le pedía.
+  assert.equal(Plantilla.confirmaTitulo(largo, largo), true);
+
+  // Pero sigue costando el acto: menos de lo que se pide no vale, ni el cuadro vacío.
+  assert.equal(Plantilla.confirmaTitulo('Criterios generales', largo), false);
+  assert.equal(Plantilla.confirmaTitulo('Criterios', largo), false);
+  assert.equal(Plantilla.confirmaTitulo('', largo), false);
+  assert.equal(Plantilla.confirmaTitulo('otra cosa', largo), false);
+
+  // Un título corto se sigue pidiendo ENTERO, y entonces lo que se pide es el título: así lo sabe
+  // la pantalla, que dice «escribe su título» o «escribe las primeras palabras de su título» según
+  // lo que diga `mismoTitulo` de la cadena pedida, sin repetir el recorte por su cuenta.
+  const corto = 'Atención a la diversidad';
+  assert.equal(Plantilla.loQueHayQueEscribir(corto), corto);
+  assert.equal(Plantilla.mismoTitulo(Plantilla.loQueHayQueEscribir(corto), corto), true, 'es el título entero');
+  assert.equal(Plantilla.mismoTitulo(pedido, largo), false, 'son solo las primeras palabras');
+  assert.equal(Plantilla.confirmaTitulo('Atención', corto), false, 'media palabra vale por un título corto');
+
+  // Un título de una sola palabra más larga que el tope se pide entero: es lo único que hay.
+  const palabrota = 'Contextualizacionsocioeconomicaycultural del centro';
+  assert.equal(Plantilla.loQueHayQueEscribir(palabrota), 'Contextualizacionsocioeconomicaycultural');
+
+  // Y el recorte NO es el de `slug`, que recorta a 50 y puede partir una palabra por la mitad.
+  assert.equal(Plantilla.slug(largo).length, 50, 'slug ha dejado de recortar: revisa esta prueba');
+  assert.equal(Plantilla.confirmaTitulo(largo.slice(0, 50), largo), false, 'el recorte de slug confirma el borrado');
+
+  // Sin título no hay nada que escribir y la confirmación no se puede dar por cumplida sola.
+  assert.equal(Plantilla.loQueHayQueEscribir(''), '');
+  assert.equal(Plantilla.loQueHayQueEscribir(null), '');
+  assert.equal(Plantilla.confirmaTitulo('', ''), false);
+  assert.equal(Plantilla.confirmaTitulo('cualquier cosa', ''), false);
+});
+
 prueba('borrar un apartado se lleva sus comentarios, y borrar un campo no toca ninguno', async () => {
   // Un hilo de comentarios habla de un apartado y se lista por `seccion` + `unidadId`. Si el
   // apartado se destruye y el hilo se queda, nadie puede volver a leerlo ni a borrarlo: la sección
