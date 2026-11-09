@@ -1177,3 +1177,11 @@ del > mark.quita { text-decoration-thickness: 2px; }
   font-size: 12.5px;
 }
 .lista-campos-nuevos li { display: flex; align-items: center; gap: 8px; }
+
+/* --- un campo que guarda VARIAS tablas: un editor por tabla, en orden.
+   La separacion no es decorativa. Dos rejillas pegadas se leen como una sola con una fila
+   extrana en medio, y aqui son tablas distintas del documento: la linea y el aire dicen donde
+   acaba una y empieza la siguiente. El rotulo «Tabla 2 de 3» va centrado con su boton porque
+   `.acciones-persona` solo reparte en fila, sin alinear. */
+.tabla-de-lista > .acciones-persona { align-items: center; margin-bottom: 6px; }
+.tabla-de-lista + .tabla-de-lista { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--borde); }
