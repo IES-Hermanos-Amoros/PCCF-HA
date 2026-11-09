@@ -200,6 +200,33 @@ function crearRepositorio({ adaptador }) {
         seccion: cadena(x?.seccion, 'seccion'),
         unidadId: unidadOComun(x?.unidadId),
       }))),
+
+      // BORRAR DE VERDAD el contenido de unos apartados: todas las filas de esas secciones, de todas las
+      // unidades. Es DOCUMENTO + LISTA DE SECCIONES y no una sección sola porque un apartado se borra con
+      // todo su subárbol, y una operación por sección dejaría el borrado a medias si fallara en medio. No
+      // se filtra por unidad a propósito: un apartado de módulo tiene una fila por unidad y borrarlo es
+      // borrarlas todas. Devuelve cuántas filas ha destruido.
+      borrar: async (documentoId, secciones) => {
+        if (!Array.isArray(secciones)) throw new TypeError('secciones debe ser una lista');
+        return a.apartados.borrar(
+          cadena(documentoId, 'documentoId'),
+          [...new Set(secciones.map((s) => cadena(s, 'seccion')))],
+        );
+      },
+
+      // QUITAR UNA CLAVE de `valores` en todas las filas de una sección. Es una operación aparte y no un
+      // `escribir` porque `escribir` NO PUEDE quitar nada: la ruta de /apartado funde lo que llega con lo
+      // guardado, así que un campo ausente se conserva, y a nivel de adaptador `valores` se sustituye entero
+      // o no se toca. Quitar una clave exige leer, quitarla y escribir de vuelta, y eso tiene que ser
+      // atómico por fila: si fuera una lectura aquí y una escritura allá, una edición concurrente que
+      // llevara el valor viejo podría volver a escribirlo. Cada fila cambia su token de versión, así que quien
+      // leyó antes recibe un conflicto en lugar de resucitar el campo. Devuelve cuántas filas tenían la clave.
+      quitarClave: async (documentoId, seccion, clave) => a.apartados.quitarClave({
+        documentoId: cadena(documentoId, 'documentoId'),
+        seccion: cadena(seccion, 'seccion'),
+        clave: cadena(clave, 'clave'),
+        siguienteToken,
+      }),
     },
 
     compartidos: {

@@ -280,6 +280,39 @@ function crear({ uri, nombreBd }) {
       }
       return salidaMuchos(creados);
     },
+
+    async borrar(documentoId, secciones) {
+      if (secciones.length === 0) return 0;
+      const r = await (await coleccion('apartados')).deleteMany({ documentoId, seccion: { $in: secciones } });
+      return r.deletedCount;
+    },
+
+    // Fila a fila y condicionada al token que se leyó, no un `updateMany` con `$unset`: así el token de cada
+    // fila avanza (con `siguienteToken`, que nunca repite el anterior) y quien leyó antes recibe el conflicto.
+    // Y no se construye ninguna ruta `valores.<clave>`: la clave se quita en JavaScript y se escribe `valores`
+    // entero, de modo que un id con puntos o con «$» no se interpreta como ruta ni como operador.
+    async quitarClave({ documentoId, seccion, clave, siguienteToken }) {
+      const c = await coleccion('apartados');
+      const filas = await c.find({ documentoId, seccion }).toArray();
+      let quitadas = 0;
+      for (const fila of filas) {
+        for (let intento = 0; intento < REINTENTOS; intento += 1) {
+          const actual = intento === 0 ? fila : await c.findOne({ _id: fila._id });
+          if (!actual || !actual.valores || !Object.prototype.hasOwnProperty.call(actual.valores, clave)) break;
+          const { [clave]: _quitada, ...resto } = actual.valores;
+          const doc = await c.findOneAndUpdate(
+            { _id: actual._id, updatedAt: actual.updatedAt },
+            { $set: { valores: resto, updatedAt: siguienteToken(actual.updatedAt) } },
+            { returnDocument: 'after' },
+          );
+          if (doc) { quitadas += 1; break; }
+          if (intento === REINTENTOS - 1) {
+            throw new Error(`quitarClave: el apartado «${seccion}» cambió demasiadas veces seguidas`);
+          }
+        }
+      }
+      return quitadas;
+    },
   };
 
   const compartidos = {

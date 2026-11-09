@@ -126,6 +126,25 @@ function crear() {
       tablas.apartados.push(...creados);
       return creados.map(copia);
     },
+
+    borrar(documentoId, secciones) {
+      const antes = tablas.apartados.length;
+      tablas.apartados = tablas.apartados.filter((a) => !(a.documentoId === documentoId && secciones.includes(a.seccion)));
+      return antes - tablas.apartados.length;
+    },
+
+    // Sin ningún await entre la lectura y la escritura, así que es atómico por construcción.
+    quitarClave({ documentoId, seccion, clave, siguienteToken }) {
+      let quitadas = 0;
+      for (const fila of tablas.apartados) {
+        if (fila.documentoId !== documentoId || fila.seccion !== seccion) continue;
+        if (!fila.valores || !Object.prototype.hasOwnProperty.call(fila.valores, clave)) continue;
+        delete fila.valores[clave];
+        fila.updatedAt = siguienteToken(fila.updatedAt);
+        quitadas += 1;
+      }
+      return quitadas;
+    },
   };
 
   const compartidos = {

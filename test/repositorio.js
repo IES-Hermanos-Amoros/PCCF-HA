@@ -159,6 +159,40 @@ async function bateria(etiqueta, fabrica) {
     assert.equal(await repo.apartados.leer(d._id, 'modulos/x', 'm1'), null);
   });
 
+  await prueba('apartados.borrar destruye las filas de las secciones pedidas, de todas las unidades, y solo de ese documento', async (repo) => {
+    const d = await documento(repo);
+    const otro = await documento(repo);
+    for (const u of ['m1', 'm2']) {
+      await repo.apartados.escribir(d._id, 'modulos/a', u, { valores: { texto: u } });
+      await repo.apartados.escribir(d._id, 'modulos/a/b', u, { valores: { texto: u } });
+    }
+    await repo.apartados.escribir(d._id, 'otro', null, { valores: { texto: 'se queda' } });
+    await repo.apartados.escribir(otro._id, 'modulos/a', 'm1', { valores: { texto: 'de otro documento' } });
+
+    assert.equal(await repo.apartados.borrar(d._id, ['modulos/a', 'modulos/a/b', 'no-existe']), 4);
+    assert.deepEqual((await repo.apartados.listar(d._id)).map((a) => a.seccion), ['otro']);
+    assert.equal((await repo.apartados.listar(otro._id)).length, 1, 'ha borrado filas de otro documento');
+    assert.equal(await repo.apartados.borrar(d._id, []), 0);
+    assert.ok((await error(repo.apartados.borrar(d._id, 'modulos/a'))) instanceof TypeError);
+  });
+
+  await prueba('apartados.quitarClave quita la clave de todas las filas de la sección, avanza su token y no toca lo demás', async (repo) => {
+    const d = await documento(repo);
+    const m1 = await repo.apartados.escribir(d._id, 'modulos/a', 'm1', { valores: { texto: 'uno', tabla: { filas: [] } } });
+    await repo.apartados.escribir(d._id, 'modulos/a', 'm2', { valores: { texto: 'dos' } });
+    await repo.apartados.escribir(d._id, 'modulos/a', 'm3', { valores: { tabla: { filas: [] } } });
+    await repo.apartados.escribir(d._id, 'modulos/b', 'm1', { valores: { texto: 'otro apartado' } });
+
+    assert.equal(await repo.apartados.quitarClave(d._id, 'modulos/a', 'texto'), 2);
+    assert.deepEqual((await repo.apartados.leer(d._id, 'modulos/a', 'm1')).valores, { tabla: { filas: [] } });
+    assert.deepEqual((await repo.apartados.leer(d._id, 'modulos/a', 'm2')).valores, {});
+    assert.deepEqual((await repo.apartados.leer(d._id, 'modulos/b', 'm1')).valores, { texto: 'otro apartado' });
+    assert.ok((await repo.apartados.leer(d._id, 'modulos/a', 'm1')).updatedAt.getTime() > m1.updatedAt.getTime());
+    // Quien leyó antes de quitarla no puede volver a escribirla.
+    assert.ok((await error(repo.apartados.escribir(d._id, 'modulos/a', 'm1', { valores: { texto: 'viejo' } }, { esperaUpdatedAt: m1.updatedAt }))) instanceof ErrorConflicto);
+    assert.equal(await repo.apartados.quitarClave(d._id, 'modulos/a', 'texto'), 0);
+  });
+
   await prueba('apartados.escribir crea el apartado y luego solo cambia lo que se le pasa', async (repo) => {
     const d = await documento(repo);
     const a = await repo.apartados.escribir(d._id, 'introduccion', null, { valores: { texto: 'uno' }, origen: 'nuevo' });
