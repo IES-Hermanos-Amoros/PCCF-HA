@@ -284,13 +284,17 @@ function CampoLineas({ campo, valor, editable, onCambio }) {
 
 // Los campos del cuerpo con el texto de ayuda de la interfaz, como en el
 // prototipo: la lógica no lleva textos de formulario.
-const CAMPOS = Sa.CAMPOS_POR_OMISION.map((c) => (c.id === 'ce'
-  ? { ...c, ayuda: 'Uno por línea. Se pueden marcar desde los criterios del módulo.' }
-  : c));
+// Son los de la estructura de la ficha del documento, y los retirados no se pintan: su texto sigue
+// guardado, pero ya no sale impreso, así que pedirlo en el formulario sería engañar.
+const camposDeFormulario = (estructura) => (estructura || Sa.CAMPOS_POR_OMISION)
+  .filter((c) => !c.retirado)
+  .map((c) => (c.id === 'ce'
+    ? { ...c, ayuda: 'Uno por línea. Se pueden marcar desde los criterios del módulo.' }
+    : c));
 
 // ---------------------------------------------------------------- la ficha
 
-function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
+function Ficha({ ficha, estructura, raModulo, raEstado, editable, onCambio, onVolver }) {
   const titular = useRef(null);
   // Al abrir una ficha el foco va a su título: con el teclado, si no, habría que
   // recorrer otra vez la lista entera para llegar al formulario.
@@ -346,7 +350,7 @@ function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
   // El recuento se queda a la vista también cuando no se pierde nada: es lo que
   // permite comprobar de un vistazo que la ficha se sigue entendiendo.
   const informe = Array.isArray(ficha.filas) && ficha.filas.length
-    ? Sa.informeDeFilas(ficha.filas)
+    ? Sa.informeDeFilas(ficha.filas, estructura)
     : null;
   const reconocimiento = informe ? (
     <div
@@ -365,11 +369,12 @@ function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
       <section className="tarjeta">
         {cabecera}
         {reconocimiento}
-        <Tabla filas={filasDe(ficha)} etiqueta={ETQ_PREVIA} nota="en lectura" />
+        <Tabla filas={filasDe(ficha, estructura)} etiqueta={ETQ_PREVIA} nota="en lectura" />
       </section>
     );
   }
 
+  const CAMPOS = camposDeFormulario(estructura);
   const actividades = CAMPOS.filter((c) => c.grupo === 'actividades');
   const sueltos = CAMPOS.filter((c) => c.grupo !== 'actividades' && c.id !== 'ce');
   const campoCe = CAMPOS.find((c) => c.id === 'ce');
@@ -450,7 +455,7 @@ function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
         )}
 
         {/* Y sus criterios se marcan de una lista, en vez de copiarlos a mano. */}
-        {elegidos.length ? (
+        {campoCe && elegidos.length ? (
           <details className="sa-ce" open={!puestos.length}>
             <summary>
               {'Criterios de evaluación del módulo (' + elegidos.reduce((n, r) => n + r.ce.length, 0) + ')'}
@@ -476,13 +481,15 @@ function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
           </details>
         ) : null}
 
-        <CampoLineas
-          key={ficha.num + '|ce'}
-          campo={campoCe}
-          valor={ficha.ce}
-          editable
-          onCambio={(v) => cambiar({ ce: v })}
-        />
+        {campoCe ? (
+          <CampoLineas
+            key={ficha.num + '|ce'}
+            campo={campoCe}
+            valor={ficha.ce}
+            editable
+            onCambio={(v) => cambiar({ ce: v })}
+          />
+        ) : null}
 
         {sueltos.map((c) => (
           <CampoLineas
@@ -494,25 +501,27 @@ function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
           />
         ))}
 
-        <fieldset className="sa-actividades">
-          <legend>{Sa.CABECERA_ACTIVIDADES}</legend>
-          {actividades.map((c) => (
-            <CampoLineas
-              key={ficha.num + '|' + c.id}
-              campo={c}
-              valor={ficha[c.id]}
-              editable
-              onCambio={(v) => cambiar({ [c.id]: v })}
-            />
-          ))}
-        </fieldset>
+        {actividades.length ? (
+          <fieldset className="sa-actividades">
+            <legend>{Sa.CABECERA_ACTIVIDADES}</legend>
+            {actividades.map((c) => (
+              <CampoLineas
+                key={ficha.num + '|' + c.id}
+                campo={c}
+                valor={ficha[c.id]}
+                editable
+                onCambio={(v) => cambiar({ [c.id]: v })}
+              />
+            ))}
+          </fieldset>
+        ) : null}
       </section>
 
       {/* La ficha como va a salir impresa, que se actualiza al escribir. Son las
           mismas filas que recibe el generador de PDF. */}
       <details className="tarjeta" id="previa-sa" open>
         <summary>La ficha como va a salir impresa</summary>
-        <Tabla filas={filasDe(ficha)} etiqueta={ETQ_PREVIA} nota={null} />
+        <Tabla filas={filasDe(ficha, estructura)} etiqueta={ETQ_PREVIA} nota={null} />
         {/* Que lo de arriba es lo que se imprime es el dato de esta previa, y se
             queda; de dónde sale la maquetación, en la ayuda. Aviso de
             consecuencia aparte: si la tabla viene del Word, el primer cambio la
@@ -573,6 +582,9 @@ export default function Situaciones({
   const lista = fuente.lista;
   const puedoEditar = !!editable && deAqui;
 
+  // La estructura de la tabla de la ficha es la del apartado de donde salen las fichas que se ven.
+  const estructura = (deAqui ? apartado : ajeno || apartado).estructuraFicha;
+
   const numerosRa = useMemo(() => raModulo.map((r) => r.num), [raModulo]);
   const m = useMemo(() => Sa.matriz(lista, numerosRa), [lista, numerosRa]);
 
@@ -609,7 +621,7 @@ export default function Situaciones({
 
   const nueva = () => {
     if (!puedoEditar) return;
-    const r = anadir(lista);
+    const r = anadir(lista, estructura);
     guardar(r.lista, `Situación ${r.num} creada. Sale en el resumen y en el PDF en cuanto tenga RA y sesiones.`);
     setAbierta(r.num);
   };
@@ -631,6 +643,7 @@ export default function Situaciones({
         <span className="sr" role="status" aria-live="polite">{aviso}</span>
         <Ficha
           ficha={abierto}
+          estructura={estructura}
           raModulo={raModulo}
           raEstado={raEstado}
           editable={puedoEditar}

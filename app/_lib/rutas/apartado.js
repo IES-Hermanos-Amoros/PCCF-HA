@@ -12,6 +12,10 @@
 //                `valores`: un `{ pares: [...] }` se dibuja como una tabla de clave y valor y un
 //                `{ ra: [...] }` como la tabla de RA y CE, y quién es quién lo dice la plantilla.
 //                Como ninguna ruta manda la plantilla entera, viaja aquí, recortada a esta rama
+//   estructuraFicha  las filas de la tabla de la ficha de situación de aprendizaje (los retirados
+//                dentro), SOLO si el apartado tiene un campo de ese tipo. Es de la plantilla y no de
+//                un campo, pero viaja aquí por la misma razón que `campos`; los apartados que no
+//                pintan fichas no la necesitan y no la reciben
 //   compartidos  los textos compartidos a los que apunta este apartado, y solo esos. Un `{ ref: 'c001' }`
 //                sin su bloque es un hueco que el cliente no puede pintar, y en el E1 no hay ninguna
 //                otra ruta por la que pedirlos
@@ -209,13 +213,23 @@ function inicialesDe(campos, valores) {
   return out;
 }
 
-function cuerpoRama({ documentoId, seccion, unidadId, info, fila, compartidos, puedeEditar }) {
+// La estructura de la ficha que tiene que ir en la respuesta de una rama: la de la plantilla del
+// documento, y solo si la rama pinta fichas. Un documento que nunca la ha editado no tiene, y entonces
+// no se manda nada: el cliente usa la de siempre.
+function estructuraFichaDe(plantilla, campos) {
+  const lleva = (campos || []).some((c) => c.tipo === Estructurados.TIPO_FICHA);
+  if (!lleva || !plantilla || !Array.isArray(plantilla.estructuraFicha)) return {};
+  return { estructuraFicha: plantilla.estructuraFicha };
+}
+
+function cuerpoRama({ documentoId, seccion, unidadId, info, fila, compartidos, puedeEditar, plantilla }) {
   return {
     documentoId,
     seccion,
     unidadId,
     titulo: info.seccion.titulo,
     campos: info.campos,
+    ...estructuraFichaDe(plantilla, info.campos),
     contenido: info.campos.length > 0,
     repetidor: !!info.seccion.repetidor,
     edita: info.edita,
@@ -248,6 +262,7 @@ const GET = conErrores(async (peticion, parametros) => {
     unidadId,
     info,
     fila,
+    plantilla: documento.plantilla,
     compartidos: await compartidosDe(repo, documento._id, seccion, (fila && fila.valores) || {}),
     puedeEditar: puedeEditarApartado({
       usuario, documento, unidad, seccion, edita: info.edita, contenido: info.campos.length > 0,
@@ -279,9 +294,12 @@ const ANTERIOR = conErrores(async (peticion, parametros) => {
   const { usuario, documento, repo, seccion, unidadId, info } = abierto;
 
   // Un apartado sin nada que enseñar: el de este documento tal cual, con `existe: false` y el motivo.
-  const sinDato = (motivo, mensaje, { infoQueMuestra, documentoId, anteriorId, curso }) => Response.json({
+  const sinDato = (motivo, mensaje, {
+    infoQueMuestra, documentoId, anteriorId, curso, plantillaQueMuestra,
+  }) => Response.json({
     ...cuerpoRama({
       documentoId, seccion, unidadId, info: infoQueMuestra, fila: null, compartidos: {}, puedeEditar: false,
+      plantilla: plantillaQueMuestra,
     }),
     anteriorId,
     curso,
@@ -293,7 +311,7 @@ const ANTERIOR = conErrores(async (peticion, parametros) => {
     return sinDato(
       'sin_curso_anterior',
       'Este documento no viene de un curso anterior: se creó desde cero, así que no hay nada con que compararlo.',
-      { infoQueMuestra: info, documentoId: null, anteriorId: null, curso: null },
+      { infoQueMuestra: info, plantillaQueMuestra: documento.plantilla, documentoId: null, anteriorId: null, curso: null },
     );
   }
 
@@ -314,24 +332,25 @@ const ANTERIOR = conErrores(async (peticion, parametros) => {
 
   // Sin los apartados retirados allí: un apartado que el curso pasado se retiró no es lo que
   // ese documento dice hoy, y enseñarlo en la comparación sería comparar con algo que ya no está.
-  const infoAnt = buscarSeccion(plantillaVigente(anterior), seccion);
+  const plantillaAnt = plantillaVigente(anterior);
+  const infoAnt = buscarSeccion(plantillaAnt, seccion);
   if (!infoAnt) {
     return sinDato('seccion_nueva', `Este apartado no existía en ${cursoAnt}: es nuevo en este curso.`,
-      { infoQueMuestra: info, ...datosAnt });
+      { infoQueMuestra: info, plantillaQueMuestra: documento.plantilla, ...datosAnt });
   }
 
   if (unidadId) {
     const unidadAnt = await repo.unidades.obtener(anterior._id, unidadId);
     if (!unidadAnt) {
       return sinDato('unidad_nueva', `Este módulo no estaba en ${cursoAnt}: es nuevo en este curso.`,
-        { infoQueMuestra: info, ...datosAnt });
+        { infoQueMuestra: info, plantillaQueMuestra: documento.plantilla, ...datosAnt });
     }
   }
 
   const fila = await repo.apartados.leer(anterior._id, seccion, unidadId);
   if (!fila) {
     return sinDato('sin_contenido', `En ${cursoAnt} este apartado existía, pero estaba vacío.`,
-      { infoQueMuestra: infoAnt, ...datosAnt });
+      { infoQueMuestra: infoAnt, plantillaQueMuestra: plantillaAnt, ...datosAnt });
   }
 
   return Response.json({
@@ -341,6 +360,7 @@ const ANTERIOR = conErrores(async (peticion, parametros) => {
       unidadId,
       info: infoAnt,
       fila,
+      plantilla: plantillaAnt,
       compartidos: await compartidosDe(repo, anterior._id, seccion, fila.valores || {}),
       puedeEditar: false,
     }),
@@ -392,6 +412,35 @@ function conflictoDeEscritura(e) {
   );
 }
 
+// `motivoItems` comprueba cada ficha contra la estructura de siempre, y una estructura con ids
+// propios la rechazaría. Se le dan las fichas sustituidas por una vacía, que sirve para que siga
+// comprobando todo lo demás (la lista, los títulos, que cada ítem traiga su ficha), y las fichas
+// de verdad se miran después con la estructura del documento. Una ficha sin nada (lista vacía o
+// ausente) se deja tal cual para que `motivoItems` diga lo que ya dice.
+function motivoItemsConEstructura(valores, campos, estructuraFicha) {
+  const fichas = (campos || []).filter((c) => c.tipo === Estructurados.TIPO_FICHA).map((c) => c.id);
+  const items = Array.isArray(valores && valores.items) ? valores.items : null;
+  const sustituidos = items && items.map((item) => {
+    if (!item || typeof item !== 'object') return item;
+    const copia = { ...item };
+    for (const id of fichas) if (Array.isArray(copia[id]) && copia[id].length) copia[id] = [{}];
+    return copia;
+  });
+  const motivo = Estructurados.motivoItems(items ? { ...valores, items: sustituidos } : valores, campos);
+  if (motivo || !items) return motivo;
+  for (let i = 0; i < items.length; i += 1) {
+    for (const id of fichas) {
+      const lista = items[i][id];
+      for (let k = 0; k < lista.length; k += 1) {
+        const m = Estructurados.motivoFicha(lista[k],
+          lista.length > 1 ? `la ficha ${i + 1}, tabla ${k + 1}` : `la ficha ${i + 1}`, estructuraFicha);
+        if (m) return m;
+      }
+    }
+  }
+  return null;
+}
+
 // Comprueba los valores contra la plantilla de esta rama. Devuelve { fallo } o {}.
 //
 // Todo se comprueba ANTES de escribir, y el primer campo que no pasa corta la petición entera. La
@@ -400,7 +449,12 @@ function conflictoDeEscritura(e) {
 //
 // `contexto` lleva lo que las puertas no pueden saber solas: los RA que declara el módulo
 // (`raDelModulo` de comun.js), para que una ponderación no pueda apuntar a un RA que no existe.
-function revisarValores(valores, { seccion, info, contexto, guardados = {} }) {
+//
+// `estructuraFicha` es la de la plantilla del documento (o `undefined`, y entonces vale la de
+// siempre): decide qué claves puede llevar una ficha. Las puertas de core/estructurados.js que
+// validan un campo suelto o un repetidor entero todavía no la reciben, así que aquí se miran las
+// fichas con `motivoFicha` y la estructura, y al resto de la puerta se le deja lo demás.
+function revisarValores(valores, { seccion, info, contexto, guardados = {}, estructuraFicha }) {
   if (valores === undefined) {
     return { fallo: malaPeticion('Falta «valores»: los campos que se guardan, en forma { idDeCampo: valor }.') };
   }
@@ -419,7 +473,9 @@ function revisarValores(valores, { seccion, info, contexto, guardados = {} }) {
   // «quita esa», dos pestañas acabarían con un orden que no eligió ninguna de las dos. Es el mismo
   // argumento que el del reparto de unidades (docs/api.md).
   if (info.seccion.repetidor) {
-    const motivo = Estructurados.motivoItems(valores, info.campos);
+    const motivo = estructuraFicha
+      ? motivoItemsConEstructura(valores, info.campos, estructuraFicha)
+      : Estructurados.motivoItems(valores, info.campos);
     if (motivo) {
       return {
         fallo: fallo(400, 'peticion',
@@ -440,7 +496,9 @@ function revisarValores(valores, { seccion, info, contexto, guardados = {} }) {
     if (!campo) {
       return { fallo: fallo(400, 'peticion', `El apartado «${seccion}» no tiene ningún campo «${id}». No se ha guardado nada.`, { campo: id }) };
     }
-    const motivo = Estructurados.motivoDeCampo(campo, valor, { ...contexto, guardado: guardados[id] });
+    const motivo = estructuraFicha && campo.tipo === Estructurados.TIPO_FICHA
+      ? Estructurados.motivoFichas(valor, { multiple: !!campo.multiple }, estructuraFicha)
+      : Estructurados.motivoDeCampo(campo, valor, { ...contexto, guardado: guardados[id] });
     if (motivo) {
       return {
         fallo: fallo(400, 'peticion',
@@ -516,7 +574,9 @@ const PATCH = conErrores(async (peticion, parametros) => {
   const fila = await repo.apartados.leer(documento._id, seccion, unidadId);
   const guardados = (fila && fila.valores) || {};
 
-  const { fallo: falloValores } = revisarValores(cuerpo.valores, { seccion, info, contexto, guardados });
+  const { fallo: falloValores } = revisarValores(cuerpo.valores, {
+    seccion, info, contexto, guardados, estructuraFicha: documento.plantilla && documento.plantilla.estructuraFicha,
+  });
   if (falloValores) return falloValores;
   const valores = { ...guardados, ...alGuardar(cuerpo.valores, { info, guardados }) };
 
