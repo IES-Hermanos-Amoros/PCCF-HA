@@ -9,7 +9,8 @@
 //                                  fundamental }], filas? }   ·  `multiple`: una lista de esas
 //   ficha_situacion_aprendizaje  el modelo de core/sa.js        ·  `multiple`: una lista de esas
 //   el repetidor que las agrupa  { items: [ { titulo, ficha: [ficha], texto? } ] }
-//   tabla                        { filas: [[celda, …], …] }, celda { text, colspan?, rowspan?, bold?, fondo? }
+//   tabla                        { filas: [[celda, …], …], anchos? }, celda { text, colspan?,
+//                                rowspan?, bold?, fondo?, alineacion?, tamano? }
 //   tabla_clave_valor            { pares: [{ etiqueta, valor }] }   ·  son las tablas que se crean en la
 //                                aplicación (core/campos.js); también guardan las importadas
 //
@@ -168,14 +169,28 @@
 
   // ---------------------------------------------------------------- la tabla importada
 
-  // Las celdas que `rejilla()` del motor sabe colocar. Son cinco claves y ninguna más: una de
+  // Las celdas que `rejilla()` del motor sabe colocar. Son estas claves y ninguna más: una de
   // regalo viaja hasta pdfmake dentro del objeto de la celda y cambia la tabla sin que nadie lo
-  // haya pedido. El importador escribe las cuatro primeras; «fondo» solo la escribe el editor.
-  const CLAVES_CELDA = ['text', 'colspan', 'rowspan', 'bold', 'fondo'];
+  // haya pedido. El importador escribe las cuatro primeras; «fondo», «alineacion» y «tamano» solo
+  // las escribe el editor.
+  const CLAVES_CELDA = ['text', 'colspan', 'rowspan', 'bold', 'fondo', 'alineacion', 'tamano'];
 
   // Los fondos que una celda puede pedir, por NOMBRE y no por color: así el PDF, el Word y la
   // pantalla pintan lo mismo con la misma paleta del centro, cada uno en su sintaxis.
   const FONDOS_CELDA = ['cabecera', 'etiqueta', 'ninguno'];
+
+  // La alineación y el tamaño de letra de una celda, también por NOMBRE y por el mismo motivo que
+  // el fondo: el PDF los quiere en puntos y en `alignment`, y el Word en medios puntos y en `w:jc`.
+  // El nombre es el contrato compartido y cada motor lo traduce al escribir.
+  //
+  // Cada lista va en su orden natural (de izquierda a derecha, de pequeño a grande), así que el
+  // valor por omisión se dice aparte y no se deduce de la posición: el de la alineación es el
+  // primero y el del tamaño es el de en medio. Es lo que lleva una tabla del Word, que no trae
+  // ninguna de las dos claves: alineada a la izquierda y con el tamaño de letra del documento.
+  const ALINEACIONES_CELDA = ['izquierda', 'centro', 'derecha'];
+  const TAMANOS_CELDA = ['pequena', 'normal', 'grande'];
+  const ALINEACION_CELDA_OMISION = 'izquierda';
+  const TAMANO_CELDA_OMISION = 'normal';
 
   // QUÉ FONDO LLEVA UNA CELDA: «cabecera», «etiqueta» o ninguno (null). La decisión es una sola y
   // está aquí porque la toman tres sitios: el PDF (`#D9E2F3` / `#F2F2F2`), el Word (los mismos sin
@@ -191,6 +206,28 @@
     if (c.fondo === 'cabecera' || c.fondo === 'etiqueta') return c.fondo;
     if (c.fondo === 'ninguno') return null;
     return c.bold ? (enCabecera ? 'cabecera' : 'etiqueta') : null;
+  }
+
+  // QUÉ ALINEACIÓN Y QUÉ TAMAÑO DE LETRA LLEVA UNA CELDA, con el nombre que los motores traducen.
+  // Están aquí por lo mismo que `fondoDeCelda`: las leen el PDF, el Word y la pantalla, y una regla
+  // escrita en dos motores acaba pintando en la pantalla una tabla que no es la que sale impresa.
+  //
+  // DEVUELVEN null CUANDO NO HAY NADA QUE EMITIR, y eso incluye el valor por omisión: una celda con
+  // `alineacion: 'izquierda'` y una celda sin la clave dan la misma salida, así que no hay dos
+  // maneras de decir lo mismo. Con null el motor no escribe nada —ni `alignment`, ni `fontSize`— y
+  // la tabla sale exactamente como salía antes de que estas claves existieran.
+  //
+  // A diferencia del fondo, aquí no hace falta un valor que ANULE nada: el fondo se deduce de la
+  // negrita si no se dice otra cosa (y por eso «ninguno» significa algo), pero la alineación y el
+  // tamaño no se deducen de nada.
+  function alineacionDeCelda(celda) {
+    const c = esObjeto(celda) ? celda : {};
+    return c.alineacion === 'centro' || c.alineacion === 'derecha' ? c.alineacion : null;
+  }
+
+  function tamanoDeCelda(celda) {
+    const c = esObjeto(celda) ? celda : {};
+    return c.tamano === 'pequena' || c.tamano === 'grande' ? c.tamano : null;
   }
 
   function motivoDeFilas(filas, donde) {
@@ -210,6 +247,8 @@
         if (celda.rowspan !== undefined && !esEntero(celda.rowspan, 1)) return `${suyo} tiene un «rowspan» que no es un número entero de 1 en adelante.`;
         if (celda.bold !== undefined && typeof celda.bold !== 'boolean') return `${suyo} tiene «bold» y no es true ni false.`;
         if (celda.fondo !== undefined && !FONDOS_CELDA.includes(celda.fondo)) return `${suyo} tiene un «fondo» que no vale: los fondos son ${comillas(FONDOS_CELDA)}.`;
+        if (celda.alineacion !== undefined && !ALINEACIONES_CELDA.includes(celda.alineacion)) return `${suyo} tiene una «alineacion» que no vale: las alineaciones son ${comillas(ALINEACIONES_CELDA)}.`;
+        if (celda.tamano !== undefined && !TAMANOS_CELDA.includes(celda.tamano)) return `${suyo} tiene un «tamano» que no vale: los tamaños son ${comillas(TAMANOS_CELDA)}.`;
       }
     }
     return null;
@@ -289,9 +328,35 @@
       : null;
   }
 
-  // UNA REJILLA ESCRITA EN LA APLICACIÓN: `{ filas: [[celda, …], …] }`. La forma de la celda
-  // y la comprobación celda a celda son las de `motivoDeFilas`; aquí se añade lo que solo
-  // importa cuando alguien la escribe: que las filas cuadren, los topes y la cabecera.
+  // LOS ANCHOS DE COLUMNA DE UNA TABLA son PROPORCIONES —pesos relativos, uno por columna— y van
+  // en la tabla, no en la celda. Proporciones y no puntos ni centímetros porque pdfmake reparte
+  // sobre el ancho útil de la hoja y el Word sobre el de la tabla en dxa: un peso relativo le sirve
+  // a los dos sin que ninguno tenga que saber del otro.
+  //
+  // Sin «anchos» cada columna sigue midiendo lo que diga su cantidad de texto (`anchos()` de
+  // motor/render-generico.js y su gemela del Word), que es como salen las 1.070 tablas importadas.
+  // Es la razón más probable de que una tabla rehecha a mano «no quede igual» que la del Word, y
+  // por eso se puede decir a mano.
+  function motivoDeAnchos(anchos, columnas, donde) {
+    if (anchos === undefined) return null;
+    if (!Array.isArray(anchos)) return `«anchos» de ${donde} no es una lista de proporciones, una por columna.`;
+    if (!anchos.length) {
+      return `«anchos» de ${donde} está vacío: una tabla cuyas columnas se reparten solas no lleva «anchos».`;
+    }
+    if (anchos.length !== columnas) {
+      return `«anchos» de ${donde} trae ${plural(anchos.length, 'proporción', 'proporciones')} y la tabla tiene ${plural(columnas, 'columna', 'columnas')}: hace falta una proporción por columna.`;
+    }
+    for (let j = 0; j < anchos.length; j += 1) {
+      if (!esNumero(anchos[j]) || anchos[j] <= 0) {
+        return `la proporción ${j + 1} de «anchos» de ${donde} no es un número positivo: los anchos son pesos relativos, no medidas.`;
+      }
+    }
+    return null;
+  }
+
+  // UNA REJILLA ESCRITA EN LA APLICACIÓN: `{ filas: [[celda, …], …], anchos? }`. La forma de la
+  // celda y la comprobación celda a celda son las de `motivoDeFilas`; aquí se añade lo que solo
+  // importa cuando alguien la escribe: que las filas cuadren, los topes, los anchos y la cabecera.
   //
   // UNA TABLA SIN FILAS SÍ SE GUARDA. `{ filas: [] }` es una tabla que existe y a la que no se
   // le ha escrito nada, y la necesita el editor: quien quita la última fila tiene que poder
@@ -317,21 +382,26 @@
   // forma cambia —una fila nueva, una celda combinada— se exige entera.
   function motivoDeRejilla(valor, donde, { guardada } = {}) {
     if (!esObjeto(valor)) return `${donde} no es una tabla { filas: [[celda, …], …] }.`;
-    const extra = sobran(valor, ['filas']);
-    if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en una tabla: solo «filas».`;
+    const extra = sobran(valor, ['filas', 'anchos']);
+    if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en una tabla: solo «filas» y «anchos».`;
     if (valor.filas === undefined) return `falta «filas» en ${donde}: una tabla sin filas es { filas: [] }.`;
     const m = motivoDeFilas(valor.filas, donde);
     if (m) return m;
+    const ancho = valor.filas.length ? valor.filas[0].reduce((a, x) => a + (x.colspan || 1), 0) : 0;
     const igual = esObjeto(guardada) && Array.isArray(guardada.filas) && formaDe(guardada.filas) === formaDe(valor.filas);
     if (!igual) {
       if (valor.filas.length > MAX_FILAS) return `${donde} tiene ${valor.filas.length} filas: el máximo son ${MAX_FILAS}.`;
       const c = motivoDeCuadricula(valor.filas, donde);
       if (c) return c;
-      const ancho = valor.filas.length ? valor.filas[0].reduce((a, x) => a + (x.colspan || 1), 0) : 0;
       if (ancho > MAX_COLUMNAS) {
         return `${donde} tiene ${ancho} columnas: el máximo son ${MAX_COLUMNAS}, porque con más no caben en el ancho de la hoja.`;
       }
     }
+    // Los anchos se exigen SIEMPRE, también cuando la forma no ha cambiado: no hay ninguna tabla
+    // guardada que los traiga mal (las importadas no los llevan), así que aquí no hay nada heredado
+    // que perdonar, y una lista con más proporciones que columnas no sabría qué columna estira.
+    const a = motivoDeAnchos(valor.anchos, ancho, donde);
+    if (a) return a;
     for (let i = 0; i < valor.filas.length; i += 1) {
       for (let j = 0; j < valor.filas[i].length; j += 1) {
         const t = motivoDeTextoDeCelda(valor.filas[i][j].text, `la celda ${j + 1} de la fila ${i + 1} de ${donde}`);
@@ -757,8 +827,10 @@
 
   const api = {
     TIPOS, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_TABLA, TIPO_CLAVE_VALOR,
-    CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES, FONDOS_CELDA,
-    seGuarda, fondoDeCelda,
+    CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES,
+    FONDOS_CELDA, ALINEACIONES_CELDA, TAMANOS_CELDA,
+    ALINEACION_CELDA_OMISION, TAMANO_CELDA_OMISION,
+    seGuarda, fondoDeCelda, alineacionDeCelda, tamanoDeCelda,
     motivoDeFilas, motivoDeRejilla, motivoDeClaveValor,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,

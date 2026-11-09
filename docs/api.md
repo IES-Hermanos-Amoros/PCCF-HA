@@ -290,7 +290,28 @@ Qué hay que saber para escribir un editor sin adivinar:
   aplicación (la que lleva `inicial`) es el único criterio, en el PDF y en el Word: poner o quitar la
   cabecera es poner o quitar la negrita de la primera fila, y la puerta no exige nada. Su `columnas`
   se guarda como el que deja el importador pero el generador no lo lee. En una importada, el PDF sigue
-  decidiéndolo por `columnas`. Los anchos no se guardan.
+  decidiéndolo por `columnas`.
+- **Alineación y tamaño de letra de la celda.** `alineacion` es `'izquierda'`, `'centro'` o `'derecha'`;
+  `tamano` es `'pequena'`, `'normal'` o `'grande'`. Son **nombres** y no valores concretos por lo mismo
+  que `fondo`: el PDF los quiere en puntos y en `alignment` y el Word en medios puntos y en `w:jc`, así
+  que el nombre es el contrato y cada motor lo traduce (8 pt / 12 pt en el PDF, 16 / 24 medios puntos en
+  el Word: el mismo tamaño en las dos salidas). Quién gana lo deciden
+  `Core.estructurados.alineacionDeCelda` y `Core.estructurados.tamanoDeCelda`, que los consultan el PDF,
+  el Word y el editor. Las dos devuelven `null` tanto **sin la clave como con el valor por omisión**
+  (`'izquierda'`, `'normal'`), y entonces el motor no escribe nada: una celda con
+  `alineacion: 'izquierda'` y una celda sin la clave dan la misma salida, así que no hay dos maneras de
+  decir lo mismo. A diferencia de `fondo`, aquí no hay un valor que anule nada —no se deducen de la
+  negrita ni de ninguna otra cosa—, así que no existe un «ninguno». El editor, cuando se elige el valor
+  por omisión, **borra la clave** en lugar de guardarla.
+- **Anchos de columna.** `anchos` es hermano de `filas` en el valor de la tabla, no de la celda: una
+  lista de **proporciones** (pesos relativos, números positivos finitos), una por columna de la
+  cuadrícula. Proporciones y no puntos ni centímetros porque pdfmake reparte sobre el ancho útil de la
+  hoja y el Word sobre el de la tabla en dxa: un peso relativo le sirve a los dos. Se rechaza lo que no
+  sea una lista, lo que no tenga un peso por columna (el motivo dice los dos números) y cualquier peso
+  que no sea un número positivo finito. **Sin `anchos`** cada columna sigue midiendo lo que diga su
+  cantidad de texto, que es como salen todas las tablas importadas. En el PDF, un `widths` que pase el
+  llamador (el resumen de SA, las ponderaciones) manda sobre `anchos` del valor, que a su vez manda
+  sobre el cálculo por texto.
 - **Las filas tienen que cuadrar.** Todas, del mismo ancho contando las casillas que vienen combinadas
   desde arriba. El generador rellena sin avisar lo que falta y sale una tabla torcida, así que se
   rechaza y el motivo dice qué fila sobra o falta. Una tabla importada que **ya venía** torcida se puede

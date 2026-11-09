@@ -62,17 +62,13 @@ function rejilla(rows) {
   const body = grid.filter((r) => r && r.length).map((r) => { const out = []; for (let j = 0; j < ncols; j++) out.push(r[j] || { _ph: true }); return out; });
   return { ncols, body };
 }
-// Anchos proporcionales a la cantidad de texto de cada columna (las columnas de marcas o cifras quedan estrechas)
-function anchos(body, ncols) {
+// Reparte el ancho útil de la hoja entre las columnas según sus PESOS relativos, con un mínimo por
+// columna para que ninguna quede ilegible. Es el único sitio que convierte pesos en puntos, lo pida
+// la tabla (`anchos` de su valor) o los haya deducido del texto `anchos()`.
+function repartir(pesos, ncols) {
   // Ancho útil de A4 con márgenes de 50 pt: 495 pt. pdfmake suma a cada columna su relleno (4 + 4) y las líneas (0,5),
   // así que se descuentan para que la tabla nunca sobrepase el margen.
   const disponible = 495 - ncols * (4 + 4 + 0.5) - 0.5;
-  const pesos = [];
-  for (let j = 0; j < ncols; j++) {
-    let tot = 0, n = 0;
-    for (const r of body) { const c = r[j]; if (c && !c._ph && (c.colspan || 1) === 1) { tot += Math.min(String(c.text || '').length, 200); n += 1; } }
-    pesos.push(Math.sqrt((n ? tot / n : 10) + 4));
-  }
   const suma = pesos.reduce((a, b) => a + b, 0);
   const minimo = Math.min(26, disponible / ncols);
   let w = pesos.map((p) => Math.max(minimo, (disponible * p) / suma));
@@ -80,10 +76,26 @@ function anchos(body, ncols) {
   if (total > disponible) w = w.map((x) => (x * disponible) / total);
   return w;
 }
-// El color de cada fondo. QUÉ fondo lleva una celda lo decide `Est.fondoDeCelda` de
-// core/estructurados.js, que es la misma función que usan el Word y el editor: aquí solo se
-// traduce el nombre al color de pdfmake.
+// Anchos proporcionales a la cantidad de texto de cada columna (las columnas de marcas o cifras quedan estrechas)
+function anchos(body, ncols) {
+  const pesos = [];
+  for (let j = 0; j < ncols; j++) {
+    let tot = 0, n = 0;
+    for (const r of body) { const c = r[j]; if (c && !c._ph && (c.colspan || 1) === 1) { tot += Math.min(String(c.text || '').length, 200); n += 1; } }
+    pesos.push(Math.sqrt((n ? tot / n : 10) + 4));
+  }
+  return repartir(pesos, ncols);
+}
+// El color de cada fondo, la alineación y el tamaño de letra en la sintaxis de pdfmake. QUÉ lleva
+// una celda lo deciden `Est.fondoDeCelda`, `Est.alineacionDeCelda` y `Est.tamanoDeCelda` de
+// core/estructurados.js, que son las mismas funciones que usan el Word y el editor: aquí solo se
+// traduce el nombre. Cuando devuelven null no se escribe nada y la celda sale como siempre.
+//
+// Los puntos de «pequena» y «grande» son los mismos que los medios puntos del Word
+// (motor/exportar-docx.js): el tamaño elegido tiene que verse igual en las dos salidas.
 const COLOR_FONDO = { cabecera: AZUL_CLARO, etiqueta: GRIS_FONDO };
+const ALINEACION = { centro: 'center', derecha: 'right' };
+const TAMANO = { pequena: 8, grande: 12 };
 function tablaGenerica(rows, opts = {}) {
   if (!rows || !rows.length) return para('(tabla vacía)', { italics: true, color: GRIS });
   const { ncols, body } = rejilla(rows);
@@ -94,9 +106,19 @@ function tablaGenerica(rows, opts = {}) {
     if (c.bold) cell.bold = true;
     const fondo = COLOR_FONDO[Est.fondoDeCelda(c, i === 0 && cabecera)];
     if (fondo) cell.fillColor = fondo;
+    const alineacion = Est.alineacionDeCelda(c);
+    if (alineacion) cell.alignment = ALINEACION[alineacion];
+    // El tamaño de la celda manda sobre el de la tabla (`opts.fontSize`, que es el de la ficha de
+    // situación de aprendizaje): lo de la celda es lo que alguien ha elegido a mano.
+    const tamano = Est.tamanoDeCelda(c);
+    if (tamano) cell.fontSize = TAMANO[tamano];
     return cell;
   }));
-  const widths = opts.widths || anchos(body, ncols);
+  // PRECEDENCIA DE LOS ANCHOS: manda `opts.widths`, que es lo que pasa quien ya sabe en puntos
+  // cuánto mide cada columna (el resumen de SA, las ponderaciones); después `opts.anchos`, los
+  // pesos que trae el valor de una tabla editable; y si no hay ninguno, lo que diga el texto.
+  const widths = opts.widths
+    || (Array.isArray(opts.anchos) && opts.anchos.length === ncols ? repartir(opts.anchos, ncols) : anchos(body, ncols));
   return { table: { headerRows: cabecera ? 1 : 0, widths, body: cuerpo, dontBreakRows: false }, layout, margin: [0, 0, 0, 10] };
 }
 
@@ -172,7 +194,7 @@ function pintarCampo(campo, valor, ctx) {
     // Una tabla creada en la aplicación (`inicial`) tiene la cabecera que dice su primera fila, no
     // `columnas`: es el mismo criterio que el Word, y lo que hace que quitar la cabecera sea quitar
     // la negrita (core/estructurados.js, `motivoDeRejilla`).
-    default: return [tablaGenerica(valor.filas, { cabecera: campo.columnas && !campo.inicial ? true : undefined })];
+    default: return [tablaGenerica(valor.filas, { cabecera: campo.columnas && !campo.inicial ? true : undefined, anchos: valor.anchos })];
   }
 }
 

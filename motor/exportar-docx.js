@@ -41,10 +41,17 @@ const ANCHO_TABLA = 9638; // A4 (11906 twips) menos márgenes de 2 cm
 const MAX_NIVEL_LISTA = 8;
 const GRIS_BORDE = 'BFBFBF', AZUL_CLARO = 'D9E2F3', GRIS_FONDO = 'F2F2F2';
 
-// El color de cada fondo, sin «#». QUÉ fondo lleva una celda lo decide `Est.fondoDeCelda` de
-// core/estructurados.js, que es la misma función que usan el PDF y el editor: aquí solo se traduce
-// el nombre al código que entiende Word.
+// El color de cada fondo (sin «#»), la alineación (`w:jc`) y el tamaño de letra (`w:sz`, en MEDIOS
+// puntos). QUÉ lleva una celda lo deciden `Est.fondoDeCelda`, `Est.alineacionDeCelda` y
+// `Est.tamanoDeCelda` de core/estructurados.js, que son las mismas funciones que usan el PDF y el
+// editor: aquí solo se traduce el nombre a lo que entiende Word. Cuando devuelven null no se
+// escribe nada y la celda sale con el formato de siempre.
+//
+// Los medios puntos de «pequena» y «grande» son los puntos del PDF multiplicados por dos
+// (motor/render-generico.js): el tamaño elegido tiene que verse igual en las dos salidas.
 const COLOR_FONDO = { cabecera: AZUL_CLARO, etiqueta: GRIS_FONDO };
+const ALINEACION = { centro: 'center', derecha: 'right' };
+const TAMANO = { pequena: 16, grande: 24 };
 
 // ---------------------------------------------------------------- XML
 // Los caracteres de control no son XML válido ni siquiera escapados.
@@ -54,12 +61,16 @@ const esc = (t) => String(t == null ? '' : t)
 
 // `text` puede ser una cadena o una lista de tramos ({ text, bold, italics }),
 // igual que en compartidos.js. Un salto de línea dentro del texto es `w:br`.
+// `base.sz` es el tamaño en MEDIOS puntos; sin él, el del documento.
+// El orden dentro de `w:rPr` es el del esquema de Word: `w:b`, `w:i` y después `w:sz`.
 function tramos(texto, base = {}) {
   const lista = Array.isArray(texto) ? texto : [texto];
   return lista.map((t) => (t && typeof t === 'object' ? t : { text: t })).map((t) => {
     const negrita = t.bold !== undefined ? t.bold : base.bold;
     const cursiva = t.italics !== undefined ? t.italics : base.italics;
-    const formato = (negrita ? '<w:b/>' : '') + (cursiva ? '<w:i/>' : '');
+    const tamano = t.sz !== undefined ? t.sz : base.sz;
+    const formato = (negrita ? '<w:b/>' : '') + (cursiva ? '<w:i/>' : '')
+      + (tamano ? `<w:sz w:val="${tamano}"/>` : '');
     const partes = String(t.text == null ? '' : t.text).split('\n');
     const contenido = partes.map((p, i) => (i ? '<w:br/>' : '') + (p ? `<w:t xml:space="preserve">${esc(p)}</w:t>` : '')).join('');
     return contenido ? `<w:r>${formato ? `<w:rPr>${formato}</w:rPr>` : ''}${contenido}</w:r>` : '';
@@ -117,6 +128,16 @@ function rejilla(filas) {
   return { filas: salida, ncols };
 }
 
+// Reparte el ancho de la tabla entre las columnas según sus PESOS relativos, con un mínimo por
+// columna. Es el único sitio que convierte pesos en dxa, los pida la tabla (`anchos` de su valor) o
+// los haya deducido del texto `anchos()`.
+function repartir(pesos) {
+  const suma = pesos.reduce((a, b) => a + b, 0);
+  const w = pesos.map((p) => Math.max(450, Math.round((ANCHO_TABLA * p) / suma)));
+  const total = w.reduce((a, b) => a + b, 0);
+  return w.map((x) => Math.round((x * ANCHO_TABLA) / total));
+}
+
 // Anchos proporcionales a la raíz del texto medio de cada columna, como en el PDF
 // (las columnas de marcas o de cifras quedan estrechas).
 function anchos(filas, ncols) {
@@ -126,17 +147,18 @@ function anchos(filas, ncols) {
     for (const f of filas) for (const c of f) if (!c.continuacion && c.col === j && c.span === 1) { tot += Math.min(plano(c.celda.text).length, 200); n += 1; }
     pesos.push(Math.sqrt((n ? tot / n : 10) + 4));
   }
-  const suma = pesos.reduce((a, b) => a + b, 0);
-  const w = pesos.map((p) => Math.max(450, Math.round((ANCHO_TABLA * p) / suma)));
-  const total = w.reduce((a, b) => a + b, 0);
-  return w.map((x) => Math.round((x * ANCHO_TABLA) / total));
+  return repartir(pesos);
 }
 
-function tabla(filas) {
+// `anchosPedidos` son los pesos relativos que trae el valor de la tabla, uno por columna. Si no
+// vienen —o no cuadran con las columnas que de verdad tiene— cada columna mide lo que diga su
+// cantidad de texto, que es como salen todas las tablas importadas del Word.
+function tabla(filas, anchosPedidos) {
   if (!filas || !filas.length) return '';
   const { filas: rej, ncols } = rejilla(filas);
   if (!ncols) return '';
-  const w = anchos(rej, ncols);
+  const w = Array.isArray(anchosPedidos) && anchosPedidos.length === ncols
+    ? repartir(anchosPedidos) : anchos(rej, ncols);
   const ancho = (c) => w.slice(c.col, c.col + c.span).reduce((a, b) => a + b, 0);
   const cabecera = filas[0].every((c) => c.bold);
   const borde = (l) => `<w:${l} w:val="single" w:sz="4" w:space="0" w:color="${GRIS_BORDE}"/>`;
@@ -149,7 +171,11 @@ function tabla(filas) {
       const sombra = relleno ? `<w:shd w:val="clear" w:color="auto" w:fill="${relleno}"/>` : '';
       // cada línea de la celda es un párrafo: así las vuelve a juntar el importador
       const lineas = plano(c.celda.text).split('\n');
-      const ps = lineas.map((l) => parrafo(l, { base: { bold: !!c.celda.bold }, extra: '<w:spacing w:after="40"/>' })).join('');
+      const alineacion = ALINEACION[Est.alineacionDeCelda(c.celda)];
+      const tam = TAMANO[Est.tamanoDeCelda(c.celda)];
+      // El orden dentro de `w:pPr` es el del esquema de Word: `w:spacing` antes de `w:jc`.
+      const forma = '<w:spacing w:after="40"/>' + (alineacion ? `<w:jc w:val="${alineacion}"/>` : '');
+      const ps = lineas.map((l) => parrafo(l, { base: { bold: !!c.celda.bold, sz: tam }, extra: forma })).join('');
       return `<w:tc><w:tcPr>${props}${vmerge}${sombra}</w:tcPr>${ps}</w:tc>`;
     }).join('');
     return `<w:tr>${i === 0 && cabecera ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${tcs}</w:tr>`;
@@ -196,7 +222,9 @@ function campo(c, valor) {
     case 'ponderacion_ra_ce': return tabla(valor.ra !== null && valor.ra !== undefined && valor.ce ? filasPonderacion(valor) : valor.filas);
     case 'ficha_situacion_aprendizaje': return tabla(valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor) ? filasDeFicha(valor) : null));
     case 'auto.ficha_modulo': case 'tabla_clave_valor': return tabla(valor.filas && valor.filas.length ? valor.filas : (valor.pares ? filasParejas(valor) : null));
-    default: return tabla(valor.filas); // incluye derivado.resumen_situaciones: se escribe tal como se importó
+    // Incluye derivado.resumen_situaciones: se escribe tal como se importó. Y es el caso de la
+    // tabla genérica editable, la única que puede traer sus propios anchos de columna.
+    default: return tabla(valor.filas, valor.anchos);
   }
 }
 

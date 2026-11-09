@@ -1167,6 +1167,37 @@ prueba('el panel lo ve quien ve el documento, y nadie más', async () => {
   await esError(await panelDe(u.jefa, 'no-existe'), 404, 'no_encontrado');
 });
 
+// ---------------------------------------------------------------- las reglas de estilo de una celda
+
+prueba('la alineación y el tamaño de letra de una celda: una regla, y null cuando no hay nada que emitir', () => {
+  // Es la decisión que protege la fidelidad de las 1.070 tablas importadas: la clave ausente y la
+  // clave con el valor por omisión devuelven lo MISMO, así que los motores no escriben nada en
+  // ninguno de los dos casos y no hay dos maneras de decir que una celda sale como siempre.
+  const celda = (extra) => Object.assign({ text: 'a', colspan: 1, rowspan: 1, bold: false }, extra);
+  assert.equal(Est.alineacionDeCelda(celda()), null, 'sin la clave, nada que emitir');
+  assert.equal(Est.alineacionDeCelda(celda({ alineacion: Est.ALINEACION_CELDA_OMISION })), null, 'el valor por omisión, lo mismo');
+  assert.equal(Est.alineacionDeCelda(celda({ alineacion: 'centro' })), 'centro');
+  assert.equal(Est.alineacionDeCelda(celda({ alineacion: 'derecha' })), 'derecha');
+  assert.equal(Est.tamanoDeCelda(celda()), null);
+  assert.equal(Est.tamanoDeCelda(celda({ tamano: Est.TAMANO_CELDA_OMISION })), null);
+  assert.equal(Est.tamanoDeCelda(celda({ tamano: 'pequena' })), 'pequena');
+  assert.equal(Est.tamanoDeCelda(celda({ tamano: 'grande' })), 'grande');
+  // Lo que no es uno de los nombres tampoco se emite: la puerta ya lo rechaza al guardar, y aquí no
+  // puede colarse hacia el PDF ni hacia el Word un valor que nadie ha traducido.
+  assert.equal(Est.alineacionDeCelda(celda({ alineacion: 'center' })), null);
+  assert.equal(Est.tamanoDeCelda(celda({ tamano: 9.5 })), null);
+  // Y lo que no es una celda no revienta: es la misma tolerancia que `fondoDeCelda`.
+  for (const x of [null, undefined, 'a', 7, []]) {
+    assert.equal(Est.alineacionDeCelda(x), null);
+    assert.equal(Est.tamanoDeCelda(x), null);
+  }
+  // Los nombres son del contrato: ni valores de pdfmake, ni de Word, ni medidas.
+  assert.deepEqual(Est.ALINEACIONES_CELDA, ['izquierda', 'centro', 'derecha']);
+  assert.deepEqual(Est.TAMANOS_CELDA, ['pequena', 'normal', 'grande']);
+  assert.ok(Est.ALINEACIONES_CELDA.includes(Est.ALINEACION_CELDA_OMISION));
+  assert.ok(Est.TAMANOS_CELDA.includes(Est.TAMANO_CELDA_OMISION));
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {
