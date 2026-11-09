@@ -41,6 +41,8 @@
 //   POST   .../estructura/apartado/restaurar?seccion=  restaurar
 //   DELETE .../estructura/apartado?seccion=            borrar un apartado ya retirado
 //   DELETE .../estructura/apartado/campo?seccion=&campo=  borrar un campo ya retirado
+//   PATCH  .../estructura/apartado/campo?seccion=&campo=  renombrar un campo  { etiqueta }
+//   POST   .../estructura/apartado/campo/mover?seccion=&campo=  subir o bajar un campo  { delta: -1 | 1 }
 //
 // Retirar no es un `DELETE` y la razón está en la ruta: un DELETE que no borra
 // es una promesa que el contrato no quiere hacer. Los dos DELETE de arriba sí
@@ -76,6 +78,9 @@ const CAMBIOS = {
   // Quitar un campo (no borra) y devolverlo: el campo viaja en la URL junto al apartado.
   retirar_campo: { metodo: 'POST', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo/retirar`, s, c) },
   restaurar_campo: { metodo: 'POST', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo/restaurar`, s, c) },
+  // Cambiar la etiqueta de un campo ({ etiqueta }) y subirlo o bajarlo entre los de su apartado ({ delta }).
+  renombrar_campo: { metodo: 'PATCH', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo`, s, c) },
+  mover_campo: { metodo: 'POST', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo/mover`, s, c) },
   // Borrar de verdad lo que ya estaba retirado: un apartado, o un campo de un apartado.
   borrar: { metodo: 'DELETE', url: (b, s) => conSeccion(`${b}/estructura/apartado`, s) },
   borrar_campo: { metodo: 'DELETE', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo`, s, c) },
