@@ -156,7 +156,54 @@
       : 'Retirar ' + nombre(campo) + ': ninguna ficha tiene nada escrito en esa fila.';
   }
 
+  // ---------------------------------------------------------------- los gestos de la pantalla
+
+  const TIPO_FICHA = 'ficha_situacion_aprendizaje';
+
+  // ¿SE LE OFRECE EL BLOQUE? Solo a quien puede cambiar la estructura (lo dice el servidor) y solo en
+  // un apartado que tiene un campo de fichas: en cualquier otro no hay tabla de ficha que editar.
+  const seOfrece = (puedeCambiar, camposDelApartado) => !!puedeCambiar
+    && (camposDelApartado || []).some((c) => !!c && c.tipo === TIPO_FICHA);
+
+  // EL CUERPO DE LA PETICIÓN DE CADA GESTO, UNO POR OPERACIÓN. Cada gesto manda su operación y punto:
+  // nada se deduce de comparar la tabla de antes con la de después, porque eso adivinaría la
+  // operación por el texto y dejaría huérfano lo escrito en las fichas, que se guarda por el id. El
+  // id es el de la fila (`campo` de la celda de etiqueta), nunca el texto de la etiqueta.
+  function peticionDeGesto(gesto, datos) {
+    const d = datos || {};
+    switch (gesto) {
+      case 'renombrar': return { tipo: 'renombrar_campo_ficha', campoFicha: d.campoFicha, etiqueta: d.etiqueta };
+      case 'subir': return { tipo: 'mover_campo_ficha', campoFicha: d.campoFicha, delta: -1 };
+      case 'bajar': return { tipo: 'mover_campo_ficha', campoFicha: d.campoFicha, delta: 1 };
+      case 'retirar': return { tipo: 'retirar_campo_ficha', campoFicha: d.campoFicha };
+      case 'restaurar': return { tipo: 'restaurar_campo_ficha', campoFicha: d.campoFicha };
+      case 'anadir': {
+        const p = { tipo: 'anadir_campo_ficha', etiqueta: d.etiqueta };
+        if (d.posicion !== undefined && d.posicion !== null) p.posicion = d.posicion;
+        return p;
+      }
+      default: return null;
+    }
+  }
+
+  // EL ID DE UNA CELDA DE ETIQUETA, o null si no se puede ofrecer ningún gesto sobre ella: no trae
+  // `campo`, o trae uno que no es una fila vigente de la estructura. No se recurre al texto.
+  function campoDeCelda(celda, estructura) {
+    const id = celda && typeof celda.campo === 'string' ? celda.campo : '';
+    if (!id) return null;
+    return (estructura || []).some((c) => c && c.id === id && !c.retirado) ? id : null;
+  }
+
+  // Los campos con los que se monta la tabla de la pantalla: las filas `solo_si_hay` no se imprimen
+  // mientras estén vacías, y en una tabla de esqueleto (todo vacío) desaparecerían: no habría dónde
+  // pulsar para renombrarlas o retirarlas. Aquí se montan todas, y la pantalla lo dice.
+  const camposDelEsqueleto = (estructura) => (estructura || []).map((c) => {
+    const { solo_si_hay: _soloSiHay, ...resto } = c;
+    return resto;
+  });
+
   const api = {
+    TIPO_FICHA, seOfrece, peticionDeGesto, campoDeCelda, camposDelEsqueleto,
     hayTexto, tieneRejilla, fichasDeValores, recuento, conTextoEn, fraseDeTablaPropia,
     informeDeCambio, avisoAntesDeRetirar,
   };
