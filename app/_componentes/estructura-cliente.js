@@ -39,9 +39,13 @@
 //   POST   .../estructura/apartado/mover?seccion=      mover       { delta: -1 | 1 }
 //   POST   .../estructura/apartado/retirar?seccion=    retirar     (no borra)
 //   POST   .../estructura/apartado/restaurar?seccion=  restaurar
+//   DELETE .../estructura/apartado?seccion=            borrar un apartado ya retirado
+//   DELETE .../estructura/apartado/campo?seccion=&campo=  borrar un campo ya retirado
 //
 // Retirar no es un `DELETE` y la razón está en la ruta: un DELETE que no borra
-// es una promesa que el contrato no quiere hacer.
+// es una promesa que el contrato no quiere hacer. Los dos DELETE de arriba sí
+// borran, y son irreversibles: se piden desde la lista de retirados de la
+// portada (BorrarDefinitivo.js).
 //
 // Los cinco cambios aceptan `esperaPlantillaVersion` y los cinco contestan
 // igual: la `plantillaVersion` nueva, el `cambio` apuntado, `afectaUnidades` con
@@ -72,6 +76,9 @@ const CAMBIOS = {
   // Quitar un campo (no borra) y devolverlo: el campo viaja en la URL junto al apartado.
   retirar_campo: { metodo: 'POST', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo/retirar`, s, c) },
   restaurar_campo: { metodo: 'POST', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo/restaurar`, s, c) },
+  // Borrar de verdad lo que ya estaba retirado: un apartado, o un campo de un apartado.
+  borrar: { metodo: 'DELETE', url: (b, s) => conSeccion(`${b}/estructura/apartado`, s) },
+  borrar_campo: { metodo: 'DELETE', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo`, s, c) },
 };
 
 export const urlEstructura = (documentoId) => `${base(documentoId)}/estructura`;
@@ -91,6 +98,59 @@ export function cambiarEstructura(documentoId, accion, { seccion, campo, cuerpo 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cuerpo || {}),
   });
+}
+
+// ================================================================ borrar de verdad
+
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+// Cuánto hay escrito en un apartado retirado y se perdería al borrarlo, dicho con el recuento que
+// manda el servidor (`contenido` de cada retirado). Un apartado de módulo tiene una fila por
+// unidad: se dice en cuántas unidades hay algo escrito, además de cuántos apartados con texto son.
+export function cuantoHayEscritoEnApartado(contenido) {
+  const c = contenido || {};
+  if (!c.conContenido) {
+    return c.apartados > 1 ? 'No hay nada escrito en ninguno de ellos.' : 'No hay nada escrito en él.';
+  }
+  if (c.unidadesConContenido) {
+    return `Hay contenido escrito en ${plural(c.unidadesConContenido, 'unidad', 'unidades')}`
+      + ` (${plural(c.conContenido, 'apartado', 'apartados')} con texto, contando cada unidad por separado).`;
+  }
+  return `Hay contenido escrito en ${plural(c.conContenido, 'apartado', 'apartados')}.`;
+}
+
+// Lo mismo para un campo: en cuántas unidades tiene algo escrito, o si lo tiene.
+export function cuantoHayEscritoEnCampo(contenido) {
+  const c = contenido || {};
+  if (!c.conContenido) return 'No hay nada escrito en él.';
+  if (c.unidadesConContenido) {
+    return `Hay contenido escrito en ${plural(c.unidadesConContenido, 'unidad', 'unidades')}.`;
+  }
+  return 'Hay contenido escrito en él.';
+}
+
+// El encabezado del aviso cuando un borrado falla. Se decide por el estado de la respuesta y no por
+// lo que diga el mensaje: un 4xx es el servidor rechazando el cambio antes de escribir nada; sin
+// respuesta, o con un 5xx, no se sabe hasta dónde llegó y lo honesto es decirlo.
+export function textoDeFalloAlBorrar(error) {
+  const estado = error && Number(error.estado);
+  return estado >= 400 && estado < 500
+    ? { texto: 'No se ha borrado nada.' }
+    : { texto: 'No se sabe si se ha llegado a borrar: recarga la página para ver cómo ha quedado.' };
+}
+
+// El bloque que agrupa las unidades del documento (los módulos de una PD de FP) y cuántas tiene, sacado del
+// árbol que ya pinta la pantalla. Es lo que hace falta para decir «en los 11 módulos» sin escribir el nombre aquí.
+export function bloqueDeUnidades(raiz) {
+  let hallado = null;
+  (function bajar(n) {
+    if (!n || hallado) return;
+    if (n.tipo === 'bloque') { hallado = n; return; }
+    (n.hijos || []).forEach(bajar);
+  })(raiz);
+  return hallado
+    ? { cuantas: (hallado.hijos || []).length, etiqueta: hallado.etiqueta || null }
+    : { cuantas: 0, etiqueta: null };
 }
 
 // ================================================================ quién puede

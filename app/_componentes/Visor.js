@@ -125,7 +125,7 @@ import { pedir } from './api';
 import {
   abiertosHasta, correccionDeRevision, estados as calcularEstados, indexar,
 } from './arbol-cliente';
-import { leerEstructura, puedeCambiarEstructura } from './estructura-cliente';
+import { bloqueDeUnidades, leerEstructura, puedeCambiarEstructura } from './estructura-cliente';
 import { TIPO_FICHA, TIPO_PONDERACION, TIPO_RESUMEN } from './sa-cliente';
 import { useSesion } from './sesion-cliente';
 import {
@@ -843,6 +843,8 @@ export default function Visor({
           documentoId={documentoId}
           retirados={estructura.retirados}
           plantillaVersion={estructura.plantillaVersion}
+          cuantasUnidades={bloqueDeUnidades(n).cuantas || estructura.unidades}
+          comoSeLlaman={bloqueDeUnidades(n).etiqueta}
           onCambiado={alCambiarEstructura}
         />
       ) : null}
@@ -851,6 +853,8 @@ export default function Visor({
           documentoId={documentoId}
           retirados={estructura.camposRetirados}
           plantillaVersion={estructura.plantillaVersion}
+          cuantasUnidades={bloqueDeUnidades(n).cuantas || estructura.unidades}
+          comoSeLlaman={bloqueDeUnidades(n).etiqueta}
           onCambiado={alCambiarEstructura}
         />
       ) : null}
