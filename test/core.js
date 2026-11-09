@@ -291,6 +291,63 @@ prueba('core/sa: el ida y vuelta de una ficha conserva todos los campos', () => 
   assert.strictEqual(vuelta.evaluacion, '2ª', 'y la evaluación, que es la que se pierde sola');
 });
 
+// El informe de reconocimiento de la rejilla de una ficha. Lo que el lector no entiende de la
+// tabla del Word no entra en ningún campo, y en cuanto la ficha suelta la tabla desaparece; estas
+// pruebas fijan que eso se diga con el texto de la etiqueta y que el caso normal se diga también.
+
+const celdaDe = (text, opts) => Object.assign({ text, colspan: 1, rowspan: 1, bold: false }, opts);
+
+prueba('core/sa: el informe nombra las filas de la rejilla que no van a ningún campo', () => {
+  const filas = [
+    [celdaDe('Situación de aprendizaje 1', { rowspan: 2, bold: true }), celdaDe('Cloud', { rowspan: 2, bold: true }), celdaDe('Sesiones', { bold: true }), celdaDe('6', { bold: true })],
+    [celdaDe('Evaluación', { bold: true }), celdaDe('2ª', { bold: true })],
+    [celdaDe('Criterios de evaluación', { colspan: 4, bold: true })],
+    [celdaDe('RA1.a. Se ha reconocido la estructura.', { colspan: 4 })],
+    [celdaDe('Actividades de consolidación', { colspan: 4, bold: true })],
+    [celdaDe('− Repaso de lo aprendido en clase, con ejercicios resueltos y comentados.', { colspan: 4 })],
+  ];
+  const inf = S.informeDeFilas(filas);
+  assert.strictEqual(inf.perdidas, 2, 'la etiqueta que no se reconoce y su contenido');
+  assert.deepStrictEqual(inf.sueltas.map((x) => x.fila), [5, 6]);
+  assert.ok(inf.aviso.indexOf('la fila 5 («Actividades de consolidación»)') >= 0,
+    'el aviso dice la etiqueta, que es con lo que se arregla la redacción: ' + inf.aviso);
+  assert.ok(inf.aviso.indexOf('la fila 6 («') >= 0, inf.aviso);
+  assert.ok(inf.caracteres > 60, 'y cuenta el texto que se va a perder');
+  assert.strictEqual(inf.frase, 'Se reconocen 4 de las 6 filas de la tabla que vino del Word.');
+});
+
+prueba('core/sa: una fila huérfana se sitúa por su número cuando el Word la dejó sin etiqueta', () => {
+  // Pasa en los documentos reales: una ficha con un segundo bloque de recuperación cuya fila de
+  // etiquetas está en blanco. Sin etiqueta que nombrar, lo que ubica el hueco es la fila.
+  const filas = [
+    [celdaDe('Situación de aprendizaje 2', { rowspan: 2, bold: true }), celdaDe('ODS', { rowspan: 2, bold: true }), celdaDe('Sesiones', { bold: true }), celdaDe('5', { bold: true })],
+    [celdaDe('Evaluación', { bold: true }), celdaDe('1ª', { bold: true })],
+    [celdaDe('Actividades de recuperación', { colspan: 4, bold: true })],
+    [celdaDe('− Prueba práctica de los contenidos mínimos.', { colspan: 4 })],
+    [celdaDe('', { colspan: 4, bold: true })],
+    [celdaDe('− Prueba escrita de recuperación sobre el comercio justo, con los ejercicios corregidos.', { colspan: 4 })],
+  ];
+  const inf = S.informeDeFilas(filas);
+  assert.strictEqual(inf.perdidas, 1, 'la fila en blanco no pierde nada: la que se pierde es la suya');
+  assert.deepStrictEqual(inf.sueltas.map((x) => x.fila), [6]);
+  // El texto se cita TAL CUAL está en la celda, con su viñeta: es con lo que se localiza la
+  // fila en la tabla, no el valor que habría tomado el campo.
+  assert.ok(inf.aviso.indexOf('la fila 6 («− Prueba escrita de recuperación sobre el comercio justo, c…»)') >= 0, inf.aviso);
+  assert.ok(inf.aviso.indexOf('se perderá en') >= 0, 'una sola fila, en singular');
+});
+
+prueba('core/sa: cuando no se pierde nada el informe lo dice también', () => {
+  const inf = S.informeDeFilas(S.filasDeFicha(Object.assign(S.fichaVacia(1, '1ª'), {
+    titulo: 'Consultas SQL', raTexto: 'RA2. Crea bases de datos.', ce: ['RA2.a. Se ha analizado el formato.'],
+  })));
+  assert.strictEqual(inf.perdidas, 0);
+  assert.strictEqual(inf.aviso, null, 'sin pérdida no hay aviso que gritar');
+  assert.ok(inf.frase.indexOf('no pierde nada') >= 0, inf.frase);
+  // La cabecera de las actividades no la lee ningún campo y se vuelve a imprimir igual: no es
+  // una fila perdida, y contarla haría que toda ficha pareciera estar perdiendo algo.
+  assert.ok(inf.frase.indexOf('Se reconocen ' + inf.filas + ' filas') >= 0, inf.frase);
+});
+
 // --------------------------------------------------------------- validaciones
 // La tabla de verdad de las comprobaciones del documento (core/validaciones.js). El convenio de los
 // criterios se pasa siempre explícito: el motor imprime con 'peso_del_ra' y la interfaz usa

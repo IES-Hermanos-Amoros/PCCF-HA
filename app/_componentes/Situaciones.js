@@ -28,6 +28,10 @@
 //  5. Debajo del formulario, LA FICHA COMO VA A SALIR IMPRESA, que se actualiza
 //     al escribir. Son las mismas filas que recibe el generador de PDF, porque
 //     las monta la misma función (`core/sa.js`, `filasDeFicha`).
+//  6. Y mientras la ficha conserve la tabla que vino del Word, EL INFORME DE
+//     RECONOCIMIENTO: cuántas de sus filas se entienden y cuáles no van a parar
+//     a ningún campo, que son las que se perderán al cambiar algo. Lo compone
+//     `informeDeFilas` de `core/sa.js`; aquí solo se pinta.
 //
 // QUÉ GUARDA Y CÓMO
 //
@@ -333,10 +337,34 @@ function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
     </header>
   );
 
+  // QUÉ SE HA ENTENDIDO DE LA TABLA QUE VINO DEL WORD. Mientras la ficha la conserva
+  // es ella la que se imprime; en cuanto algo cambia se suelta y lo impreso pasa a
+  // montarse de los campos, así que las filas que no han ido a parar a ningún campo
+  // son exactamente las que se van a perder. El lector las reconoce por el TEXTO de
+  // su etiqueta (`POR_ETIQUETA` de core/sa.js), de modo que una redacción distinta se
+  // pierde sin que la tabla parezca rara; lo que no puede es perderse en silencio.
+  // El recuento se queda a la vista también cuando no se pierde nada: es lo que
+  // permite comprobar de un vistazo que la ficha se sigue entendiendo.
+  const informe = Array.isArray(ficha.filas) && ficha.filas.length
+    ? Sa.informeDeFilas(ficha.filas)
+    : null;
+  const reconocimiento = informe ? (
+    <div
+      className={informe.aviso ? 'nota nota-error' : 'nota'}
+      role={informe.aviso ? 'alert' : 'status'}
+    >
+      <div>
+        {informe.aviso ? <><strong>{informe.aviso}</strong>{' '}</> : null}
+        {informe.frase}
+      </div>
+    </div>
+  ) : null;
+
   if (!editable) {
     return (
       <section className="tarjeta">
         {cabecera}
+        {reconocimiento}
         <Tabla filas={filasDe(ficha)} etiqueta={ETQ_PREVIA} nota="en lectura" />
       </section>
     );
@@ -350,6 +378,7 @@ function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
     <>
       <section className="tarjeta">
         {cabecera}
+        {reconocimiento}
 
         <div className="sa-cabecera">
           <label className="sa-campo">

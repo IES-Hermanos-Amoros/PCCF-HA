@@ -10,7 +10,8 @@
 //   La forma de la ficha, con campos con nombre:
 //     { num, titulo, sesiones, evaluacion, raTexto, ra: [2], ce: [...],
 //       competencias: [...], objetivos: [...], introduccion, no_evaluables,
-//       evaluables, refuerzo, ampliacion, recuperacion, recursos }
+//       evaluables, intermodular, refuerzo, ampliacion, recuperacion,
+//       complementarias, recursos }
 //
 //   Las dos conversiones que hacen falta para que una SA se vea, cambie y cree
 //   desde la aplicación:
@@ -19,6 +20,11 @@
 //   La segunda es la que permite que una SA nueva, que nunca estuvo en un Word,
 //   salga impresa igual que las importadas. Lo que se ve en la aplicación es lo
 //   que sale en el PDF, porque los dos usan esta misma función.
+//
+//   Y el informe de lo que la primera ha entendido de la rejilla
+//   (`filasSinCampo`, `informeDeFilas`): qué filas no han ido a parar a ningún
+//   campo, que son las que se perderán cuando la ficha suelte su rejilla. Ver el
+//   comentario de esa sección.
 //
 //   Las operaciones sobre una LISTA de fichas que son cálculo puro: renumerar,
 //   añadir, reemplazar, borrar, duplicar, mover. Reciben la lista y devuelven una
@@ -60,6 +66,9 @@
   // Los campos del cuerpo de la ficha, con la etiqueta exacta del documento. El
   // orden es el de la ficha impresa, así que vale también para pintar el
   // formulario. `grupo` marca las actividades, que se pintan juntas.
+  //
+  // `solo_si_hay` son las dos filas que NO están en todas las fichas: solo las
+  // traen los módulos que las escriben. Ver `filasDeFicha`.
   const CAMPOS = [
     { id: 'ce', etiqueta: 'Criterios de evaluación', ancho: 4 },
     { id: 'competencias', etiqueta: 'Competencias profesionales para la empleabilidad', ancho: 4 },
@@ -67,11 +76,40 @@
     { id: 'introduccion', etiqueta: 'Introducción', ancho: 2, grupo: 'actividades' },
     { id: 'no_evaluables', etiqueta: 'Formativas no evaluables', ancho: 1, grupo: 'actividades' },
     { id: 'evaluables', etiqueta: 'Formativas evaluables', ancho: 1, grupo: 'actividades' },
+    { id: 'intermodular', etiqueta: 'Actividades de proyecto intermodular', ancho: 4, grupo: 'actividades', solo_si_hay: true },
     { id: 'refuerzo', etiqueta: 'Actividades de refuerzo', ancho: 2, grupo: 'actividades' },
     { id: 'ampliacion', etiqueta: 'Actividades de ampliación', ancho: 2, grupo: 'actividades' },
     { id: 'recuperacion', etiqueta: 'Actividades de recuperación', ancho: 4, grupo: 'actividades' },
+    { id: 'complementarias', etiqueta: 'Actividades Complementarias', ancho: 4, grupo: 'actividades', solo_si_hay: true },
     { id: 'recursos', etiqueta: 'Materiales y recursos didácticos disponibles', ancho: 4 },
   ];
+
+  // LAS REDACCIONES QUE TAMBIÉN SE ACEPTAN AL LEER, campo por campo. Salen de los
+  // Word del departamento: los módulos de Digitalización Aplicada a los Sectores
+  // Productivos y de Sostenibilidad escriben estas filas de otra manera, y una
+  // etiqueta que no se reconoce no va a ningún campo, así que su texto desaparece
+  // en cuanto la ficha se vuelve a montar desde el modelo.
+  //
+  // LO QUE SE IMPRIME SIGUE SIENDO `etiqueta`: es la que fija el formato del
+  // documento, y un campo tiene varias etiquetas aceptadas pero una sola que
+  // escribe. Aquí solo se amplía lo que se entiende al leer.
+  //
+  // LA LISTA ES EXPLÍCITA, no una comparación por parecido, y lo es a propósito:
+  // un parecido acertaría casi siempre y fallaría sin decir nada justo cuando no,
+  // que es el caso que importa. Lo que no esté escrito aquí lo NOMBRA el informe
+  // de `informeDeFilas`, que es por donde se entera quien redacte el Word del año
+  // que viene.
+  const SINONIMOS = {
+    // «Aprendizaje a lo largo de la vida» es la variante que anota
+    // motor/sanear.js; «Aprendizajes de carácter transversal», la de los dos
+    // módulos nuevos.
+    competencias: [
+      'Competencias personales y sociales. Aprendizajes de carácter transversal',
+      'Competencias personales y sociales. Aprendizaje a lo largo de la vida',
+    ],
+    ampliacion: ['Actividades de profundización'],
+    recursos: ['Materiales y recursos disponibles'],
+  };
 
   const CABECERA_ACTIVIDADES = 'Tipificación de actividades formativas';
   const COLUMNAS = 4;
@@ -84,7 +122,10 @@
       .toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
-  const POR_ETIQUETA = new Map(CAMPOS.map((c) => [norm(c.etiqueta), c]));
+  const POR_ETIQUETA = new Map();
+  CAMPOS.forEach((c) => {
+    [c.etiqueta].concat(SINONIMOS[c.id] || []).forEach((e) => POR_ETIQUETA.set(norm(e), c));
+  });
 
   // ---------------------------------------------------------------- texto
 
@@ -128,24 +169,30 @@
 
   // ---------------------------------------------------------------- tabla -> modelo
 
+  const textoDe = (fila, j) => (fila && fila[j] ? String(fila[j].text == null ? '' : fila[j].text) : '');
+
+  // EL LECTOR DE UNA REJILLA, EN UNA SOLA PASADA: devuelve el modelo y, a la vez, qué filas
+  // han aportado algo (`usadas`, por su índice). Las dos cosas salen del mismo recorrido a
+  // propósito: el informe de lo que NO se reconoce tiene que medir exactamente lo que este
+  // lector entiende, y con dos recorridos podría decir que no se pierde nada mientras se
+  // pierde.
+  //
   // La cabecera: "Situación de aprendizaje 3 | título | Sesiones | 12"
   // Las etiquetas pueden llevar el valor al lado (en la misma fila) o debajo (la
   // fila es toda de etiquetas en negrita y el valor va en la siguiente).
-  // `cabecera`, si viene, manda sobre lo deducido de la tabla.
-  function fichaDeFilas(filas, cabecera) {
+  function leerFilas(filas) {
     const f = Array.isArray(filas) ? filas : [];
-    const texto = (fila, j) => (fila && fila[j] ? String(fila[j].text == null ? '' : fila[j].text) : '');
+    const usadas = new Set();
     const out = {
       num: null, titulo: '', sesiones: null, evaluacion: '', raTexto: '', ra: [],
-      ce: [], competencias: [], objetivos: [],
-      introduccion: [], no_evaluables: [], evaluables: [], refuerzo: [], ampliacion: [], recuperacion: [],
-      recursos: [],
     };
+    CAMPOS.forEach((c) => { out[c.id] = []; });
 
     if (f.length) {
-      const n = texto(f[0], 0).match(/(\d+)/);
+      const n = textoDe(f[0], 0).match(/(\d+)/);
       out.num = n ? Number(n[1]) : null;
-      out.titulo = texto(f[0], 1).trim();
+      out.titulo = textoDe(f[0], 1).trim();
+      usadas.add(0);
     }
 
     f.forEach((fila, i) => {
@@ -153,26 +200,37 @@
 
       // etiquetas con el valor al lado, en la misma fila
       for (let j = 0; j < fila.length - 1; j += 1) {
-        const etq = norm(texto(fila, j));
+        const etq = norm(textoDe(fila, j));
         if (etq === 'sesiones') {
-          const m = texto(fila, j + 1).match(/-?\d+(?:[.,]\d+)?/);
+          const m = textoDe(fila, j + 1).match(/-?\d+(?:[.,]\d+)?/);
           out.sesiones = m ? Number(m[0].replace(',', '.')) : null;
         } else if (etq === 'evaluacion') {
-          out.evaluacion = texto(fila, j + 1).trim();
+          out.evaluacion = textoDe(fila, j + 1).trim();
         } else if (etq.startsWith('resultado')) {
-          out.raTexto = texto(fila, j + 1).trim();
+          out.raTexto = textoDe(fila, j + 1).trim();
+        } else {
+          continue;
         }
+        usadas.add(i);
       }
 
       // etiquetas con el valor debajo: la fila es toda de etiquetas conocidas
       const etiquetas = fila.map((c) => POR_ETIQUETA.get(norm(c && c.text)));
       if (!etiquetas.length || etiquetas.some((c) => !c)) return;
       const siguiente = f[i + 1] || [];
-      etiquetas.forEach((campo, j) => { out[campo.id] = aLineas(texto(siguiente, j)); });
+      etiquetas.forEach((campo, j) => { out[campo.id] = aLineas(textoDe(siguiente, j)); });
+      usadas.add(i);
+      if (f[i + 1]) usadas.add(i + 1);
     });
 
     out.ra = raDeTexto(out.raTexto);
+    return { ficha: out, usadas };
+  }
 
+  // El modelo de una rejilla importada. `cabecera`, si viene, manda sobre lo
+  // deducido de la tabla.
+  function fichaDeFilas(filas, cabecera) {
+    const out = leerFilas(filas).ficha;
     if (cabecera) {
       ['num', 'titulo', 'sesiones', 'evaluacion'].forEach((k) => {
         if (cabecera[k] !== undefined && cabecera[k] !== null && cabecera[k] !== '') out[k] = cabecera[k];
@@ -207,6 +265,11 @@
 
     const bloque = (ids) => {
       const campos = ids.map((id) => CAMPOS.filter((c) => c.id === id)[0]).filter(Boolean);
+      // UN CAMPO `solo_si_hay` VACÍO NO IMPRIME SU FILA. Los demás sí, en blanco, porque su
+      // fila está en TODAS las fichas del documento y ese hueco es parte del formato; estas
+      // solo las escriben algunos módulos, así que una ficha que no las trae no puede ganar
+      // filas vacías por el hecho de volver a montarse.
+      if (campos.every((c) => c.solo_si_hay) && !campos.some((c) => deLineas(s[c.id]).trim())) return;
       out.push(campos.map((c) => celda(c.etiqueta, { colspan: ancho(c.ancho), bold: true })));
       out.push(campos.map((c) => celda(deLineas(s[c.id]), { colspan: ancho(c.ancho) })));
     };
@@ -216,10 +279,93 @@
     bloque(['objetivos']);
     out.push([celda(CABECERA_ACTIVIDADES, { colspan: COLUMNAS, bold: true })]);
     bloque(['introduccion', 'no_evaluables', 'evaluables']);
+    bloque(['intermodular']);
     bloque(['refuerzo', 'ampliacion']);
     bloque(['recuperacion']);
+    bloque(['complementarias']);
     bloque(['recursos']);
     return out;
+  }
+
+  // ---------------------------------------------------------------- el informe de reconocimiento
+  //
+  // Mientras una ficha conserva su rejilla importada, lo que se imprime es la rejilla. En
+  // cuanto la ficha cambia, la rejilla se suelta y lo que se imprime pasa a montarse del
+  // modelo (`filasDeFicha`), así que LO QUE NO HAYA ENTRADO EN UN CAMPO desaparece.
+  //
+  // El lector reconoce las filas por el TEXTO de su etiqueta (`POR_ETIQUETA`), que es lo único
+  // que el Word trae. La lista de etiquetas aceptadas siempre irá por detrás de lo que alguien
+  // escriba, y lo que no puede pasar es que la pérdida sea muda: de ahí este informe, que dice
+  // CON NÚMEROS cuántas filas se entienden y NOMBRA la etiqueta de las que no.
+
+  // LAS FILAS DE LA REJILLA QUE NO VAN A NINGÚN CAMPO: son exactamente las que se perderán. De
+  // cada una, su número (desde 1, el que se ve en la tabla) y su texto celda a celda.
+  //
+  // Dos filas no cuentan como perdidas aunque el lector no las mire: la que está en blanco, que
+  // no tiene nada que perder, y la cabecera de las actividades, que `filasDeFicha` vuelve a
+  // imprimir igual. Sin esa segunda excepción toda ficha del documento parecería perder algo, y
+  // un aviso que sale siempre no avisa de nada.
+  function filasSinCampo(filas) {
+    const f = Array.isArray(filas) ? filas : [];
+    const { usadas } = leerFilas(f);
+    const out = [];
+    f.forEach((fila, i) => {
+      if (usadas.has(i)) return;
+      const celdas = (fila || []).map((c, j) => textoDe(fila, j).trim()).filter(Boolean);
+      if (!celdas.length) return;
+      if (norm(celdas.join(' ')) === norm(CABECERA_ACTIVIDADES)) return;
+      out.push({ fila: i + 1, celdas, caracteres: celdas.join('\n').length });
+    });
+    return out;
+  }
+
+  // «la 13, la 14 y la 15»: la coma hasta el último, que va con «y».
+  function enLista(partes) {
+    if (!partes.length) return '';
+    if (partes.length === 1) return partes[0];
+    return partes.slice(0, -1).join(', ') + ' y ' + partes[partes.length - 1];
+  }
+
+  const cuenta = (n, uno, varios) => (n === 1 ? '1 ' + uno : n + ' ' + varios);
+
+  // Cómo se nombra una fila perdida: por su número y por su primera línea, que es donde el
+  // documento escribe la etiqueta. Se recorta porque una celda de contenido puede traer un
+  // párrafo entero, y lo que hace falta leer es con qué fila de la tabla se corresponde.
+  const RECORTE = 60;
+  function nombraFila(x) {
+    const l = x.celdas[0].split('\n')[0].trim();
+    const corta = l.length > RECORTE ? l.slice(0, RECORTE - 1).trim() + '…' : l;
+    return 'la fila ' + x.fila + ' («' + corta + '»)';
+  }
+
+  // EL INFORME ENTERO, para que la pantalla no tenga que componer ninguna frase: `frase` dice
+  // lo que se entiende de la tabla y `aviso` lo que no, con el texto con el que se arregla la
+  // redacción del Word. `aviso` es null cuando no se pierde nada, que es el caso normal.
+  function informeDeFilas(filas) {
+    const f = Array.isArray(filas) ? filas : [];
+    const sueltas = filasSinCampo(f);
+    const perdidas = sueltas.length;
+    const total = f.length;
+
+    const frase = perdidas
+      ? 'Se reconocen ' + (total - perdidas) + ' de las ' + total + ' filas de la tabla que vino del Word.'
+      : 'Se reconocen ' + cuenta(total, 'fila', 'filas') + ' de la tabla que vino del Word: todo su texto'
+        + ' está en los campos de la ficha, así que cambiarla no pierde nada.';
+
+    const aviso = perdidas
+      ? cuenta(perdidas, 'fila de la tabla no va', 'filas de la tabla no van')
+        + ' a ningún campo de la ficha y se ' + (perdidas === 1 ? 'perderá' : 'perderán')
+        + ' en cuanto se cambie algo: ' + enLista(sueltas.map(nombraFila)) + '.'
+      : null;
+
+    return {
+      filas: total,
+      perdidas,
+      caracteres: sueltas.reduce((a, x) => a + x.caracteres, 0),
+      sueltas,
+      frase,
+      aviso,
+    };
   }
 
   // ---------------------------------------------------------------- ficha nueva
@@ -319,9 +465,10 @@
   // ---------------------------------------------------------------- exportado
 
   const api = {
-    CAMPOS, CABECERA_ACTIVIDADES, COLUMNAS, EVALUACIONES,
+    CAMPOS, SINONIMOS, CABECERA_ACTIVIDADES, COLUMNAS, EVALUACIONES,
     norm, aLineas, lineas, deLineas, raDeTexto, lineaCe,
     fichaDeFilas, filasDeFicha, fichaVacia, esSemantica,
+    filasSinCampo, informeDeFilas,
     renumerar, anadirVacia, reemplazarEn, borrarDe, duplicarEn, moverEn,
     raSinSituacion, matriz,
   };
