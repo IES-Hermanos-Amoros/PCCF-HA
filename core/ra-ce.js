@@ -72,7 +72,15 @@
         if (mm) ce.push({ letra: mm[1].toLowerCase(), texto: mm[2].trim() });
         else if (ce.length) ce[ce.length - 1].texto += ' ' + l;
       }
-      ra.push({ num: m ? Number(m[1]) : ra.length + 1, texto: (m ? m[2] : texto(fila[0])).trim(), ce });
+      // UNA FILA VACÍA NO ES UN RESULTADO DE APRENDIZAJE. Sin esto, añadir dos filas y no
+      // escribirlas todavía daría dos RA con número y sin texto, y ese número no se queda quieto:
+      // se ofrecería al elegir los RA de una situación de aprendizaje, contaría en las
+      // comprobaciones y marcaría el apartado como relleno en la barra lateral (`algoEscrito`
+      // de core/arbol.js ve un número y da el campo por escrito). Una fila a medio escribir
+      // —con texto pero sin criterios— sí cuenta: hay tablas importadas que son así.
+      const suyo = (m ? m[2] : texto(fila[0])).trim();
+      if (!suyo && !ce.length) continue;
+      ra.push({ num: m ? Number(m[1]) : ra.length + 1, texto: suyo, ce });
     }
     return ra;
   }

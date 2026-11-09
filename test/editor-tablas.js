@@ -2100,6 +2100,24 @@ prueba('el cambio en la rejilla pasa por el PATCH y sale en el PDF, con los RA r
   assert.ok(JSON.stringify(otra.ra).includes('CON UN ESQUEMA PROPIO'));
 });
 
+prueba('una fila vacia de la tabla de RA y CE no es un resultado de aprendizaje', () => {
+  // Al anadir filas para escribirlas despues, la tabla pasa por un estado con filas vacias. Si el
+  // lector les diera numero, ese RA fantasma se ofreceria al elegir los RA de una situacion de
+  // aprendizaje y contaria en las comprobaciones, y nadie encontraria de donde ha salido.
+  const cab = [c('Resultados de aprendizaje'), c('Criterios de evaluacion')];
+  assert.deepEqual(RaCe.raDeFilas([cab, [c(''), c('')], [c(''), c('')]]), []);
+
+  // Pero una fila a medio escribir SI cuenta: hay tablas importadas con el resultado escrito y la
+  // columna de criterios vacia, y perderlas seria perder RA que el modulo declara de verdad.
+  const aMedias = RaCe.raDeFilas([cab, [c('1. Configura sistemas'), c('')]]);
+  assert.deepEqual(aMedias, [{ num: 1, texto: 'Configura sistemas', ce: [] }]);
+
+  // Y una fila con criterios pero sin el texto del resultado tampoco se pierde.
+  const soloCe = RaCe.raDeFilas([cab, [c(''), c('a) Se ha hecho')]]);
+  assert.equal(soloCe.length, 1);
+  assert.equal(soloCe[0].ce.length, 1);
+});
+
 prueba('ida y vuelta del lector: la rejilla da unos RA, y la tabla que se pinta de ellos da los mismos', () => {
   const ra = RaCe.raDeFilas(FILAS_RA_CE);
   assert.deepEqual(ra.map((r) => r.num), [1, 2, 3]);
