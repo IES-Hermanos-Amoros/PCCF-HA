@@ -1,4 +1,4 @@
-// El editor de las tablas que se crean en la aplicación: escribir en las celdas, añadir y
+// El editor de las tablas, creadas en la aplicación o traídas del Word: escribir en las celdas, añadir y
 // quitar filas y columnas, combinar y separar celdas, poner la negrita, el fondo, la alineación y
 // el tamaño de letra celda a celda, repartir el ancho de las columnas y poner o quitar la fila de
 // cabecera.
@@ -10,9 +10,10 @@
 // el valor que le llega, manda cada gesto como una operación, y apaga el botón de lo que no se
 // puede con el motivo que da la misma función que usa el servidor (`motivoDeNo`).
 //
-// SOLO LAS CREADAS AQUÍ. Una tabla que vino del Word es el mismo tipo de campo, pero se queda en
-// solo lectura (`Edicion.esEditable`): el PDF de lo importado tiene que salir idéntico, y reescribir
-// una tabla celda a celda la deja de ser. Quien decide si este editor sale es ApartadoEditable.
+// LAS IMPORTADAS TAMBIÉN SE EDITAN (`Edicion.esEditable`), con una salvedad: una que traiga un defecto
+// de maquetación del Word solo admite cambios que no toquen su forma, y los botones que la cambian
+// salen apagados con el motivo (core/tablas-edicion.js). Quien decide si este editor sale es
+// ApartadoEditable.
 //
 // NUNCA `contenteditable`: cada celda es un `<textarea>` controlado, como los párrafos de
 // Editor.js. El valor es el que llega por `valor`; el componente no lee el DOM para saber qué dice
@@ -100,7 +101,7 @@ function Boton({
   );
 }
 
-export default function EditorTabla({ campo, valor, onCambio }) {
+export default function EditorTabla({ campo, valor, guardada, onCambio }) {
   const claveValor = Edicion.esClaveValor(valor);
   const filas = Edicion.filasDe(valor);
   const columnas = Edicion.columnasDe(valor);
@@ -146,7 +147,7 @@ export default function EditorTabla({ campo, valor, onCambio }) {
 
   // Lo que la puerta diría de este valor. Lo que sale de las operaciones siempre pasa; esto es por
   // si el valor que llega ya traía un defecto, que se diga delante de quien lo va a guardar.
-  const reparo = Estructurados.motivoDeCampo(campo, valor);
+  const reparo = Estructurados.motivoDeCampo(campo, valor, { guardado: guardada });
 
   const textoNumero = (n, uno, varios) => (n === 1 ? `1 ${uno}` : `${n} ${varios}`);
 
