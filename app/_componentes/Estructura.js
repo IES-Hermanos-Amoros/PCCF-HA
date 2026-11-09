@@ -266,15 +266,6 @@ export default function Estructura({
             aprendizaje: aquí se enseña el número que mande el servidor, y si no manda ninguno,
             ninguno.
           </p>
-          {enTodas ? (
-            <p>
-              <strong>Los apartados de un módulo son una plantilla.</strong> Este bloque no es solo
-              de {unidad ? `«${unidad.titulo}»` : 'esta unidad'}: {enTodas} repiten las mismas
-              secciones con su propio contenido, así que el título y el orden son comunes y no hay
-              forma de cambiarlos en uno solo. El contenido no se toca:
-              cada {comoSeLlaman || 'unidad'} conserva el suyo.
-            </p>
-          ) : null}
           <p>
             Un apartado nuevo nace vacío, dentro de este y al final, con un campo de texto para
             escribir. El identificador lo pone el servidor a partir del título, una sola vez: si
@@ -308,11 +299,14 @@ export default function Estructura({
           <span>Esto es la plantilla de {enTodas}.</span>
           <Ayuda sobre={`qué cambia en ${enTodas}`}>
             <p>
+              Este bloque no es solo de {unidad ? `«${unidad.titulo}»` : 'esta unidad'}: {enTodas}{' '}
+              repiten las mismas secciones.{' '}
               {deUnidades
-                ? <>Lo que cambies aquí —título, orden, añadir o retirar— sale en {enTodas} a la vez.</>
+                ? <>Lo que cambies aquí —título, orden, añadir o retirar— sale en {enTodas} a la vez,
+                  y no hay forma de cambiarlo en uno solo.</>
                 : <>Lo que añadas aquí nace en {enTodas} a la vez.</>}{' '}
               <strong>El contenido no se toca</strong>: cada {comoSeLlaman || 'unidad'} conserva el suyo,
-              y lo que escriba cada docente en su módulo se queda donde está.
+              y lo que haya escrito cada docente en su módulo se queda donde está.
             </p>
           </Ayuda>
         </div>
