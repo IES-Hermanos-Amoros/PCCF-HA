@@ -464,10 +464,42 @@
 
   // ---------------------------------------------------------------- exportado
 
+  // LO QUE LA REJILLA TODAVÍA SEPA, ANTES DE QUE SE TIRE.
+  //
+  // El modelo de una ficha importada lo escribió el lector del día en que se
+  // importó, y ese lector no reconocía todas las redacciones que usan los
+  // documentos del departamento (ver `SINONIMOS`): hay fichas guardadas cuyo
+  // texto de «materiales y recursos» o de «actividades de profundización» está
+  // solo en `filas`, porque el campo que le correspondía se quedó vacío.
+  //
+  // Una ficha se imprime desde `filas` mientras las tenga y desde el modelo en
+  // cuanto deja de tenerlas, así que ese texto desaparecería del PDF en el
+  // primer cambio que alguien le hiciera a la ficha —y no al escribirlo, sino al
+  // tocar cualquier otra cosa—, que es la peor forma de perder algo: nadie
+  // relaciona lo que falta con lo que hizo.
+  //
+  // Se rellenan SOLO los campos vacíos: lo que alguien haya escrito manda sobre
+  // lo que diga la tabla de la que vino, aunque lo escrito sea más corto. Y no
+  // reescribe nada por su cuenta: solo actúa en el momento en que la rejilla se
+  // va, que es el único en que hace falta.
+  const vacioEnFicha = (x) => x === null || x === undefined || x === ''
+    || (Array.isArray(x) && !x.length);
+
+  function completarDesdeFilas(ficha) {
+    const out = { ...(ficha || {}) };
+    if (!Array.isArray(out.filas) || !out.filas.length) return out;
+    const deLaTabla = fichaDeFilas(out.filas);
+    for (const clave of Object.keys(deLaTabla)) {
+      if (clave === 'filas') continue;
+      if (vacioEnFicha(out[clave]) && !vacioEnFicha(deLaTabla[clave])) out[clave] = deLaTabla[clave];
+    }
+    return out;
+  }
+
   const api = {
     CAMPOS, SINONIMOS, CABECERA_ACTIVIDADES, COLUMNAS, EVALUACIONES,
     norm, aLineas, lineas, deLineas, raDeTexto, lineaCe,
-    fichaDeFilas, filasDeFicha, fichaVacia, esSemantica,
+    fichaDeFilas, filasDeFicha, fichaVacia, esSemantica, completarDesdeFilas,
     filasSinCampo, informeDeFilas,
     renumerar, anadirVacia, reemplazarEn, borrarDe, duplicarEn, moverEn,
     raSinSituacion, matriz,

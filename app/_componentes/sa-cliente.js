@@ -66,8 +66,22 @@ export const CAMPO_ITEMS = 'items';
 
 // Sin `filas`: la tabla se vuelve a montar desde el modelo. Se borra la clave en
 // lugar de dejarla en `undefined` porque esto viaja por JSON.
+//
+// Y ANTES DE TIRARLA, SE LE SACA LO QUE TODAVÍA SEPA. El modelo de una ficha
+// importada lo escribió el lector del día en que se importó, y ese lector no
+// reconocía todas las redacciones que usan los documentos del departamento
+// (core/sa.js, `SINONIMOS`): hay fichas cuyo texto de «materiales y recursos» o
+// de «actividades de profundización» está solo en la rejilla, porque el campo
+// que le correspondía se quedó vacío. Tirar la rejilla sin más haría
+// desaparecer ese texto del PDF en el primer cambio —y no en el momento de
+// escribirlo, sino al tocar cualquier otra cosa de la ficha—, que es la peor
+// forma de perder algo: nadie relaciona lo que falta con lo que hizo.
+//
+// La regla de qué se rescata y cuándo está en core/sa.js (`completarDesdeFilas`),
+// con sus pruebas, y no aquí: es la misma decisión para quien edite desde donde
+// sea.
 export function sinFilas(ficha) {
-  const out = { ...(ficha || {}) };
+  const out = Sa.completarDesdeFilas(ficha);
   delete out.filas;
   return out;
 }

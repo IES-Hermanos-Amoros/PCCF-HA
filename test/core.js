@@ -297,6 +297,33 @@ prueba('core/sa: el ida y vuelta de una ficha conserva todos los campos', () => 
 
 const celdaDe = (text, opts) => Object.assign({ text, colspan: 1, rowspan: 1, bold: false }, opts);
 
+prueba('core/sa: al tirar la rejilla se rescata lo que solo estaba en ella', () => {
+  // El caso real: una ficha importada hace tiempo, cuyo modelo lo escribio un lector que todavia
+  // no conocia la redaccion «Materiales y recursos disponibles». El texto esta en la rejilla y el
+  // campo, vacio. Al editar cualquier otra cosa de la ficha la rejilla se tira: si no se rescatara
+  // aqui, ese texto desapareceria del PDF sin que nadie lo relacionara con lo que acaba de hacer.
+  const filas = [
+    [celdaDe('Situación de aprendizaje 1', { rowspan: 2, bold: true }), celdaDe('Cloud', { rowspan: 2, bold: true }), celdaDe('Sesiones', { bold: true }), celdaDe('6', { bold: true })],
+    [celdaDe('Evaluación', { bold: true }), celdaDe('2ª', { bold: true })],
+    [celdaDe('Materiales y recursos disponibles', { colspan: 4, bold: true })],
+    [celdaDe('Aula TIC con conexión a Internet.', { colspan: 4 })],
+  ];
+  const guardada = Object.assign(S.fichaVacia(1, '2ª'), { titulo: 'Cloud', sesiones: 6, filas });
+  assert.deepStrictEqual(guardada.recursos, [], 'de partida el campo esta vacio');
+
+  const completa = S.completarDesdeFilas(guardada);
+  assert.deepStrictEqual(completa.recursos, ['Aula TIC con conexión a Internet.'],
+    'el texto se rescata de la rejilla al campo que le toca');
+
+  // Y lo escrito manda: si el campo ya tiene algo, la rejilla no lo pisa, aunque sea mas corto.
+  const tocada = S.completarDesdeFilas(Object.assign({}, guardada, { recursos: ['Nada.'] }));
+  assert.deepStrictEqual(tocada.recursos, ['Nada.'], 'lo escrito no se sobrescribe');
+
+  // Sin rejilla no hace nada, que es el caso de una ficha creada en la aplicacion.
+  const sinRejilla = Object.assign({}, guardada); delete sinRejilla.filas;
+  assert.deepStrictEqual(S.completarDesdeFilas(sinRejilla), sinRejilla);
+});
+
 prueba('core/sa: el informe nombra las filas de la rejilla que no van a ningún campo', () => {
   const filas = [
     [celdaDe('Situación de aprendizaje 1', { rowspan: 2, bold: true }), celdaDe('Cloud', { rowspan: 2, bold: true }), celdaDe('Sesiones', { bold: true }), celdaDe('6', { bold: true })],
