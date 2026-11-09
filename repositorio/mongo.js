@@ -355,6 +355,12 @@ function crear({ uri, nombreBd }) {
         .toArray();
       return salidaMuchos(docs);
     },
+
+    async borrar(documentoId, secciones) {
+      if (secciones.length === 0) return 0;
+      const r = await (await coleccion('comentarios')).deleteMany({ documentoId, seccion: { $in: secciones } });
+      return r.deletedCount;
+    },
   };
 
   const usuarios = {

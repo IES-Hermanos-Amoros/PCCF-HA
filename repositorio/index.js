@@ -254,6 +254,21 @@ function crearRepositorio({ adaptador }) {
         cadena(documentoId, 'documentoId'),
         filtrar(filtro, FILTROS.comentarios),
       ),
+
+      // BORRAR los comentarios de unos apartados. Solo lo usa el borrado definitivo de un apartado:
+      // un hilo de comentarios habla de un apartado concreto, y si el apartado se destruye el hilo
+      // no se puede volver a leer ni a borrar —se listan por `seccion` + `unidadId`, y una sección
+      // que ya no está en la plantilla no se resuelve—, así que quedaría guardado para siempre lo
+      // que escribieron otras personas sin que nadie pueda llegar a ello. Misma forma que
+      // `apartados.borrar`: documento + lista de secciones, porque un apartado se va con su
+      // subárbol. Devuelve cuántos comentarios ha destruido.
+      borrar: async (documentoId, secciones) => {
+        if (!Array.isArray(secciones)) throw new TypeError('secciones debe ser una lista');
+        return a.comentarios.borrar(
+          cadena(documentoId, 'documentoId'),
+          [...new Set(secciones.map((s) => cadena(s, 'seccion')))],
+        );
+      },
     },
 
     usuarios: {

@@ -1148,6 +1148,39 @@ prueba('borrar un apartado retirado destruye su contenido, y restaurarlo ya no l
   assert.equal(abierto.puedeEditar, false, 'la persona asignada al apartado borrado conserva el permiso');
 });
 
+prueba('borrar un apartado se lleva sus comentarios, y borrar un campo no toca ninguno', async () => {
+  // Un hilo de comentarios habla de un apartado y se lista por `seccion` + `unidadId`. Si el
+  // apartado se destruye y el hilo se queda, nadie puede volver a leerlo ni a borrarlo: la sección
+  // ya no está en la plantilla, así que la ruta no la resuelve. Serían palabras de otras personas
+  // guardadas para siempre y fuera de alcance, y «definitivamente» dejaría de significarlo.
+  const { repo, u, doc } = await escenario();
+  await repo.comentarios.crear({
+    documentoId: doc._id, seccion: 'atencion-a-la-diversidad', unidadId: null, autor: 'ana', texto: 'Revisar las medidas.',
+  });
+  await repo.comentarios.crear({
+    documentoId: doc._id, seccion: 'atencion-a-la-diversidad', unidadId: null, autor: 'luis', texto: 'De acuerdo.',
+  });
+  // Uno de otro apartado, que NO se puede llevar por delante.
+  await repo.comentarios.crear({
+    documentoId: doc._id, seccion: 'introduccion', unidadId: null, autor: 'ana', texto: 'La introducción está bien.',
+  });
+  assert.equal((await repo.comentarios.listar(doc._id)).length, 3);
+
+  await cambio(await retirar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+  const hecho = await cambio(await borrar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+  assert.equal(hecho.comentariosBorrados, 2, 'los comentarios del apartado destruido siguen guardados');
+
+  const quedan = await repo.comentarios.listar(doc._id);
+  assert.equal(quedan.length, 1);
+  assert.equal(quedan[0].seccion, 'introduccion', 'se ha llevado el comentario de otro apartado');
+
+  // Borrar un CAMPO no toca ningún comentario: el hilo es del apartado, que sigue en pie.
+  await cambio(await retirarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  const deCampo = await cambio(await borrarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  assert.equal(deCampo.comentariosBorrados, 0);
+  assert.equal((await repo.comentarios.listar(doc._id)).length, 1, 'borrar un campo se ha llevado un comentario');
+});
+
 prueba('borrar un apartado se lleva el subárbol entero y las filas de todas las unidades', async () => {
   const { repo, u, doc } = await escenario();
   const raiz = 'modulos/situaciones-de-aprendizaje';

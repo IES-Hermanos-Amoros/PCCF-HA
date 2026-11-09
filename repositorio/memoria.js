@@ -171,6 +171,11 @@ function crear() {
     },
     // sort es estable: los comentarios con la misma fecha en milisegundos conservan el orden en que se escribieron.
     listar: (documentoId, filtro) => de('comentarios', { documentoId, ...filtro }).sort((x, y) => x.fecha - y.fecha),
+    borrar(documentoId, secciones) {
+      const antes = tablas.comentarios.length;
+      tablas.comentarios = tablas.comentarios.filter((c) => !(c.documentoId === documentoId && secciones.includes(c.seccion)));
+      return antes - tablas.comentarios.length;
+    },
   };
 
   const usuarios = {

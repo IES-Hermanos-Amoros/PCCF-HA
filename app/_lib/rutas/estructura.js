@@ -186,8 +186,15 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
     // en pie si esa escritura perdiera la carrera. Con el apartado ya fuera de la plantilla nadie
     // puede escribir en él, así que lo que se destruye es lo que se contó.
     let filasBorradas = 0;
+    let comentariosBorrados = 0;
     if (tipo === 'borrar') {
       filasBorradas = await repo.apartados.borrar(documento._id, hecho.cambio.secciones);
+      // Y los comentarios de esos apartados. Un hilo habla de un apartado concreto y se lista por
+      // `seccion` + `unidadId`: con la sección fuera de la plantilla no se podría volver a leer ni
+      // a borrar, así que dejarlo sería guardar para siempre lo que escribieron otras personas sin
+      // que nadie pueda llegar a ello. Borrar un campo no toca ningún comentario: el hilo es del
+      // apartado, no del campo, y el apartado sigue ahí.
+      comentariosBorrados = await repo.comentarios.borrar(documento._id, hecho.cambio.secciones);
     } else if (tipo === 'borrar_campo') {
       filasBorradas = await repo.apartados.quitarClave(documento._id, hecho.cambio.seccion, hecho.cambio.campo);
     }
@@ -213,7 +220,7 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
         apartadosAfectados: esDeCampo ? 1
           : (tipo === 'borrar' ? hecho.cambio.apartados : Plantilla.rama(apuntado, hecho.cambio.seccion).length),
         // Solo en los dos borrados: lo que había escrito y se ha destruido, y cuántas filas se han ido.
-        ...(destruye ? { contenido, filasBorradas } : {}),
+        ...(destruye ? { contenido, filasBorradas, comentariosBorrados } : {}),
         // Los campos que el cambio ha creado, tal como quedan en la plantilla, cada uno con el valor
         // con el que se abre mientras no tenga ninguno (core/campos.js → `valorInicial`). Un campo
         // recién creado no tiene valor guardado: es lo que el editor pone en pantalla.
@@ -506,7 +513,9 @@ const RESTAURAR_CAMPO = cambio('restaurar_campo', (cuerpo, url) => campoDeLaUrl(
 //
 //   · un APARTADO se va con su subárbol, y su contenido son filas de `apartados`, una por unidad
 //     (once en una sección de módulo). Se destruyen las de todos los apartados del subárbol
-//     (`repo.apartados.borrar`), y también el reparto guardado para ellos (`asignaciones`).
+//     (`repo.apartados.borrar`), sus comentarios (`repo.comentarios.borrar`, porque un hilo de una
+//     sección que ya no está en la plantilla no se puede ni leer ni borrar) y también el reparto
+//     guardado para ellos (`asignaciones`).
 //   · un CAMPO no tiene fila propia: es una clave de `valores` en cada fila de su apartado. Se quita
 //     de todas (`repo.apartados.quitarClave`). Un `escribir` normal no puede: la ruta de /apartado
 //     funde lo que llega con lo guardado, y un campo ausente se conserva. Si el contenido viejo
