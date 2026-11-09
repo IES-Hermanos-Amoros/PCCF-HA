@@ -78,10 +78,19 @@
         + ' la tabla tal como vino del Word y se imprime esa tabla: cambiar la estructura no cambia'
         + ' ninguna ficha de las que hay.';
     }
+    const otras = total - n;
     return (n === 1 ? '1 ficha de las ' + total + ' conserva' : n + ' fichas de las ' + total + ' conservan')
       + ' la tabla tal como vino del Word y se imprime esa tabla: cambiar la estructura no las'
-      + ' cambia. Las otras ' + (total - n) + ' siguen la estructura.';
+      + ' cambia. ' + (otras === 1 ? 'La otra sigue' : 'Las otras ' + otras + ' siguen')
+      + ' la estructura.';
   }
+
+  const esEntero = (x) => Number.isInteger(x);
+
+  // «7.ª de 12», o nada si no se sabe el sitio: ver el resguardo de `campo_ficha_movido`.
+  const sitio = (posicion, filas) => (esEntero(posicion) && esEntero(filas)
+    ? posicion + '.ª de ' + filas
+    : '');
 
   // EL INFORME DE UN CAMBIO YA HECHO. `cambio` es el que apunta el servidor
   // (`{ tipo, campoFicha, etiqueta, antes?, posicion?, filas? }`) y `r` el recuento. Devuelve
@@ -111,14 +120,17 @@
           estado: 'Fila «' + (c.antes || '') + '» renombrada a ' + et + '. El texto escrito en las fichas no se toca.',
           alerta: null,
         };
+      // EL SITIO SOLO SE DICE SI SE SABE. Sin este resguardo, un cambio que llegara sin
+      // `posicion` pondría «ahora es la undefined.ª de undefined» delante de quien lo ha hecho,
+      // y un número que no se tiene se calla, no se escribe.
       case 'campo_ficha_movido':
         return {
-          estado: 'Fila ' + et + ' movida: ahora es la ' + c.posicion + '.ª de ' + c.filas + '.',
+          estado: 'Fila ' + et + (sitio(c.posicion, c.filas) ? ' movida: ahora es la ' + sitio(c.posicion, c.filas) + '.' : ' movida.'),
           alerta: null,
         };
       case 'campo_ficha_anadido':
         return {
-          estado: 'Fila ' + et + ' añadida en el puesto ' + c.posicion + '.',
+          estado: 'Fila ' + et + (esEntero(c.posicion) ? ' añadida en el puesto ' + c.posicion + '.' : ' añadida a la ficha.'),
           alerta: total ? 'La fila nueva sale en blanco en ' + (total === 1 ? 'la ficha' : 'las ' + total + ' fichas') + ': nadie ha escrito nada en ella.' : null,
         };
       default:

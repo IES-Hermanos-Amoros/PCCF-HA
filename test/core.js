@@ -803,6 +803,22 @@ prueba('la frase de la tabla propia dice el numero de fichas que conservan la de
   const mixta = frase([ficha(1), ficha(0), ficha(0)]);
   assert.ok(mixta.indexOf('1 ficha de las 3 conserva') === 0 && mixta.indexOf('Las otras 2 siguen la estructura') > 0, mixta);
   assert.ok(!/rejilla|modelo/i.test(mixta), 'sin tecnicismos');
+  // Cuando solo queda UNA sin tabla propia la frase va en singular: «Las otras 1» esta mal
+  // escrito y lo lee la jefatura, no el programa.
+  const una = frase([ficha(1), ficha(1), ficha(0)]);
+  assert.ok(una.indexOf('La otra sigue la estructura') > 0, una);
+  assert.ok(!/otras 1/.test(una), una);
+});
+
+prueba('el informe no escribe «undefined» cuando el cambio no dice el sitio', () => {
+  const r = FE.recuento([{}], CAMPOS_FE);
+  const mover = FE.informeDeCambio({ tipo: 'campo_ficha_movido', etiqueta: 'Refuerzo' }, r);
+  const anadir = FE.informeDeCambio({ tipo: 'campo_ficha_anadido', etiqueta: 'Fila nueva' }, r);
+  assert.ok(!/undefined|NaN/.test(mover.estado), mover.estado);
+  assert.ok(!/undefined|NaN/.test(anadir.estado), anadir.estado);
+  // Y cuando si lo dice, lo dice.
+  const conSitio = FE.informeDeCambio({ tipo: 'campo_ficha_movido', etiqueta: 'Refuerzo', posicion: 7, filas: 12 }, r);
+  assert.ok(conSitio.estado.indexOf('7.ª de 12') > 0, conSitio.estado);
 });
 
 // ----------------------------------------------------------------- resumen
