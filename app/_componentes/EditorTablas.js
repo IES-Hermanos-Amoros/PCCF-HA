@@ -10,6 +10,13 @@
 // el valor que le llega, manda cada gesto como una operación, y apaga el botón de lo que no se
 // puede con el motivo que da la misma función que usa el servidor (`motivoDeNo`).
 //
+// LA TABLA DE RA Y CE SE EDITA IGUAL, Y DICE QUÉ HA ENTENDIDO. Es el único caso en el que la
+// rejilla no es lo que se imprime: de ella se leen los resultados de aprendizaje
+// (core/ra-ce.js), que son los que salen en el documento y los que declara el módulo para el
+// selector de situaciones de aprendizaje y para las comprobaciones. Releerlos es de
+// core/tablas-edicion.js; de aquí es decir con números lo que se ha reconocido y NOMBRAR lo que
+// ha dejado de reconocerse, que si no desaparecería de las otras dos pantallas sin que se note.
+//
 // LAS IMPORTADAS TAMBIÉN SE EDITAN (`Edicion.esEditable`), con una salvedad: una que traiga un defecto
 // de maquetación del Word solo admite cambios que no toquen su forma, y los botones que la cambian
 // salen apagados con el motivo (core/tablas-edicion.js). Quien decide si este editor sale es
@@ -72,6 +79,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import Edicion from '../../core/tablas-edicion';
 import Estructurados from '../../core/estructurados';
+import RaCe from '../../core/ra-ce';
 import Ayuda from './Ayuda';
 
 const llave = (i, j) => `${i}:${j}`;
@@ -200,6 +208,23 @@ export default function EditorTabla({ campo, valor, guardada, onCambio }) {
   // Lo que la puerta diría de este valor. Lo que sale de las operaciones siempre pasa; esto es por
   // si el valor que llega ya traía un defecto, que se diga delante de quien lo va a guardar.
   const reparo = Estructurados.motivoDeCampo(campo, valor, { guardado: guardada });
+
+  // EL INFORME DE RECONOCIMIENTO DE LA TABLA DE RA Y CE, que es el único caso en el que editar la
+  // rejilla cambia algo más que la rejilla. De este campo se imprimen los RESULTADOS DE APRENDIZAJE
+  // leídos de ella, y esa misma lista es la que ofrece el selector de RA de una situación de
+  // aprendizaje y la que usan las comprobaciones. El lector reconoce por el texto, así que una
+  // reescritura puede dejar un RA fuera sin que la tabla parezca distinta: lo que no se puede es
+  // que eso pase en silencio. Los RA se releen de la rejilla en cada operación
+  // (core/tablas-edicion.js), y aquí se vuelven a leer para contarlos, que es lo mismo que se ha
+  // guardado.
+  const esRaCe = RaCe.esTabla(valor, campo);
+  // Los RA que se reconocían al ABRIR la tabla: es la referencia contra la que se mide la pérdida.
+  // No la de la pulsación anterior, porque entonces un RA perdido se diría una vez y dejaría de
+  // decirse en cuanto se tocara otra celda.
+  const raDePartida = useRef(null);
+  const raAhora = esRaCe ? RaCe.raDeFilas(valor.filas) : null;
+  if (esRaCe && raDePartida.current === null) raDePartida.current = raAhora;
+  const informe = esRaCe ? RaCe.informe(raDePartida.current, raAhora) : null;
 
   const textoNumero = (n, uno, varios) => (n === 1 ? `1 ${uno}` : `${n} ${varios}`);
 
@@ -399,6 +424,31 @@ export default function EditorTabla({ campo, valor, guardada, onCambio }) {
       <span className="tb-donde">{Edicion.descripcion(valor)}</span>
       {claveValor ? null : (
         <Ayuda sobre="las celdas de la tabla">
+          {/* Lo propio de la tabla de RA y CE va PRIMERO y en la MISMA ayuda, no en un segundo
+              botón «?» al lado del otro: es lo único de esta tabla que no se puede adivinar
+              mirándola, y dos botones iguales en la barra no se distinguen. */}
+          {esRaCe ? (
+            <>
+              <p>
+                De esta tabla el documento imprime los <strong>resultados de aprendizaje</strong>{' '}
+                que se leen de ella, y esa misma lista es la que ofrece el selector de RA de una
+                situación de aprendizaje y la que usan las comprobaciones del documento. Por eso
+                debajo de la barra se dice, después de cada cambio, cuántos se han reconocido.
+              </p>
+              <p>
+                Se reconocen <strong>por el texto</strong>, que es lo único que trae el Word: la
+                celda de la izquierda tiene que empezar por el número del resultado de aprendizaje
+                («3.» o «3)»), y cada criterio de la derecha por su letra («a)»), en su propia
+                línea. La primera fila es la cabecera y no se lee.
+              </p>
+              <p>
+                Si un cambio deja un RA o un criterio sin reconocer, sale dicho con su número. No
+                impide guardar —se puede estar a mitad de reescribir la tabla—, pero lo que no se
+                reconozca deja de salir en el selector de situaciones de aprendizaje y en las
+                comprobaciones.
+              </p>
+            </>
+          ) : null}
           <p>
             <strong>El formato se da en la barra de abajo</strong>, que habla siempre de una celda:
             la elegida. Se elige pulsando en ella o entrando con el tabulador, y entonces la casilla
@@ -626,6 +676,21 @@ export default function EditorTabla({ campo, valor, guardada, onCambio }) {
       {reparo ? (
         <div className="nota nota-error" role="alert">
           <div>Esto no se va a poder guardar: {reparo}</div>
+        </div>
+      ) : null}
+
+      {/* QUÉ SE HA ENTENDIDO DE ESTA TABLA. Siempre a la vista, no solo cuando algo va mal: el
+          recuento es lo que permite comprobar de un vistazo que la reescritura se sigue leyendo. La
+          pérdida va delante y en `alert`, porque es lo que no se ve en ningún otro sitio. */}
+      {informe ? (
+        <div
+          className={informe.aviso ? 'nota nota-error' : 'nota'}
+          role={informe.aviso ? 'alert' : 'status'}
+        >
+          <div>
+            {informe.aviso ? <><strong>{informe.aviso}</strong>{' '}</> : null}
+            {informe.frase}
+          </div>
         </div>
       ) : null}
 

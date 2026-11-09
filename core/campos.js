@@ -234,7 +234,10 @@
     const E = Estructurados();
     if (!campo) return null;
     const ini = campo.inicial || {};
-    if (campo.tipo === E.TIPO_TABLA || E.TIPOS_REJILLA.indexOf(campo.tipo) >= 0) {
+    // La tabla de RA y CE se abre como cualquier rejilla: lo que se edita son sus filas, y los
+    // resultados de aprendizaje se leen de ellas (core/ra-ce.js). Una sin valor abre vacía, como
+    // las demás importadas.
+    if (campo.tipo === E.TIPO_TABLA || campo.tipo === E.TIPO_TABLA_RA_CE || E.TIPOS_REJILLA.indexOf(campo.tipo) >= 0) {
       const filas = [];
       for (let i = 0; i < (ini.filas || 0); i += 1) {
         const fila = [];

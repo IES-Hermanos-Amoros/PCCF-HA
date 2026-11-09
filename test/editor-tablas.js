@@ -48,10 +48,16 @@ const Docx = require('../app/_lib/rutas/docx');
 const JSZip = require('jszip');
 const { buildDocDefinition } = require('../motor/render-generico');
 
+const fs = require('fs');
+const path = require('path');
+
 const Est = require('../core/estructurados');
 const Campos = require('../core/campos');
 const Edicion = require('../core/tablas-edicion');
 const Forma = require('../core/campos-forma');
+const RaCe = require('../core/ra-ce');
+// Para comprobar que un RA perdido se pierde de verdad: de aquí salen los RA que declara el módulo.
+const Comun = require('../app/_lib/rutas/comun');
 
 // ---------------------------------------------------------------- ayudas
 
@@ -162,6 +168,19 @@ const TABLA_NORMATIVA = [
   [c('Estatal'), c('RD 1147/2011')],
 ];
 
+// La tabla de resultados de aprendizaje y criterios, como la deja el importador: la rejilla del
+// Word y, al lado, los RA leídos de ella con el único lector del proyecto. Tres RA para poder
+// perder el de en medio sin que sea el primero ni el último.
+const FILAS_RA_CE = [
+  [c('Resultados de aprendizaje', { bold: true }), c('Criterios de evaluación', { bold: true })],
+  [c('1. Reconoce las características de los lenguajes de marcas.'),
+    c('a) Se han identificado las etiquetas.\nb) Se ha reconocido la jerarquía.')],
+  [c('2. Valida documentos.'), c('a) Se ha validado con un esquema.')],
+  [c('3. Administra servidores web.'), c('a) Se ha instalado el servidor.')],
+];
+const VALOR_RA_CE = { filas: FILAS_RA_CE, ra: RaCe.raDeFilas(FILAS_RA_CE) };
+const CAMPO_RA_CE = { id: 'ra_ce', tipo: 'auto.tabla_ra_ce', etiqueta: 'Resultados de aprendizaje y criterios de evaluación' };
+
 // Los criterios suman 90 y el RA pondera 100: un error de verdad, para que el panel de
 // comprobaciones tenga algo que decir en cada módulo y se pueda ver qué pasa al retirar el apartado.
 const PONDERACIONES = [
@@ -179,7 +198,7 @@ const PLANTILLA = {
   secciones: [
     { id: 'introduccion', titulo: 'Introducción', nivel: 1, edita: 'jefe_departamento', presencia: 1,
       campos: [campoTexto, { id: 'tabla_normativa', tipo: 'tabla', etiqueta: 'Normativa aplicable' },
-        { id: 'tabla_torcida', tipo: 'tabla', etiqueta: 'Calendario del Word' }],
+        { id: 'tabla_torcida', tipo: 'tabla', etiqueta: 'Calendario del Word' }, CAMPO_RA_CE],
       hijos: [
         { id: 'introduccion/contextualizacion', titulo: 'Contextualización', nivel: 2, presencia: 1,
           campos: [campoTexto], hijos: [] },
@@ -235,6 +254,7 @@ const datosDe = (u) => ({
       tabla_normativa: { filas: TABLA_NORMATIVA },
       // Como las del Word con un defecto: una fila más corta que la primera.
       tabla_torcida: { filas: [[c('Norma', { bold: true }), c('Año', { bold: true })], [c('LOE')], [c('LOMLOE'), c('2020')]] },
+      ra_ce: VALOR_RA_CE,
     },
     'atencion-a-la-diversidad': { texto: [{ type: 'p', text: 'Medidas de nivel II y III.' }] },
     // 'introduccion/contextualizacion' y 'anexos/actas' no están: nadie las ha escrito todavía.
@@ -1832,10 +1852,10 @@ prueba('queSeImprime: filas si las hay, pares si no, y ra solo en la tabla de RA
   }
 });
 
-prueba('la lista de tipos editables es una, y auto.tabla_ra_ce y los de datos derivados no están', () => {
-  assert.deepEqual(Est.TIPOS_EDITABLES, ['tabla', 'tabla_clave_valor', 'auto.competencias_objetivos', 'auto.contenidos', 'dual_ra_ce', 'auto.ficha_modulo']);
+prueba('la lista de tipos editables es una, y los de datos derivados no están', () => {
+  assert.deepEqual(Est.TIPOS_EDITABLES, ['tabla', 'tabla_clave_valor', 'auto.tabla_ra_ce', 'auto.competencias_objetivos', 'auto.contenidos', 'dual_ra_ce', 'auto.ficha_modulo']);
   for (const tipo of Est.TIPOS_EDITABLES) assert.equal(Est.seGuarda({ tipo }), true, tipo);
-  for (const tipo of ['auto.tabla_ra_ce', 'ponderacion_ra_ce_x', 'derivado.resumen_situaciones']) {
+  for (const tipo of ['ponderacion_ra_ce_x', 'derivado.resumen_situaciones']) {
     assert.equal(Edicion.esEditable({ id: 'x', tipo }), false, tipo);
   }
   assert.equal(Edicion.esEditable({ id: 'x', tipo: 'auto.competencias_objetivos', multiple: true }), false);
@@ -1908,6 +1928,182 @@ prueba('editar una celda de una clave y valor importada cambia lo que sale en el
   assert.equal(cambiada.pares[0].valor, 'DOS');
   assert.deepEqual(textosDelPdf(campo, cambiada), ['A', 'DOS']);
   assert.deepEqual(await textosDelWord(campo, cambiada), ['A', 'DOS']);
+});
+
+// ================================================================ la tabla de RA y CE
+//
+// Es la única tabla cuya rejilla NO es lo que se imprime: de ella se LEEN los resultados de
+// aprendizaje (core/ra-ce.js) y son esos los que salen en el PDF y en el Word, y los que el módulo
+// declara para el selector de situaciones de aprendizaje y para las comprobaciones
+// (`raDelModulo` de app/_lib/rutas/comun.js). Así que lo que hay que vigilar no es que se pueda
+// escribir, sino tres cosas: que lo escrito llegue a las dos salidas, que lo que deje de
+// reconocerse se diga con su número, y que el lector siga siendo uno.
+
+// Los criterios de esta tabla se pintan como una pila de párrafos dentro de la celda
+// (`pintarRaCe` de motor/render-generico.js), así que no están en `celda.text` y `textosDelPdf` no
+// los ve: se mira la definición entera, como hace `impreso`.
+const pdfDe = (campo, valor) => JSON.stringify(tablasDe(buildDocDefinition({ ...motoresDe(campo, valor), titulo: 'T', subtitulo: 'S' })));
+
+prueba('editar la rejilla de la tabla de RA y CE cambia lo que sale en el PDF y en el Word', async () => {
+  // De partida se imprimen los RA leídos, no las filas: por eso guardar solo las filas no se vería.
+  assert.equal(Est.queSeImprime(CAMPO_RA_CE, VALOR_RA_CE), 'ra');
+  assert.ok(pdfDe(CAMPO_RA_CE, VALOR_RA_CE).includes('Se ha reconocido la jerarquía.'));
+
+  // Se corrige el texto de un criterio, en la celda donde está escrito.
+  const v = Edicion.aplicar(Edicion.valorDe(CAMPO_RA_CE, VALOR_RA_CE), 'texto', {
+    fila: 1,
+    columna: 1,
+    valor: 'a) Se han identificado las etiquetas.\nb) Se ha reconocido la jerarquía de etiquetas CORREGIDA.',
+  }, { campo: CAMPO_RA_CE });
+  assert.notEqual(v, VALOR_RA_CE);
+
+  // Y `ra`, que es lo que se imprime, se ha releído de la rejilla en la propia operación.
+  assert.equal(v.ra[0].ce[1].texto, 'Se ha reconocido la jerarquía de etiquetas CORREGIDA.');
+  assert.deepEqual(v.ra, RaCe.raDeFilas(v.filas), 'lo que se imprime no sale de la rejilla editada');
+  assert.equal(Est.motivoDeCampo(CAMPO_RA_CE, v, { guardado: VALOR_RA_CE }), null, 'y la puerta lo guarda');
+  assert.equal(Edicion.paraPintar(v, CAMPO_RA_CE).filas[1][1].text.includes('CORREGIDA'), true,
+    'la pantalla enseña lo que se imprime');
+
+  const pdf = pdfDe(CAMPO_RA_CE, v);
+  const word = (await textosDelWord(CAMPO_RA_CE, v)).join(' | ');
+  assert.ok(pdf.includes('CORREGIDA'), 'el PDF no imprime el texto nuevo');
+  assert.ok(word.includes('CORREGIDA'), 'el Word no imprime el texto nuevo');
+  assert.equal(pdf.includes('la jerarquía.'), false, 'el PDF sigue imprimiendo el texto viejo');
+  assert.equal(word.includes('la jerarquía.'), false, 'el Word sigue imprimiendo el texto viejo');
+});
+
+prueba('el cambio en la rejilla pasa por el PATCH y sale en el PDF, con los RA releídos al guardar', async () => {
+  const { repo, u, doc } = await escenario();
+  const { a, campo, valor } = await abrir(u.jefa, doc._id, 'introduccion', 'ra_ce');
+  assert.equal(campo.tipo, 'auto.tabla_ra_ce');
+  assert.equal(Edicion.esEditable(campo, a.valores.ra_ce), true, 'la jefatura tiene editor para esta tabla');
+  assert.equal(Edicion.esImportada(campo), true);
+
+  const v = Edicion.aplicar(valor, 'texto', { fila: 2, columna: 1, valor: 'a) Se ha validado CON UN ESQUEMA PROPIO.' }, { campo });
+  assert.equal((await guardarValor(u.jefa, doc._id, 'introduccion', a, 'ra_ce', v)).status, 200);
+  assert.ok(impreso(await definicionDe(u.jefa, doc._id), 'CON UN ESQUEMA PROPIO'));
+
+  // La ruta vuelve a leer `ra` de la rejilla al guardar, así que ni por la API se puede dejar
+  // guardada una lista que no sea la de las filas: sería el cambio que se ve y no se imprime.
+  const guardado = (await repo.apartados.leer(doc._id, 'introduccion', null)).valores.ra_ce;
+  assert.deepEqual(guardado.ra, RaCe.raDeFilas(guardado.filas));
+  const aDeNuevo = await abrir(u.jefa, doc._id, 'introduccion', 'ra_ce');
+  const mentira = { filas: aDeNuevo.valor.filas, ra: VALOR_RA_CE.ra };
+  assert.equal((await guardarValor(u.jefa, doc._id, 'introduccion', aDeNuevo.a, 'ra_ce', mentira)).status, 200);
+  const otra = (await repo.apartados.leer(doc._id, 'introduccion', null)).valores.ra_ce;
+  assert.deepEqual(otra.ra, RaCe.raDeFilas(otra.filas), 'la ruta ha guardado la lista que le mandaron');
+  assert.ok(JSON.stringify(otra.ra).includes('CON UN ESQUEMA PROPIO'));
+});
+
+prueba('ida y vuelta del lector: la rejilla da unos RA, y la tabla que se pinta de ellos da los mismos', () => {
+  const ra = RaCe.raDeFilas(FILAS_RA_CE);
+  assert.deepEqual(ra.map((r) => r.num), [1, 2, 3]);
+
+  // La rejilla con la que el exportador a Word vuelve a escribir esos RA (`filasRaCe` de
+  // motor/exportar-docx.js): el número y un punto delante del texto, y los criterios con su letra,
+  // uno por línea. Si el lector y ese formato se separaran, exportar y volver a importar le
+  // cambiaría los RA al documento.
+  const pintada = [
+    [c('Resultados de aprendizaje', { bold: true }), c('Criterios de evaluación', { bold: true })],
+    ...ra.map((r) => [c(`${r.num}. ${r.texto}`), c(r.ce.map((x) => `${x.letra}) ${x.texto}`).join('\n'))]),
+  ];
+  assert.deepEqual(RaCe.raDeFilas(pintada), ra);
+
+  // Y leer dos veces la misma rejilla da lo mismo: ninguna operación del editor puede desplazar
+  // los RA solo por haberse guardado y vuelto a abrir.
+  let v = VALOR_RA_CE;
+  for (const [op, args] of [
+    ['texto', { fila: 1, columna: 0, valor: '1. Reconoce las características, reescrito.' }],
+    ['negrita', { fila: 1, columna: 0, puesta: true }],
+    ['anadir-fila', { despuesDe: 3 }],
+    ['anadir-columna', { despuesDe: 1 }],
+  ]) {
+    v = Edicion.aplicar(v, op, args, { campo: CAMPO_RA_CE });
+    assert.deepEqual(v.ra, RaCe.raDeFilas(v.filas), `${op} ha dejado «ra» sin releer`);
+    assert.equal(Est.motivoDeCampo(CAMPO_RA_CE, v, { guardado: VALOR_RA_CE }), null, op);
+  }
+});
+
+prueba('el informe de reconocimiento dice la verdad y nombra el RA que deja de reconocerse', () => {
+  const ra = VALOR_RA_CE.ra;
+  const quieta = RaCe.informe(ra, ra);
+  assert.equal(quieta.aviso, null, 'sin tocar nada no hay nada que avisar');
+  assert.equal(quieta.frase, 'Se reconocen 3 resultados de aprendizaje (RA1, RA2 y RA3) y 4 criterios de evaluación.');
+
+  // La reescritura que pierde un RA de verdad: la celda pasa a empezar por el código del módulo, y
+  // el lector lee ese número. El RA3 deja de existir para el resto de la aplicación.
+  const v = Edicion.aplicar(VALOR_RA_CE, 'texto', { fila: 3, columna: 0, valor: '0373.3 Administra servidores web.' }, { campo: CAMPO_RA_CE });
+  const inf = RaCe.informe(ra, v.ra);
+  assert.deepEqual(inf.perdidos, [3]);
+  assert.equal(inf.aviso, 'El RA3 ya no se reconoce y dejará de salir en el selector de situaciones de aprendizaje y en las comprobaciones.');
+  assert.equal(inf.frase, 'Se reconocen 3 resultados de aprendizaje (RA1, RA2 y RA373) y 4 criterios de evaluación.');
+
+  // Y la pérdida es real: los RA que declara el módulo son los que lee `raDeTablas` de la ruta.
+  assert.deepEqual(Comun.raDeTablas(v), [1, 2, 373]);
+  assert.equal(Comun.raDeTablas(v).includes(3), false);
+
+  // Quitar la fila de cabecera también pierde uno, porque la primera fila no se lee.
+  const sinCabecera = Edicion.aplicar(VALOR_RA_CE, 'quitar-fila', { fila: 0 }, { campo: CAMPO_RA_CE });
+  assert.deepEqual(RaCe.informe(ra, sinCabecera.ra).perdidos, [1]);
+
+  // Dos a la vez, en plural.
+  const dos = RaCe.informe(ra, ra.filter((r) => r.num === 1));
+  assert.equal(dos.aviso, 'Los RA2 y RA3 ya no se reconocen y dejarán de salir en el selector de situaciones de aprendizaje y en las comprobaciones.');
+
+  // Un criterio que deja de reconocerse: el RA sigue, el criterio no.
+  const menos = Edicion.aplicar(VALOR_RA_CE, 'texto', { fila: 1, columna: 1, valor: 'a) Se han identificado las etiquetas. Y la jerarquía.' }, { campo: CAMPO_RA_CE });
+  const infMenos = RaCe.informe(ra, menos.ra);
+  assert.deepEqual(infMenos.perdidos, []);
+  assert.equal(infMenos.aviso, 'El RA1 pasa de 2 criterios a 1: los criterios que ya no se reconocen dejarán de ofrecerse al elegir los de una situación de aprendizaje.');
+
+  // Una tabla que no declara ninguno lo dice en lugar de callarse.
+  assert.equal(RaCe.informe([], []).frase, 'No se reconoce ningún resultado de aprendizaje en esta tabla.');
+  assert.equal(RaCe.frase([{ num: 7, texto: 'x', ce: [] }]),
+    'Se reconoce 1 resultado de aprendizaje (RA7) y ningún criterio de evaluación.');
+});
+
+prueba('el lector de la tabla de RA y CE es UNO: el importador no puede volver a tener su copia', () => {
+  // LA PRUEBA QUE IMPIDE QUE VUELVAN A SER DOS. El importador leía la tabla con una copia propia
+  // (`parseRaCe`) y el editor no tenía ninguna; ahora los dos usan `raDeFilas` de core/ra-ce.js. Con
+  // dos copias, abrir una tabla importada y guardarla sin tocar nada le cambiaría los RA, y eso no
+  // se nota hasta que alguien mira el PDF.
+  //
+  // Las marcas que se buscan son las EXPRESIONES del lector, sacadas de su propio código: así la
+  // prueba no se queda vieja si mañana el lector reconoce de otra manera o la copia se llama de
+  // otro modo.
+  const fuente = fs.readFileSync(path.join(__dirname, '..', 'motor', 'importar-docx.js'), 'utf8');
+  assert.ok(/require\('\.\.\/core\/ra-ce'\)/.test(fuente), 'motor/importar-docx.js no llama al lector de core/');
+
+  const expresiones = (RaCe.raDeFilas.toString().match(/\/(?:\\.|\[(?:\\.|[^\]])*\]|[^/\\\n])+\/[a-z]*/g) || []);
+  assert.ok(expresiones.length >= 2, `no se han podido leer las expresiones del lector (${expresiones.length})`);
+  const copiadas = expresiones.filter((e) => fuente.includes(e));
+  assert.deepEqual(copiadas, [], `motor/importar-docx.js vuelve a tener su propio lector: ${copiadas.join(' ')}`);
+});
+
+prueba('un auto.tabla_ra_ce que nadie toca da exactamente el mismo PDF y el mismo Word', async () => {
+  const pdfAntes = JSON.stringify(tablasDe(buildDocDefinition({ ...motoresDe(CAMPO_RA_CE, VALOR_RA_CE), titulo: 'T', subtitulo: 'S' })));
+  const wordAntes = Buffer.from(await exportarDocx({ ...motoresDe(CAMPO_RA_CE, VALOR_RA_CE), titulo: 'T' }));
+
+  // Abrirla no cambia el valor, y los gestos que no cambian nada devuelven el MISMO objeto: no hay
+  // nada que guardar y por tanto nada que releer.
+  let v = Edicion.valorDe(CAMPO_RA_CE, VALOR_RA_CE);
+  assert.equal(v, VALOR_RA_CE, 'abrirla cambia el valor');
+  v = Edicion.aplicar(v, 'texto', { fila: 1, columna: 0, valor: v.filas[1][0].text }, { campo: CAMPO_RA_CE });
+  v = Edicion.aplicar(v, 'negrita', { fila: 1, columna: 0, puesta: v.filas[1][0].bold === true }, { campo: CAMPO_RA_CE });
+  v = Edicion.aplicar(v, 'alineacion', { fila: 1, columna: 0, cual: 'izquierda' }, { campo: CAMPO_RA_CE });
+  v = Edicion.aplicar(v, 'fondo', { fila: 1, columna: 0, cual: null }, { campo: CAMPO_RA_CE });
+  assert.equal(v, VALOR_RA_CE, 'un gesto que no cambia nada ha devuelto otro valor');
+
+  assert.equal(JSON.stringify(tablasDe(buildDocDefinition({ ...motoresDe(CAMPO_RA_CE, v), titulo: 'T', subtitulo: 'S' }))), pdfAntes);
+  assert.ok(Buffer.from(await exportarDocx({ ...motoresDe(CAMPO_RA_CE, v), titulo: 'T' })).equals(wordAntes),
+    'el Word de una tabla sin tocar ha cambiado de bytes');
+
+  // Y guardarla tal cual por la API tampoco cambia el PDF del documento.
+  const { u, doc } = await escenario();
+  const antes = JSON.stringify(tablasDe(await definicionDe(u.jefa, doc._id)));
+  const { a, valor } = await abrir(u.jefa, doc._id, 'introduccion', 'ra_ce');
+  assert.equal((await guardarValor(u.jefa, doc._id, 'introduccion', a, 'ra_ce', valor)).status, 200);
+  assert.equal(JSON.stringify(tablasDe(await definicionDe(u.jefa, doc._id))), antes);
 });
 
 // ---------------------------------------------------------------- ejecución

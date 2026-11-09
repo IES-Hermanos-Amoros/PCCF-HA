@@ -544,8 +544,10 @@ prueba('renumerar suelta la tabla importada, salvo si es lo único que tiene la 
 prueba('las tablas derivadas y los tipos sin editor no pasan por ninguna puerta', () => {
   const resumen = Est.motivoDeCampo({ id: 'resumen_situaciones', tipo: 'derivado.resumen_situaciones' }, { filas: [] });
   assert.ok(resumen.includes('se calcula'), resumen);
-  const rejilla = Est.motivoDeCampo({ id: 'ra_ce', tipo: 'auto.tabla_ra_ce' }, { ra: [] });
-  assert.ok(rejilla.includes('todavía no tiene editor'), rejilla);
+  // Un tipo de tabla que el importador podría deducir mañana de un Word y que no tiene puerta:
+  // se rechaza en lugar de guardarse, que es lo que haría que el apartado dejara de salir.
+  const nuevo = Est.motivoDeCampo({ id: 'x', tipo: 'auto.tabla_que_nadie_ha_escrito' }, { filas: [] });
+  assert.ok(nuevo.includes('todavía no tiene editor'), nuevo);
   assert.equal(Est.seGuarda({ tipo: 'ponderacion_ra_ce' }), true);
   assert.equal(Est.seGuarda({ tipo: 'derivado.resumen_situaciones' }), false);
 });
