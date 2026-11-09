@@ -119,6 +119,7 @@ const C = require('../../../core/permisos');
 const Estructurados = require('../../../core/estructurados');
 const CamposCore = require('../../../core/campos');
 const RaCe = require('../../../core/ra-ce');
+const Sa = require('../../../core/sa');
 const { listasDeTexto } = require('../../../motor/compartidos');
 const {
   conErrores, abrirDocumento, puedeEditarApartado, buscarSeccion, leerJson, raDelModulo,
@@ -423,7 +424,7 @@ function motivoItemsConEstructura(valores, campos, estructuraFicha) {
   const sustituidos = items && items.map((item) => {
     if (!item || typeof item !== 'object') return item;
     const copia = { ...item };
-    for (const id of fichas) if (Array.isArray(copia[id]) && copia[id].length) copia[id] = [{}];
+    for (const id of fichas) if (Array.isArray(copia[id]) && copia[id].length) copia[id] = [Sa.fichaVacia(1)];
     return copia;
   });
   const motivo = Estructurados.motivoItems(items ? { ...valores, items: sustituidos } : valores, campos);
