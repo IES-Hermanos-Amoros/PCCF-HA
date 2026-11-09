@@ -1788,6 +1788,249 @@ prueba('renombrar y mover un campo de un apartado de módulo sale en los once a 
   assert.deepStrictEqual(diferencias(antesFilas, await foto(repo, doc._id)), []);
 });
 
+// ================================================================ 9. la estructura de la ficha
+//
+// La ficha de situación de aprendizaje es la misma en los once módulos, así que su estructura es del
+// documento (`plantilla.estructuraFicha`) y no de un apartado. Ausente significa «la de siempre»:
+// solo el primer cambio de la jefatura la materializa desde la lista por omisión de core/sa.js.
+
+const Sa = require('../core/sa');
+
+const aplicarFicha = (plantilla, cambio) => Plantilla.aplicar(plantilla, cambio);
+const idsDe = (plantilla) => plantilla.estructuraFicha.map((c) => c.id);
+const vigentesDe = (plantilla) => plantilla.estructuraFicha.filter((c) => !c.retirado).map((c) => c.id);
+const base = () => ({ secciones: [] });
+const cambiarFicha = (persona, id, cuerpo) => Estructura.CAMBIAR_FICHA(
+  pet(`/api/documentos/${id}/estructura/ficha`, persona, { metodo: 'POST', cuerpo }), { id },
+);
+
+prueba('la primera operacion sobre una plantilla sin estructuraFicha materializa las de omision y se aplica sobre ellas', () => {
+  const plantilla = base();
+  assert.equal(plantilla.estructuraFicha, undefined);
+  const hecho = aplicarFicha(plantilla, { tipo: 'renombrar_campo_ficha', campoFicha: 'recursos', etiqueta: 'Materiales' });
+  assert.ok(!hecho.motivo, hecho.motivo);
+  assert.equal(hecho.plantilla.estructuraFicha.length, Sa.CAMPOS.length);
+  assert.deepStrictEqual(idsDe(hecho.plantilla), Sa.CAMPOS.map((c) => c.id));
+  assert.equal(hecho.plantilla.estructuraFicha.find((c) => c.id === 'recursos').etiqueta, 'Materiales');
+  // Lo demás es lo de omision, campo a campo (ancho, grupo, solo_si_hay incluidos).
+  Sa.CAMPOS.filter((c) => c.id !== 'recursos').forEach((c) => {
+    assert.deepStrictEqual(hecho.plantilla.estructuraFicha.find((x) => x.id === c.id), c);
+  });
+  // La plantilla de entrada no se toca.
+  assert.equal(plantilla.estructuraFicha, undefined);
+  assert.equal(hecho.cambio.deUnidades, true);
+});
+
+prueba('un documento sin cambios de ficha sigue sin estructuraFicha, tambien tras cambios de otra clase y un cambio rechazado', () => {
+  const plantilla = { secciones: [{ id: 'a', titulo: 'A', nivel: 1, campos: [{ id: 'texto', tipo: 'texto_largo', etiqueta: 'Texto' }], hijos: [] }] };
+  const renombrado = Plantilla.aplicar(plantilla, { tipo: 'renombrar', seccion: 'a', titulo: 'B' });
+  assert.ok(!renombrado.motivo);
+  assert.equal('estructuraFicha' in renombrado.plantilla, false);
+  const rechazado = aplicarFicha(plantilla, { tipo: 'mover_campo_ficha', campoFicha: 'ce', delta: -1 });
+  assert.ok(rechazado.motivo);
+  assert.equal(rechazado.plantilla, undefined, 'un rechazo no devuelve plantilla');
+  assert.equal('estructuraFicha' in plantilla, false);
+});
+
+prueba('renombrar una fila de la ficha cambia la etiqueta y NADA mas: el id se queda', () => {
+  const hecho = aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'objetivos', etiqueta: '  Metas   de aprendizaje ' });
+  const antes = Sa.CAMPOS.find((c) => c.id === 'objetivos');
+  const ahora = hecho.plantilla.estructuraFicha.find((c) => c.etiqueta === 'Metas de aprendizaje');
+  assert.ok(ahora, 'no se ha renombrado');
+  assert.deepStrictEqual(ahora, { ...antes, etiqueta: 'Metas de aprendizaje' });
+  assert.equal(ahora.id, 'objetivos');
+  assert.deepStrictEqual(idsDe(hecho.plantilla), Sa.CAMPOS.map((c) => c.id));
+  assert.equal(hecho.cambio.antes, antes.etiqueta);
+  // Un nombre vacio o desmesurado se rechaza con motivo.
+  assert.match(aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'ce', etiqueta: '  ' }).motivo, /Hace falta un nombre/);
+  assert.match(aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'ce', etiqueta: 'x'.repeat(101) }).motivo, /100 caracteres/);
+  assert.match(aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'nada', etiqueta: 'X' }).motivo, /ninguna fila «nada»/);
+});
+
+prueba('anadir una fila acuna el id de la etiqueta, la pone en su sitio y no lo cambia al renombrar', () => {
+  const uno = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Atención a la diversidad', posicion: 4, ancho: 2, grupo: 'actividades', solo_si_hay: true });
+  assert.ok(!uno.motivo, uno.motivo);
+  const lista = uno.plantilla.estructuraFicha;
+  assert.equal(lista.length, Sa.CAMPOS.length + 1);
+  assert.deepStrictEqual(lista[3], {
+    id: 'atencion-a-la-diversidad', etiqueta: 'Atención a la diversidad', ancho: 2, grupo: 'actividades', solo_si_hay: true,
+  });
+  assert.equal(uno.cambio.posicion, 4);
+  assert.equal(uno.cambio.deUnidades, true);
+
+  const renombrado = aplicarFicha(uno.plantilla, { tipo: 'renombrar_campo_ficha', campoFicha: 'atencion-a-la-diversidad', etiqueta: 'Diversidad' });
+  assert.equal(renombrado.plantilla.estructuraFicha[3].id, 'atencion-a-la-diversidad');
+  assert.equal(renombrado.plantilla.estructuraFicha[3].etiqueta, 'Diversidad');
+
+  // Sin posicion, al final; sin ancho, a todo lo ancho; sin grupo ni solo_si_hay, sin esas claves.
+  const final = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Observaciones' });
+  assert.deepStrictEqual(final.plantilla.estructuraFicha.pop(), { id: 'observaciones', etiqueta: 'Observaciones', ancho: 4 });
+});
+
+prueba('el id de una fila anadida no coincide con el de una retirada con la misma etiqueta, ni con ninguno', () => {
+  let p = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Rúbrica' }).plantilla;
+  assert.ok(idsDe(p).includes('rubrica'));
+  p = aplicarFicha(p, { tipo: 'retirar_campo_ficha', campoFicha: 'rubrica' }).plantilla;
+  p = aplicarFicha(p, { tipo: 'anadir_campo_ficha', etiqueta: 'Rúbrica' }).plantilla;
+  p = aplicarFicha(p, { tipo: 'anadir_campo_ficha', etiqueta: 'Rúbrica' }).plantilla;
+  const ids = idsDe(p);
+  assert.deepStrictEqual(ids.filter((i) => i.startsWith('rubrica')).sort(), ['rubrica', 'rubrica-2', 'rubrica-3']);
+  assert.equal(new Set(ids).size, ids.length, 'hay ids repetidos');
+  // Tampoco toma el de una de las de omision ni una clave de la propia ficha.
+  const comoOmision = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Introducción' }).plantilla;
+  assert.ok(idsDe(comoOmision).includes('introduccion-2'));
+  const comoTitulo = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Título' }).plantilla;
+  assert.ok(!idsDe(comoTitulo).includes('titulo'));
+});
+
+prueba('mover una fila de la ficha cuenta solo las vigentes y el rechazo dice los sitios que hay', () => {
+  // Orden de omision: ce, competencias, objetivos, ...
+  const m = (p, campoFicha, delta) => aplicarFicha(p, { tipo: 'mover_campo_ficha', campoFicha, delta });
+
+  const tercero = m(base(), 'objetivos', -2);
+  assert.deepStrictEqual(vigentesDe(tercero.plantilla).slice(0, 3), ['objetivos', 'ce', 'competencias']);
+  assert.equal(tercero.cambio.posicion, 1);
+
+  // Subir 3 el tercero: solo tiene 2 por encima, y no es «ya es la primera».
+  const motivo = m(base(), 'objetivos', -3).motivo;
+  assert.match(motivo, /solo tiene 2 filas por encima/);
+  assert.match(motivo, /no se puede subir 3 sitios/);
+  assert.doesNotMatch(motivo, /ya es la primera/);
+  assert.match(m(base(), 'competencias', -2).motivo, /solo tiene 1 fila por encima: no se puede subir 2 sitios/);
+  assert.match(m(base(), 'ce', -1).motivo, /ya es la primera fila/);
+
+  const ultima = Sa.CAMPOS[Sa.CAMPOS.length - 1].id;
+  const penultima = Sa.CAMPOS[Sa.CAMPOS.length - 2].id;
+  assert.match(m(base(), ultima, 1).motivo, /ya es la última fila/);
+  assert.match(m(base(), penultima, 2).motivo, /solo tiene 1 fila por debajo: no se puede bajar 2 sitios/);
+  assert.match(m(base(), 'ce', 0).motivo, /delta/);
+  assert.match(m(base(), 'ce', 1.5).motivo, /delta/);
+
+  // Con 'competencias' retirada, bajar 'ce' un sitio la pasa por encima de 'objetivos' y no de la retirada.
+  let p = aplicarFicha(base(), { tipo: 'retirar_campo_ficha', campoFicha: 'competencias' }).plantilla;
+  const bajado = m(p, 'ce', 1);
+  assert.deepStrictEqual(vigentesDe(bajado.plantilla).slice(0, 3), ['objetivos', 'ce', 'introduccion']);
+  assert.equal(bajado.cambio.posicion, 2);
+  // Y para contar sitios la retirada no existe: 'objetivos' tiene 1 por encima, no 2.
+  assert.match(m(p, 'objetivos', -2).motivo, /solo tiene 1 fila por encima/);
+  // La retirada no se mueve.
+  assert.match(m(p, 'competencias', 1).motivo, /está retirada/);
+});
+
+prueba('retirar y restaurar una fila de la ficha devuelve la estructura identica', () => {
+  const p0 = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Rúbrica', posicion: 2 }).plantilla;
+  const retirada = aplicarFicha(p0, { tipo: 'retirar_campo_ficha', campoFicha: 'competencias' });
+  assert.equal(retirada.plantilla.estructuraFicha.find((c) => c.id === 'competencias').retirado, true);
+  assert.equal(retirada.plantilla.estructuraFicha.length, p0.estructuraFicha.length, 'retirar no borra');
+  assert.match(aplicarFicha(retirada.plantilla, { tipo: 'retirar_campo_ficha', campoFicha: 'competencias' }).motivo, /ya está retirada/);
+  const vuelta = aplicarFicha(retirada.plantilla, { tipo: 'restaurar_campo_ficha', campoFicha: 'competencias' });
+  assert.deepStrictEqual(vuelta.plantilla.estructuraFicha, p0.estructuraFicha);
+  assert.equal(JSON.stringify(vuelta.plantilla.estructuraFicha), JSON.stringify(p0.estructuraFicha), 'tambien el orden de las claves');
+  assert.match(aplicarFicha(vuelta.plantilla, { tipo: 'restaurar_campo_ficha', campoFicha: 'competencias' }).motivo, /no está retirada/);
+  assert.equal(retirada.cambio.deUnidades, true);
+  assert.equal(vuelta.cambio.deUnidades, true);
+  // Una fila retirada no se renombra.
+  assert.match(aplicarFicha(retirada.plantilla, { tipo: 'renombrar_campo_ficha', campoFicha: 'competencias', etiqueta: 'X' }).motivo, /restáurala/);
+});
+
+prueba('no se puede retirar la ultima fila vigente de la ficha', () => {
+  let p = base();
+  const ids = Sa.CAMPOS.map((c) => c.id);
+  for (const id of ids.slice(1)) p = aplicarFicha(p, { tipo: 'retirar_campo_ficha', campoFicha: id }).plantilla;
+  assert.match(aplicarFicha(p, { tipo: 'retirar_campo_ficha', campoFicha: ids[0] }).motivo, /única fila/);
+});
+
+prueba('la ficha tiene un tope de filas vigentes y su rechazo se entiende', () => {
+  const tope = Plantilla.MAX_CAMPOS_FICHA;
+  assert.ok(tope > Sa.CAMPOS.length);
+  let p = base();
+  for (let n = Sa.CAMPOS.length; n < tope; n += 1) {
+    const hecho = aplicarFicha(p, { tipo: 'anadir_campo_ficha', etiqueta: `Fila ${n}` });
+    assert.ok(!hecho.motivo, hecho.motivo);
+    p = hecho.plantilla;
+  }
+  assert.equal(vigentesDe(p).length, tope);
+  const mas = aplicarFicha(p, { tipo: 'anadir_campo_ficha', etiqueta: 'Una mas' });
+  assert.match(mas.motivo, new RegExp(`ya tiene ${tope} filas`));
+  assert.match(mas.motivo, /Retira alguna/);
+  // Las retiradas no cuentan: retirando una cabe otra, y restaurar la primera ya no cabe.
+  const libre = aplicarFicha(p, { tipo: 'retirar_campo_ficha', campoFicha: 'recursos' }).plantilla;
+  const lleno = aplicarFicha(libre, { tipo: 'anadir_campo_ficha', etiqueta: 'Una mas' }).plantilla;
+  assert.equal(vigentesDe(lleno).length, tope);
+  assert.match(aplicarFicha(lleno, { tipo: 'restaurar_campo_ficha', campoFicha: 'recursos' }).motivo, /no cabe una más/);
+});
+
+prueba('anadir a la ficha rechaza lo que no es una fila', () => {
+  const a = (c) => aplicarFicha(base(), { tipo: 'anadir_campo_ficha', ...c }).motivo;
+  assert.match(a({ etiqueta: '' }), /Hace falta un nombre/);
+  assert.match(a({ etiqueta: 'X', ancho: 0 }), /del 1 al 4/);
+  assert.match(a({ etiqueta: 'X', ancho: 5 }), /del 1 al 4/);
+  assert.match(a({ etiqueta: 'X', ancho: 2.5 }), /del 1 al 4/);
+  assert.match(a({ etiqueta: 'X', posicion: 0 }), /de 1 a 13/);
+  assert.match(a({ etiqueta: 'X', posicion: 14 }), /de 1 a 13/);
+  assert.match(a({ etiqueta: 'X', solo_si_hay: 'si' }), /sí o no/);
+  assert.match(a({ etiqueta: 'X', grupo: 7 }), /grupo/);
+  assert.equal(aplicarFicha(base(), { tipo: 'borrar_campo_ficha', campoFicha: 'ce' }).motivo.includes('no es un cambio de estructura'), true);
+});
+
+prueba('la ruta de la ficha: la jefatura cambia, el docente y la jefatura de estudios no, y se registra', async () => {
+  const { repo, u, doc } = await escenario();
+  const antes = JSON.stringify((await repo.documentos.obtener(doc._id)).plantilla);
+
+  for (const persona of [u.ana, u.luis, u.estudios]) {
+    await esError(await cambiarFicha(persona, doc._id, { tipo: 'renombrar_campo_ficha', campoFicha: 'recursos', etiqueta: 'Otra' }), 403, 'sin_permiso');
+    await esError(await cambiarFicha(persona, doc._id, { tipo: 'cosa rara' }), 403, 'sin_permiso');
+  }
+  await esError(await cambiarFicha(null, doc._id, { tipo: 'retirar_campo_ficha', campoFicha: 'ce' }), 401, 'sin_identificar');
+  const sinCambios = await repo.documentos.obtener(doc._id);
+  assert.equal(JSON.stringify(sinCambios.plantilla), antes);
+  assert.equal(sinCambios.plantillaVersion, 1);
+  assert.equal('estructuraFicha' in sinCambios.plantilla, false, 'un rechazo no siembra la estructura');
+
+  const res = await cambiarFicha(u.jefa, doc._id, { tipo: 'anadir_campo_ficha', etiqueta: 'Atención a la diversidad', posicion: 3, ancho: 4 });
+  assert.equal(res.status, 201);
+  const cuerpo = await res.json();
+  assert.equal(cuerpo.plantillaVersion, 2);
+  assert.equal(cuerpo.afectaUnidades, true);
+  assert.equal(cuerpo.unidades, MODULOS.length);
+  assert.equal(cuerpo.campoFicha, 'atencion-a-la-diversidad');
+  assert.equal(cuerpo.apartadosAfectados, 0);
+  assert.equal(cuerpo.cambio.tipo, 'campo_ficha_anadido');
+  assert.equal(cuerpo.cambio.version, 2);
+  assert.equal(cuerpo.cambio.usuario, u.jefa._id);
+
+  const guardado = await repo.documentos.obtener(doc._id);
+  assert.equal(guardado.plantillaVersion, 2);
+  assert.equal(guardado.plantilla.estructuraFicha.length, Sa.CAMPOS.length + 1);
+  assert.equal(guardado.plantilla.estructuraFicha[2].id, 'atencion-a-la-diversidad');
+  assert.equal(guardado.plantilla.cambios[guardado.plantilla.cambios.length - 1].campoFicha, 'atencion-a-la-diversidad');
+
+  // El soporte tambien puede; un rechazo del nucleo es un 400 que no sube la version.
+  const soporte = await cambiarFicha(u.admin, doc._id, { tipo: 'mover_campo_ficha', campoFicha: 'atencion-a-la-diversidad', delta: -9 });
+  const dicho = await esError(soporte, 400, 'peticion');
+  assert.match(dicho.mensaje, /solo tiene 2 filas por encima/);
+  assert.equal((await repo.documentos.obtener(doc._id)).plantillaVersion, 2);
+  const ok = await cambiarFicha(u.admin, doc._id, { tipo: 'retirar_campo_ficha', campoFicha: 'atencion-a-la-diversidad' });
+  assert.equal(ok.status, 200);
+
+  // Un tipo que no es de la ficha, y un cuerpo sin la fila, son un 400.
+  await esError(await cambiarFicha(u.jefa, doc._id, { tipo: 'borrar_campo_ficha', campoFicha: 'ce' }), 400, 'peticion');
+  await esError(await cambiarFicha(u.jefa, doc._id, { tipo: 'retirar_campo_ficha' }), 400, 'peticion');
+  await esError(await cambiarFicha(u.jefa, doc._id, { tipo: 'retirar_campo_ficha', campoFicha: 'no-existe' }), 400, 'peticion');
+});
+
+prueba('la ruta de la ficha usa el control de version de la plantilla (409)', async () => {
+  const { repo, u, doc } = await escenario();
+  await cambiarFicha(u.jefa, doc._id, { tipo: 'retirar_campo_ficha', campoFicha: 'ce' });
+  const cuerpo = await esError(
+    await cambiarFicha(u.jefa, doc._id, { tipo: 'retirar_campo_ficha', campoFicha: 'competencias', esperaPlantillaVersion: 1 }), 409, 'conflicto',
+  );
+  assert.ok(cuerpo.mensaje);
+  assert.equal((await repo.documentos.obtener(doc._id)).plantillaVersion, 2);
+  const bien = await cambiarFicha(u.jefa, doc._id, { tipo: 'retirar_campo_ficha', campoFicha: 'competencias', esperaPlantillaVersion: 2 });
+  assert.equal(bien.status, 200);
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {
