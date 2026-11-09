@@ -11,6 +11,8 @@
 //   POST   /api/documentos/[id]/estructura/apartado/campo?seccion=      añadir un campo a un apartado
 //   POST   /api/documentos/[id]/estructura/apartado/campo/retirar?seccion=&campo=    quitar un campo (no borra)
 //   POST   /api/documentos/[id]/estructura/apartado/campo/restaurar?seccion=&campo=  devolverlo
+//   PATCH  /api/documentos/[id]/estructura/apartado/campo?seccion=&campo=   renombrar un campo (solo su etiqueta)
+//   POST   /api/documentos/[id]/estructura/apartado/campo/mover?seccion=&campo=     subirlo o bajarlo entre los de su apartado
 //   DELETE /api/documentos/[id]/estructura/apartado?seccion=                BORRAR un apartado retirado y todo lo escrito en él
 //   DELETE /api/documentos/[id]/estructura/apartado/campo?seccion=&campo=   BORRAR un campo retirado y lo escrito en él
 //
@@ -515,6 +517,30 @@ const RETIRAR_CAMPO = cambio('retirar_campo', (cuerpo, url) => campoDeLaUrl(url)
 // DEVOLVERLO, con todo lo que tenía escrito.
 const RESTAURAR_CAMPO = cambio('restaurar_campo', (cuerpo, url) => campoDeLaUrl(url));
 
+// RENOMBRAR UN CAMPO: `{ etiqueta }`. EL ID NO SE TOCA, por lo mismo que el del apartado: es la clave con
+// la que se guarda lo escrito (`valores[campo]`), y uno que cambiara dejaría el texto huérfano.
+const RENOMBRAR_CAMPO = cambio('renombrar_campo', (cuerpo, url) => {
+  const pedido = campoDeLaUrl(url);
+  if (pedido.fallo) return pedido;
+  if (cuerpo.etiqueta !== undefined && typeof cuerpo.etiqueta !== 'string') {
+    return { fallo: malaPeticion('La etiqueta tiene que ser un texto.') };
+  }
+  return { ...pedido, etiqueta: cuerpo.etiqueta };
+});
+
+// MOVER UN CAMPO entre los de su apartado: `{ delta: -1 }` lo sube un sitio, `{ delta: 1 }` lo baja.
+// Desplazamiento y no posición final, por la razón de `MOVER`: la interfaz son dos botones, y una
+// posición calculada sobre una lista que ha cambiado por medio mueve el campo a otro sitio sin que
+// nadie lo note. Los sitios se cuentan entre los campos vigentes (core/plantilla.js → `moverCampo`).
+const MOVER_CAMPO = cambio('mover_campo', (cuerpo, url) => {
+  const pedido = campoDeLaUrl(url);
+  if (pedido.fallo) return pedido;
+  if (cuerpo.delta !== undefined && typeof cuerpo.delta !== 'number') {
+    return { fallo: malaPeticion('«delta» es cuántos sitios se mueve el campo: -1 para subirlo, 1 para bajarlo.') };
+  }
+  return { ...pedido, delta: cuerpo.delta };
+});
+
 // ---------------------------------------------------------------- BORRAR
 //
 // La otra salida de lo retirado, y la única irreversible de la aplicación. Retirar no es un DELETE
@@ -549,4 +575,5 @@ const BORRAR_CAMPO = cambio('borrar_campo', (cuerpo, url) => campoDeLaUrl(url), 
 
 module.exports = {
   GET, ANADIR, RENOMBRAR, MOVER, RETIRAR, RESTAURAR, BORRAR, ANADIR_CAMPO, RETIRAR_CAMPO, RESTAURAR_CAMPO, BORRAR_CAMPO,
+  RENOMBRAR_CAMPO, MOVER_CAMPO,
 };

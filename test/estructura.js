@@ -175,6 +175,14 @@ const retirarCampo = (persona, id, seccion, campo) => Estructura.RETIRAR_CAMPO(
   pet(urlCampo(id, seccion, campo, 'retirar'), persona, { metodo: 'POST', cuerpo: {} }), { id },
 );
 
+const renombrarCampo = (persona, id, seccion, campo, cuerpo) => Estructura.RENOMBRAR_CAMPO(
+  pet(urlCampo(id, seccion, campo), persona, { metodo: 'PATCH', cuerpo: cuerpo === undefined ? {} : cuerpo }), { id },
+);
+
+const moverCampo = (persona, id, seccion, campo, cuerpo) => Estructura.MOVER_CAMPO(
+  pet(urlCampo(id, seccion, campo, 'mover'), persona, { metodo: 'POST', cuerpo: cuerpo === undefined ? {} : cuerpo }), { id },
+);
+
 const borrar = (persona, id, seccion, cuerpo) => Estructura.BORRAR(
   pet(`/api/documentos/${id}/estructura/apartado?seccion=${encodeURIComponent(seccion)}`, persona,
     { metodo: 'DELETE', cuerpo }),
@@ -1536,6 +1544,243 @@ prueba('un documento del curso anterior no se entera de lo que se borra en el nu
   const viejo = await (await leer(u.jefa, doc._id, 'atencion-a-la-diversidad', null)).json();
   assert.equal(viejo.valores.texto[0].text, 'Medidas de nivel II y III.');
   assert.ok(impreso(await definicionDe(u.ana, doc._id, PROG), 'Metodología de Programación.'));
+});
+
+// ================================================================ renombrar y mover un campo
+
+// El orden en que el PDF imprime dos textos, por la posición que ocupan en la definición.
+const antesEnElPdf = (definicion, a, b) => {
+  const s = JSON.stringify(definicion);
+  assert.ok(s.includes(a) && s.includes(b), 'el PDF no lleva alguno de los dos textos');
+  return s.indexOf(a) < s.indexOf(b);
+};
+
+const camposDeLaFila = async (persona, id, seccion) => (await (await estructuraDe(persona, id)).json())
+  .apartados.find((a) => a.seccion === seccion).campos;
+
+const etiquetasDe = async (persona, id, seccion) => (await camposDeLaFila(persona, id, seccion))
+  .filter((x) => !x.retirado).map((x) => x.id);
+
+prueba('renombrar un campo cambia la etiqueta y deja el id, lo escrito y los comentarios donde estaban', async () => {
+  const { repo, u, doc } = await escenario();
+  const antesFilas = await foto(repo, doc._id);
+
+  const hecho = await cambio(await renombrarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa', { etiqueta: '  Normativa   de   aplicación ' }));
+  assert.equal(hecho.plantillaVersion, 2);
+  assert.equal(hecho.campo, 'tabla_normativa', 'el id no cambia');
+  assert.equal(hecho.cambio.tipo, 'campo_renombrado');
+  assert.equal(hecho.cambio.etiqueta, 'Normativa de aplicación', 'los espacios sobrantes se limpian');
+  assert.equal(hecho.cambio.antes, 'Normativa aplicable');
+  assert.equal(hecho.afectaUnidades, false);
+  assert.deepStrictEqual(hecho.campos, [], 'renombrar no crea ningún campo');
+
+  const campo = (await camposDeLaFila(u.jefa, doc._id, 'introduccion')).find((x) => x.id === 'tabla_normativa');
+  assert.equal(campo.etiqueta, 'Normativa de aplicación');
+  const abierto = await (await leer(u.jefa, doc._id, 'introduccion', null)).json();
+  assert.equal(abierto.campos.find((x) => x.id === 'tabla_normativa').etiqueta, 'Normativa de aplicación');
+  assert.ok(abierto.valores.tabla_normativa, 'lo escrito en el campo se ha quedado huérfano');
+  // Ni una fila de contenido se ha tocado: no hay nada que migrar.
+  assert.deepStrictEqual(diferencias(antesFilas, await foto(repo, doc._id)), []);
+});
+
+prueba('renombrar un campo rechaza lo que no se puede, sin tocar nada', async () => {
+  const { repo, u, doc } = await escenario();
+  const antes = await instantanea(repo, doc._id);
+  const intro = 'introduccion';
+
+  // La etiqueta vacía, o que no es un texto, o que no cabe: un 400 que lo dice, no un recorte.
+  await esError(await renombrarCampo(u.jefa, doc._id, intro, 'texto', {}), 400, 'peticion');
+  await esError(await renombrarCampo(u.jefa, doc._id, intro, 'texto', { etiqueta: '   ' }), 400, 'peticion');
+  await esError(await renombrarCampo(u.jefa, doc._id, intro, 'texto', { etiqueta: 7 }), 400, 'peticion');
+  const largo = await esError(await renombrarCampo(u.jefa, doc._id, intro, 'texto', { etiqueta: 'a'.repeat(101) }), 400, 'peticion');
+  assert.ok(/100/.test(largo.mensaje), largo.mensaje);
+  // Justo en el límite, sí.
+  await cambio(await renombrarCampo(u.jefa, doc._id, intro, 'texto', { etiqueta: 'b'.repeat(100) }));
+  assert.equal((await camposDeLaFila(u.jefa, doc._id, intro)).find((x) => x.id === 'texto').etiqueta.length, 100);
+
+  // Lo que no existe es un 404.
+  await esError(await renombrarCampo(u.jefa, doc._id, intro, 'no-existe', { etiqueta: 'X' }), 404, 'no_encontrado');
+  await esError(await renombrarCampo(u.jefa, doc._id, 'no-existe', 'texto', { etiqueta: 'X' }), 404, 'no_encontrado');
+  // Un campo retirado se restaura antes.
+  await cambio(await retirarCampo(u.jefa, doc._id, intro, 'tabla_normativa'));
+  const retirado = await esError(await renombrarCampo(u.jefa, doc._id, intro, 'tabla_normativa', { etiqueta: 'X' }), 400, 'peticion');
+  assert.ok(/restáuralo/.test(retirado.mensaje), retirado.mensaje);
+  // Una lista de fichas no tiene campos propios.
+  await esError(await renombrarCampo(u.jefa, doc._id, 'modulos/situaciones-de-aprendizaje/situacion', 'titulo', { etiqueta: 'X' }), 400, 'peticion');
+  // Un apartado retirado, tampoco.
+  await cambio(await retirar(u.jefa, doc._id, 'anexos/actas'));
+  await esError(await renombrarCampo(u.jefa, doc._id, 'anexos/actas', 'texto', { etiqueta: 'X' }), 400, 'peticion');
+
+  const despues = await instantanea(repo, doc._id);
+  assert.deepStrictEqual(despues.filas, antes.filas);
+  // Solo han subido la versión los tres cambios que han salido bien (renombrar al límite, retirar el campo, retirar el apartado).
+  assert.equal(despues.version, antes.version + 3);
+});
+
+prueba('renombrar y mover un campo son de la jefatura del departamento, como el resto de la estructura', async () => {
+  const { repo, u, doc } = await escenario();
+  await cambio(await anadirCampo(u.jefa, doc._id, 'introduccion', { tipo: 'texto_largo', etiqueta: 'Notas' }), 201);
+  const antes = await instantanea(repo, doc._id);
+  for (const persona of [u.ana, u.luis, u.estudios]) {
+    await esError(await renombrarCampo(persona, doc._id, 'introduccion', 'texto', { etiqueta: 'X' }), 403, 'sin_permiso');
+    await esError(await moverCampo(persona, doc._id, 'introduccion', 'notas', { delta: -1 }), 403, 'sin_permiso');
+  }
+  // Quien no ve el documento no sabe ni que existe.
+  await esError(await renombrarCampo(u.pepe, doc._id, 'introduccion', 'texto', { etiqueta: 'X' }), 404, 'no_encontrado');
+  await esError(await moverCampo(u.pepe, doc._id, 'introduccion', 'notas', { delta: -1 }), 404, 'no_encontrado');
+  assert.deepStrictEqual(await instantanea(repo, doc._id), antes);
+  // El soporte sí puede.
+  await cambio(await moverCampo(u.admin, doc._id, 'introduccion', 'notas', { delta: -1 }));
+});
+
+prueba('renombrar y mover un campo llevan la versión de la plantilla como los demás cambios', async () => {
+  const { u, doc } = await escenario();
+  await cambio(await anadirCampo(u.jefa, doc._id, 'introduccion', { tipo: 'texto_largo', etiqueta: 'Notas' }), 201);
+  const leida = (await (await estructuraDe(u.jefa, doc._id)).json()).plantillaVersion;
+
+  const r = await cambio(await renombrarCampo(u.jefa, doc._id, 'introduccion', 'notas', { etiqueta: 'Apuntes', esperaPlantillaVersion: leida }));
+  assert.equal(r.plantillaVersion, leida + 1);
+  const m = await cambio(await moverCampo(u.jefa, doc._id, 'introduccion', 'notas', { delta: -1, esperaPlantillaVersion: leida + 1 }));
+  assert.equal(m.plantillaVersion, leida + 2);
+
+  // Con la versión que ya no es, un 409 que no cambia nada.
+  const e1 = await esError(await renombrarCampo(u.jefa, doc._id, 'introduccion', 'notas', { etiqueta: 'Otro', esperaPlantillaVersion: leida }), 409, 'conflicto');
+  assert.equal(e1.actual, leida + 2);
+  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'notas', { delta: 1, esperaPlantillaVersion: leida }), 409, 'conflicto');
+  const ahora = await (await estructuraDe(u.jefa, doc._id)).json();
+  assert.equal(ahora.plantillaVersion, leida + 2);
+  assert.equal(ahora.apartados.find((a) => a.seccion === 'introduccion').campos.find((x) => x.id === 'notas').etiqueta, 'Apuntes');
+  // Y los dos quedan apuntados en la historia de la plantilla.
+  const tipos = ahora.cambios.map((x) => x.tipo);
+  assert.deepStrictEqual(tipos.slice(-2), ['campo_renombrado', 'campo_movido']);
+});
+
+prueba('mover un campo cambia el orden en que lo imprime el PDF', async () => {
+  const { repo, u, doc } = await escenario();
+  const TEXTO = 'Esta programación la escribe el departamento de Informática.';
+  const TABLA = 'RD 1147/2011';
+  assert.ok(antesEnElPdf(await definicionDe(u.jefa, doc._id), TEXTO, TABLA), 'de partida el texto va antes que la tabla');
+  assert.deepStrictEqual(await etiquetasDe(u.jefa, doc._id, 'introduccion'), ['texto', 'tabla_normativa']);
+  const antesFilas = await foto(repo, doc._id);
+
+  const hecho = await cambio(await moverCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa', { delta: -1 }));
+  assert.equal(hecho.plantillaVersion, 2);
+  assert.equal(hecho.campo, 'tabla_normativa');
+  assert.equal(hecho.cambio.tipo, 'campo_movido');
+  assert.equal(hecho.cambio.delta, -1);
+  assert.equal(hecho.cambio.posicion, 1);
+  assert.equal(hecho.cambio.campos, 2);
+  assert.equal(hecho.afectaUnidades, false);
+
+  assert.deepStrictEqual(await etiquetasDe(u.jefa, doc._id, 'introduccion'), ['tabla_normativa', 'texto']);
+  assert.ok(antesEnElPdf(await definicionDe(u.jefa, doc._id), TABLA, TEXTO), 'el PDF sigue imprimiendo el texto primero');
+  // Lo que ve el editor del apartado es el mismo orden.
+  const abierto = await (await leer(u.jefa, doc._id, 'introduccion', null)).json();
+  assert.deepStrictEqual(abierto.campos.map((x) => x.id), ['tabla_normativa', 'texto']);
+  assert.deepStrictEqual(diferencias(antesFilas, await foto(repo, doc._id)), [], 'mover ha tocado lo escrito');
+
+  // Y de vuelta abajo.
+  await cambio(await moverCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa', { delta: 1 }));
+  assert.deepStrictEqual(await etiquetasDe(u.jefa, doc._id, 'introduccion'), ['texto', 'tabla_normativa']);
+  assert.ok(antesEnElPdf(await definicionDe(u.jefa, doc._id), TEXTO, TABLA));
+});
+
+prueba('mover el primer campo hacia arriba o el último hacia abajo es un 400 que lo dice, y no cambia nada', async () => {
+  const { repo, u, doc } = await escenario();
+  const antes = await instantanea(repo, doc._id);
+  const arriba = await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'texto', { delta: -1 }), 400, 'peticion');
+  assert.ok(/primer/.test(arriba.mensaje), arriba.mensaje);
+  const abajo = await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa', { delta: 1 }), 400, 'peticion');
+  assert.ok(/último/.test(abajo.mensaje), abajo.mensaje);
+  // Un salto que se pasa del final tampoco se recorta.
+  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'texto', { delta: 2 }), 400, 'peticion');
+  // Sin hermanos no hay sitio.
+  const solo = await esError(await moverCampo(u.jefa, doc._id, 'atencion-a-la-diversidad', 'texto', { delta: 1 }), 400, 'peticion');
+  assert.ok(/único/.test(solo.mensaje), solo.mensaje);
+  // Un delta que no es un desplazamiento.
+  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'texto', {}), 400, 'peticion');
+  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'texto', { delta: 0 }), 400, 'peticion');
+  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'texto', { delta: 'abajo' }), 400, 'peticion');
+  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'texto', { delta: 0.5 }), 400, 'peticion');
+  // Lo que no existe.
+  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'no-existe', { delta: 1 }), 404, 'no_encontrado');
+  await esError(await moverCampo(u.jefa, doc._id, 'no-existe', 'texto', { delta: 1 }), 404, 'no_encontrado');
+  // Una lista de fichas no tiene campos propios que ordenar.
+  await esError(await moverCampo(u.jefa, doc._id, 'modulos/situaciones-de-aprendizaje/situacion', 'titulo', { delta: 1 }), 400, 'peticion');
+  assert.deepStrictEqual(await instantanea(repo, doc._id), antes);
+});
+
+prueba('mover cuenta los campos que se ven: un retirado en medio ni se salta ni cuenta, y conserva su sitio', async () => {
+  const { u, doc } = await escenario();
+  // [texto, tabla_normativa, notas]; se retira la tabla, que queda entre los dos que se ven.
+  await cambio(await anadirCampo(u.jefa, doc._id, 'introduccion', { tipo: 'texto_largo', etiqueta: 'Notas' }), 201);
+  await cambio(await retirarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  assert.deepStrictEqual(await etiquetasDe(u.jefa, doc._id, 'introduccion'), ['texto', 'notas']);
+
+  // Subir «notas» un sitio es pasar delante de «texto», que es el que se ve encima.
+  const hecho = await cambio(await moverCampo(u.jefa, doc._id, 'introduccion', 'notas', { delta: -1 }));
+  assert.equal(hecho.cambio.posicion, 1);
+  assert.equal(hecho.cambio.campos, 2, 'el retirado no cuenta');
+  assert.deepStrictEqual(await etiquetasDe(u.jefa, doc._id, 'introduccion'), ['notas', 'texto']);
+  // Ya es el primero de los que se ven, aunque por detrás haya uno retirado.
+  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'notas', { delta: -1 }), 400, 'peticion');
+  // El retirado no se mueve.
+  await esError(await moverCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa', { delta: -1 }), 400, 'peticion');
+
+  // Al restaurarlo vuelve detrás de «texto», donde estaba, y lo escrito en él sigue ahí.
+  const restaurado = await Estructura.RESTAURAR_CAMPO(
+    pet(urlCampo(doc._id, 'introduccion', 'tabla_normativa', 'restaurar'), u.jefa, { metodo: 'POST', cuerpo: {} }), { id: doc._id },
+  );
+  await cambio(restaurado);
+  assert.deepStrictEqual(await etiquetasDe(u.jefa, doc._id, 'introduccion'), ['notas', 'texto', 'tabla_normativa']);
+  // Y bajar «texto» pasa por encima de la tabla restaurada, no se la salta.
+  await cambio(await moverCampo(u.jefa, doc._id, 'introduccion', 'texto', { delta: 1 }));
+  assert.deepStrictEqual(await etiquetasDe(u.jefa, doc._id, 'introduccion'), ['notas', 'tabla_normativa', 'texto']);
+});
+
+prueba('la lectura de la estructura dice qué campo se puede renombrar, subir y bajar', async () => {
+  const { u, doc } = await escenario();
+  await cambio(await anadirCampo(u.jefa, doc._id, 'introduccion', { tipo: 'texto_largo', etiqueta: 'Notas' }), 201);
+  const lectura = async (seccion) => (await camposDeLaFila(u.jefa, doc._id, seccion))
+    .map((x) => [x.id, x.puedeRenombrar, x.puedeSubir, x.puedeBajar]);
+
+  assert.deepStrictEqual(await lectura('introduccion'), [
+    ['texto', true, false, true], ['tabla_normativa', true, true, true], ['notas', true, true, false],
+  ]);
+  // Un solo campo: se renombra, pero no hay dónde moverlo.
+  assert.deepStrictEqual(await lectura('atencion-a-la-diversidad'), [['texto', true, false, false]]);
+  // También los que no se pueden quitar: renombrar y mover no cambian lo que el campo es.
+  assert.deepStrictEqual(await lectura('modulos/ponderaciones'), [['ponderaciones', true, false, false]]);
+  // Una lista de fichas y un apartado retirado no admiten nada.
+  assert.deepStrictEqual(await lectura('modulos/situaciones-de-aprendizaje/situacion'), [
+    ['titulo', false, false, false], ['texto', false, false, false],
+  ]);
+  await cambio(await retirarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  assert.deepStrictEqual(await lectura('introduccion'), [
+    ['texto', true, false, true], ['tabla_normativa', false, false, false], ['notas', true, true, false],
+  ]);
+  await cambio(await retirar(u.jefa, doc._id, 'anexos/actas'));
+  assert.deepStrictEqual(await lectura('anexos/actas'), [['texto', false, false, false]]);
+});
+
+prueba('renombrar y mover un campo de un apartado de módulo sale en los once a la vez, y la respuesta lo dice', async () => {
+  const { repo, u, doc } = await escenario();
+  const seccion = 'modulos/metodologia';
+  await cambio(await anadirCampo(u.jefa, doc._id, seccion, { tipo: 'texto_largo', etiqueta: 'Recursos' }), 201);
+  const antesFilas = await foto(repo, doc._id);
+
+  const renombrado = await cambio(await renombrarCampo(u.jefa, doc._id, seccion, 'recursos', { etiqueta: 'Recursos y materiales' }));
+  assert.equal(renombrado.afectaUnidades, true);
+  assert.equal(renombrado.unidades, MODULOS.length);
+  const movido = await cambio(await moverCampo(u.jefa, doc._id, seccion, 'recursos', { delta: -1 }));
+  assert.equal(movido.afectaUnidades, true);
+  assert.equal(movido.unidades, MODULOS.length);
+
+  for (const unidadId of [PROG, MODULOS[3], MODULOS[MODULOS.length - 1]]) {
+    const abierto = await (await leer(u.jefa, doc._id, seccion, unidadId)).json();
+    assert.deepStrictEqual(abierto.campos.map((x) => [x.id, x.etiqueta]), [['recursos', 'Recursos y materiales'], ['texto', 'Texto']], unidadId);
+  }
+  assert.deepStrictEqual(diferencias(antesFilas, await foto(repo, doc._id)), []);
 });
 
 // ---------------------------------------------------------------- ejecución

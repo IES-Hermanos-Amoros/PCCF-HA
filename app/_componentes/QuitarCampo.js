@@ -1,4 +1,13 @@
-// Quitar un campo de un apartado y devolverlo. Es la otra mitad de AnadirCampo.
+// Quitar un campo de un apartado y devolverlo, y también renombrarlo y subirlo o bajarlo entre
+// los de su apartado. Es la otra mitad de AnadirCampo.
+//
+// Renombrar y mover no destruyen nada —el id del campo no cambia, y con él sigue enganchado lo
+// escrito—, así que van sin confirmación: una más estorba. Lo que a un campo no se le puede hacer
+// ahora mismo (porque ya es el primero, por ejemplo) se lee donde estaría el botón.
+//
+// EL FOCO SE QUEDA DONDE ESTABA. Al subir o bajar un campo la lista se reordena y el botón que se
+// ha pulsado cambia de sitio; quien va con teclado quiere pulsarlo otra vez, así que cuando la
+// lista nueva llega el foco vuelve al mismo botón, o al de al lado si este ya no hace nada.
 //
 // Quitar NO borra: el campo se queda en la plantilla marcado como retirado, con
 // lo que tuviera escrito, y vuelve al restaurarlo. Qué campos se pueden quitar
@@ -21,7 +30,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BorrarCampo } from './BorrarDefinitivo';
 import {
   avisoDeContenidoSinDestruir, cambiarEstructura, yaDiceQueNoHaCambiado,
@@ -38,6 +47,15 @@ const yEnTodas = (r, enTodas) => (r && r.afectaUnidades && r.unidades > 1
 
 // ------------------------------------------------- los campos de un apartado
 
+// Por qué un campo no se sube o no se baja: si no tiene hermanos, si ya es el primero o el último, o
+// si el apartado no admite cambios (una lista de fichas, uno retirado). Se calcula con la lista que
+// se está pintando, que es la de los campos vigentes.
+function motivoSinMover(c, vigentes, sentido) {
+  if (!c.puedeRenombrar) return 'No se mueve desde aquí';
+  if (vigentes.length < 2) return 'Es el único campo';
+  return sentido === 'subir' ? 'Ya es el primero' : 'Ya es el último';
+}
+
 export function QuitarCampos({
   documentoId, seccion, tituloApartado, fila, plantillaVersion, enTodas, onCambiado,
 }) {
@@ -45,12 +63,76 @@ export function QuitarCampos({
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);
+  // El campo que se está renombrando y el texto que lleva escrito.
+  const [editando, setEditando] = useState(null);
+  const [texto, setTexto] = useState('');
+  const botones = useRef(new Map());
+  const focoPendiente = useRef(null);
+
+  // Lleva el foco cuando la lista ya está repintada con el cambio. Depende de `fila` porque la
+  // lista nueva llega con la estructura que se vuelve a leer, un momento después de la respuesta, y
+  // de «enviando» porque mientras dura la petición los botones están apagados y no admiten foco.
+  useEffect(() => {
+    const quiere = focoPendiente.current;
+    if (!quiere) return;
+    const nodo = quiere.map((k) => botones.current.get(k)).find((n) => n && !n.disabled);
+    if (!nodo) return;
+    focoPendiente.current = null;
+    nodo.focus();
+  }, [fila, editando, enviando]);
+  const refBoton = (clave) => (nodo) => {
+    if (nodo) botones.current.set(clave, nodo);
+    else botones.current.delete(clave);
+  };
 
   const campos = fila && Array.isArray(fila.campos) ? fila.campos.filter((c) => !c.retirado) : [];
   // Sin campos que listar solo queda el aviso del que se acaba de quitar.
   if (!campos.length && !aviso) return null;
 
   const nombre = (c) => c.etiqueta || c.id;
+
+  // Renombrar y mover: el mismo trayecto que quitar, sin confirmación.
+  const cambiar = async (accion, c, cuerpo, mensaje, foco) => {
+    setEnviando(true);
+    setError(null);
+    setAviso(null);
+    try {
+      const r = await cambiarEstructura(documentoId, accion, {
+        seccion,
+        campo: c.id,
+        cuerpo: { ...cuerpo, esperaPlantillaVersion: plantillaVersion },
+      });
+      setAviso(mensaje(r || {}) + yEnTodas(r, enTodas));
+      focoPendiente.current = foco;
+      setEditando(null);
+      if (onCambiado) await onCambiado(accion, r || {});
+      return true;
+    } catch (e) {
+      setError(e);
+      return false;
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const mover = (c, delta) => cambiar(
+    'mover_campo', c, { delta },
+    (r) => {
+      const donde = r.cambio ? ` Ahora es el ${r.cambio.posicion}.º de ${r.cambio.campos}.` : '';
+      return `Campo «${nombre(c)}» ${delta < 0 ? 'subido' : 'bajado'} en «${tituloApartado}».${donde}`
+        + ' Sale impreso en ese orden.';
+    },
+    delta < 0 ? [`${c.id}:subir`, `${c.id}:bajar`] : [`${c.id}:bajar`, `${c.id}:subir`],
+  );
+
+  const abrirRenombrar = (c) => { setEditando(c.id); setTexto(nombre(c)); setAviso(null); setError(null); };
+  const cerrarRenombrar = (c) => { focoPendiente.current = [`${c.id}:renombrar`]; setEditando(null); };
+  const renombrar = (c) => cambiar(
+    'renombrar_campo', c, { etiqueta: texto },
+    () => `Campo «${nombre(c)}» renombrado a «${texto.replace(/\s+/g, ' ').trim()}» en «${tituloApartado}».`
+      + ' Lo escrito en él se queda donde estaba.',
+    [`${c.id}:renombrar`],
+  );
   const quitar = async (c) => {
     setEnviando(true);
     setError(null);
@@ -86,7 +168,73 @@ export function QuitarCampos({
       <ul className="lista-retirados" aria-label={`Campos de «${tituloApartado}»`}>
         {campos.map((c) => (
           <li key={c.id}>
-            <span className="retirado-nombre">{nombre(c)}</span>
+            {editando === c.id ? (
+              <>
+                <input
+                  type="text"
+                  autoFocus
+                  value={texto}
+                  onChange={(e) => setTexto(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); if (!enviando) renombrar(c); }
+                    if (e.key === 'Escape') { e.preventDefault(); cerrarRenombrar(c); }
+                  }}
+                  disabled={enviando}
+                  aria-label={`Nuevo nombre del campo «${nombre(c)}»`}
+                />
+                <button className="mini" type="button" onClick={() => renombrar(c)} disabled={enviando}>
+                  {enviando ? 'Guardando…' : 'Guardar nombre'}
+                </button>
+                <button className="mini" type="button" onClick={() => cerrarRenombrar(c)} disabled={enviando}>
+                  Cancelar
+                </button>
+              </>
+            ) : (
+              <span className="retirado-nombre">{nombre(c)}</span>
+            )}
+            {editando === c.id ? null : c.puedeRenombrar ? (
+              <button
+                className="mini"
+                type="button"
+                ref={refBoton(`${c.id}:renombrar`)}
+                onClick={() => abrirRenombrar(c)}
+                disabled={enviando}
+                aria-label={`Renombrar el campo «${nombre(c)}» de «${tituloApartado}»`}
+                title={`Renombrar el campo «${nombre(c)}»`}
+              >
+                Renombrar
+              </button>
+            ) : (
+              <span className="motivo-no">No se renombra desde aquí</span>
+            )}
+            {editando === c.id ? null : c.puedeSubir ? (
+              <button
+                className="mini"
+                type="button"
+                ref={refBoton(`${c.id}:subir`)}
+                onClick={() => mover(c, -1)}
+                disabled={enviando}
+                aria-label={`Subir el campo «${nombre(c)}» de «${tituloApartado}»`}
+                title={`Subir el campo «${nombre(c)}»`}
+              >
+                Subir
+              </button>
+            ) : (
+              <span className="motivo-no">{motivoSinMover(c, campos, 'subir')}</span>
+            )}
+            {editando === c.id ? null : c.puedeBajar ? (
+              <button
+                className="mini"
+                type="button"
+                ref={refBoton(`${c.id}:bajar`)}
+                onClick={() => mover(c, 1)}
+                disabled={enviando}
+                aria-label={`Bajar el campo «${nombre(c)}» de «${tituloApartado}»`}
+                title={`Bajar el campo «${nombre(c)}»`}
+              >
+                Bajar
+              </button>
+            ) : (c.puedeRenombrar ? <span className="motivo-no">{motivoSinMover(c, campos, 'bajar')}</span> : null)}
             {c.puedeRetirar ? (
               /* El botón de quitar no desaparece al abrir la confirmación: se queda en su sitio,
                  apagado, para que la fila no cambie de forma y para que el foco tenga a dónde

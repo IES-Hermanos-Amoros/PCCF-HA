@@ -1,6 +1,6 @@
 // LA ESTRUCTURA DEL DOCUMENTO, Y LOS CAMBIOS QUE SE LE PUEDEN HACER: renombrar un apartado,
 // añadir uno, moverlo entre sus hermanos y retirarlo (más restaurarlo), y los de sus CAMPOS:
-// añadir uno a un apartado, retirarlo y restaurarlo.
+// añadir uno a un apartado, renombrarlo, moverlo entre los de su apartado, retirarlo y restaurarlo.
 //
 // Es lo que convierte la herramienta en el sitio donde vive la programación en lugar de
 // un visor de lo que diga un Word. Hasta el E6 la estructura solo se podía cambiar
@@ -380,6 +380,9 @@
       for (const sec of lista) {
         if (!esObjeto(sec)) continue;
         const i = visibles.indexOf(sec);
+        // Los campos que se ven, que son entre los que se sube y se baja un campo (ver `moverCampo`).
+        const vigentes = camposDe(sec).filter((c) => c && !retirado(c));
+        const editable = !sec.retirado && !sec.repetidor;
         out.push({
           seccion: sec.id,
           titulo: sec.titulo || sec.id,
@@ -395,6 +398,11 @@
             retirado: retirado(c),
             puedeRetirar: !sec.retirado && !sec.repetidor && !retirado(c) && Campos().esCreable(c.tipo),
             puedeRestaurar: !sec.retirado && !sec.repetidor && retirado(c),
+            // Renombrar y mover no destruyen ni cambian lo que un campo es, así que valen para los
+            // de cualquier tipo, a diferencia de retirar: el id y el tipo se quedan como estaban.
+            puedeRenombrar: editable && !retirado(c),
+            puedeSubir: editable && !retirado(c) && vigentes.indexOf(c) > 0,
+            puedeBajar: editable && !retirado(c) && vigentes.indexOf(c) >= 0 && vigentes.indexOf(c) < vigentes.length - 1,
           })),
           puedeAnadirCampo: !sec.retirado && !sec.repetidor,
           repetidor: !!sec.repetidor,
@@ -418,7 +426,7 @@
 
   const TIPOS = [
     'anadir', 'renombrar', 'mover', 'retirar', 'restaurar', 'borrar',
-    'anadir_campo', 'retirar_campo', 'restaurar_campo', 'borrar_campo',
+    'anadir_campo', 'retirar_campo', 'restaurar_campo', 'borrar_campo', 'renombrar_campo', 'mover_campo',
   ];
 
   // Cuántos campos puede tener un apartado, y cuántos se le pueden pedir al crearlo. Un
@@ -812,7 +820,88 @@
     };
   }
 
-  // Una sola puerta para los diez cambios, para que la ruta y el navegador no puedan tener
+  // RENOMBRAR UN CAMPO. Cambia la `etiqueta` y nada más: el id es la clave con la que se guarda lo
+  // escrito (`valores[idCampo]`) y con la que se enganchan los comentarios, y uno que cambiara
+  // dejaría huérfano el texto del campo (ver la cabecera). La etiqueta no se trunca: si no cabe,
+  // se rechaza, porque cortar el nombre que alguien ha escrito sin decírselo es peor que pedírselo
+  // otra vez.
+  function renombrarCampo(plantilla, { seccion, campo, etiqueta } = {}) {
+    const largo = Campos().LARGO_ETIQUETA;
+    const limpia = String(etiqueta == null ? '' : etiqueta).replace(/\s+/g, ' ').trim();
+    if (!limpia) return no('Hace falta un nombre: la etiqueta es lo que se pinta del campo.');
+    if (limpia.length > largo) return no(`El nombre del campo no puede pasar de ${largo} caracteres.`);
+
+    const copia = clonar(plantilla);
+    const h = buscar(copia, seccion);
+    if (!h) return no(`Este documento no tiene ningún apartado «${seccion}».`);
+    const estorbo = estorbaRetirado(h, 'renombrarle un campo') || sinCamposPropios(h);
+    if (estorbo) return estorbo;
+
+    const c = buscarCampo(h, campo);
+    if (!c) return no(`«${h.seccion.titulo}» no tiene ningún campo «${campo}».`);
+    if (retirado(c)) return no(`El campo «${c.etiqueta || c.id}» de «${h.seccion.titulo}» está retirado: restáuralo antes de renombrarlo.`);
+
+    const antes = c.etiqueta || c.id;
+    c.etiqueta = limpia;
+    return {
+      plantilla: copia,
+      cambio: {
+        tipo: 'campo_renombrado', seccion: h.seccion.id, titulo: h.seccion.titulo,
+        campo: c.id, etiqueta: limpia, antes, tipoCampo: c.tipo,
+        padre: h.padre ? h.padre.id : null, deUnidades: h.deUnidades,
+      },
+    };
+  }
+
+  // MOVER UN CAMPO entre los de su apartado. `delta` es cuántos sitios: -1 arriba, +1 abajo.
+  //
+  // Se cuenta entre los campos VIGENTES y no entre todos, por lo mismo que `mover` cuenta entre los
+  // apartados visibles: la lista de la portada enseña los vigentes, y subir un campo que tiene
+  // encima uno retirado no puede parecer que no hace nada. Al reinsertarlo se le pone pegado al
+  // vigente que le toca, así que los retirados conservan su sitio relativo y vuelven donde estaban.
+  // El orden de `campos` es el orden en que se pinta y se imprime, así que esto cambia el PDF.
+  function moverCampo(plantilla, { seccion, campo, delta } = {}) {
+    const d = typeof delta === 'number' ? delta : Number(delta);
+    if (!Number.isInteger(d) || d === 0) {
+      return no('«delta» es cuántos sitios se mueve el campo: -1 para subirlo, 1 para bajarlo.');
+    }
+
+    const copia = clonar(plantilla);
+    const h = buscar(copia, seccion);
+    if (!h) return no(`Este documento no tiene ningún apartado «${seccion}».`);
+    const estorbo = estorbaRetirado(h, 'moverle un campo') || sinCamposPropios(h);
+    if (estorbo) return estorbo;
+
+    const c = buscarCampo(h, campo);
+    if (!c) return no(`«${h.seccion.titulo}» no tiene ningún campo «${campo}».`);
+    if (retirado(c)) return no(`El campo «${c.etiqueta || c.id}» de «${h.seccion.titulo}» está retirado: restáuralo antes de moverlo.`);
+
+    const nombre = c.etiqueta || c.id;
+    const lista = h.seccion.campos;
+    const vigentes = lista.filter((x) => x && !retirado(x));
+    const i = vigentes.indexOf(c);
+    const j = i + d;
+    if (vigentes.length < 2) return no(`«${nombre}» es el único campo de «${h.seccion.titulo}»: no hay sitio donde moverlo.`);
+    if (j < 0) return no(`«${nombre}» ya es el primer campo de «${h.seccion.titulo}»: no se puede subir más.`);
+    if (j >= vigentes.length) return no(`«${nombre}» ya es el último campo de «${h.seccion.titulo}»: no se puede bajar más.`);
+
+    const objetivo = vigentes[j];
+    lista.splice(lista.indexOf(c), 1);
+    const destino = lista.indexOf(objetivo);
+    lista.splice(d < 0 ? destino : destino + 1, 0, c);
+
+    return {
+      plantilla: copia,
+      cambio: {
+        tipo: 'campo_movido', seccion: h.seccion.id, titulo: h.seccion.titulo,
+        campo: c.id, etiqueta: nombre, tipoCampo: c.tipo,
+        padre: h.padre ? h.padre.id : null, deUnidades: h.deUnidades,
+        delta: d, posicion: j + 1, campos: vigentes.length,
+      },
+    };
+  }
+
+  // Una sola puerta para los doce cambios, para que la ruta y el navegador no puedan tener
   // ideas distintas sobre lo que se puede hacer. Devuelve { plantilla, cambio } o { motivo }.
   function aplicar(plantilla, peticion) {
     const p = peticion || {};
@@ -827,6 +916,8 @@
       case 'retirar_campo': return retirarCampo(plantilla, p);
       case 'restaurar_campo': return restaurarCampo(plantilla, p);
       case 'borrar_campo': return borrarCampo(plantilla, p);
+      case 'renombrar_campo': return renombrarCampo(plantilla, p);
+      case 'mover_campo': return moverCampo(plantilla, p);
       default: return no(`«${p.tipo}» no es un cambio de estructura: ${TIPOS.join(', ')}.`);
     }
   }
@@ -858,7 +949,7 @@
     slug, idLocal, limpiarTitulo, mismoTitulo, LARGO_TITULO, CAMPO_NUEVO, TIPOS, MAX_CAMPOS, MAX_CAMPOS_AL_CREAR,
     loQueHayQueEscribir, confirmaTitulo, LARGO_CONFIRMACION,
     buscar, rama, contar, vigente, retirados, camposRetirados, estructura,
-    renombrar, anadir, mover, retirar, restaurar, borrar, anadirCampo, retirarCampo, restaurarCampo, borrarCampo, aplicar,
+    renombrar, anadir, mover, retirar, restaurar, borrar, anadirCampo, retirarCampo, restaurarCampo, borrarCampo, renombrarCampo, moverCampo, aplicar,
     siguienteVersion, registrar,
   };
 
