@@ -1185,3 +1185,13 @@ del > mark.quita { text-decoration-thickness: 2px; }
    `.acciones-persona` solo reparte en fila, sin alinear. */
 .tabla-de-lista > .acciones-persona { align-items: center; margin-bottom: 6px; }
 .tabla-de-lista + .tabla-de-lista { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--borde); }
+
+/* --- «esto es la plantilla de los once módulos»: un aviso de consecuencia, no una nota.
+   Lleva el filo ámbar de `.nota-lock` reducido a una marca, sin caja ni fondo: la caja grande
+   se repetía en cada apartado de módulo y a la tercera vez se salta entera (Ayuda.js, «deja de
+   parecer ayuda y pasa a ser ruido»). El tamaño NO baja a los 11px de `.ayuda`: esto no explica
+   un dato de la pantalla, advierte de lo que va a pasar, y un aviso que no se ve no avisa.
+   El botón de ayuda que lleva al lado despliega la consecuencia detallada debajo, porque
+   `.linea-estructura` ya es un flex con `wrap`. */
+.ayuda-plantilla { border-left: 2px solid var(--ambar); padding-left: 8px; font-size: 12.5px; }
+.ayuda-plantilla > span { color: var(--texto); }

@@ -295,17 +295,26 @@ export default function Estructura({
       {/* QUE ESTE APARTADO ES DE LOS ONCE MÓDULOS SE DICE ANTES DE TOCAR NADA,
           porque desde dentro de un módulo no se ve: la pantalla dice
           «Evaluación y calificación» de «Lenguajes de marcas» y parece que se
-          está tocando solo ese. Lo que se queda aquí es el dato —una línea—; el
-          modelo que lo explica está en la ayuda de la cabecera, y el aviso de la
-          retirada sigue abajo, en su confirmación. */}
+          está tocando solo ese. Por eso el dato se queda a la vista y no se
+          pliega (Ayuda.js, regla 1: un aviso de consecuencia que llega tarde es
+          peor que el ruido).
+          LO QUE SE PLIEGA ES LA CONSECUENCIA DETALLADA, en su propia ayuda y no
+          en la de la cabecera: la de arriba explica el modelo entero de la
+          tarjeta, y quien se pregunta «esto a qué afecta» lo pregunta aquí, en
+          la línea que se lo acaba de decir. El aviso de la retirada sigue
+          abajo, en su confirmación. */}
       {enTodas ? (
-        <div className="nota nota-lock">
-          <div>
-            <strong>Esto es la plantilla de {enTodas}.</strong>{' '}
-            {deUnidades
-              ? <>Lo que cambies aquí —título, orden, añadir o retirar— sale en {enTodas} a la vez.</>
-              : <>Lo que añadas aquí nace en {enTodas} a la vez.</>}
-          </div>
+        <div className="linea-estructura ayuda-plantilla">
+          <span>Esto es la plantilla de {enTodas}.</span>
+          <Ayuda sobre={`qué cambia en ${enTodas}`}>
+            <p>
+              {deUnidades
+                ? <>Lo que cambies aquí —título, orden, añadir o retirar— sale en {enTodas} a la vez.</>
+                : <>Lo que añadas aquí nace en {enTodas} a la vez.</>}{' '}
+              <strong>El contenido no se toca</strong>: cada {comoSeLlaman || 'unidad'} conserva el suyo,
+              y lo que escriba cada docente en su módulo se queda donde está.
+            </p>
+          </Ayuda>
         </div>
       ) : null}
 
