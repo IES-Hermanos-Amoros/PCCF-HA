@@ -13,6 +13,7 @@
 //   POST   /api/documentos/[id]/estructura/apartado/campo/restaurar?seccion=&campo=  devolverlo
 //   PATCH  /api/documentos/[id]/estructura/apartado/campo?seccion=&campo=   renombrar un campo (solo su etiqueta)
 //   POST   /api/documentos/[id]/estructura/apartado/campo/mover?seccion=&campo=     subirlo o bajarlo entre los de su apartado
+//   POST   /api/documentos/[id]/estructura/ficha                           cambiar las filas de la ficha de situacion de aprendizaje
 //   DELETE /api/documentos/[id]/estructura/apartado?seccion=                BORRAR un apartado retirado y todo lo escrito en él
 //   DELETE /api/documentos/[id]/estructura/apartado/campo?seccion=&campo=   BORRAR un campo retirado y lo escrito en él
 //
@@ -215,7 +216,8 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
 
     // Cuántas unidades repiten este apartado. Se cuentan solo si hace falta: un apartado común no
     // tiene nada que ver con las unidades y pedirlas sería una lectura por gusto.
-    const esDeCampo = String(hecho.cambio.tipo).startsWith('campo_');
+    const esDeFicha = String(hecho.cambio.tipo).startsWith('campo_ficha_');
+    const esDeCampo = !esDeFicha && String(hecho.cambio.tipo).startsWith('campo_');
     const unidades = hecho.cambio.deUnidades ? (await repo.unidades.listar(documento._id)).length : 0;
     return Response.json(
       {
@@ -231,7 +233,7 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
         unidades,
         // Cuántos apartados toca el cambio: el de la petición y su subárbol. En «retirar» es de lo
         // que hay que avisar antes de pulsar, y el contenido de todos ellos se conserva.
-        apartadosAfectados: esDeCampo ? 1
+        apartadosAfectados: esDeFicha ? 0 : esDeCampo ? 1
           : (tipo === 'borrar' ? hecho.cambio.apartados : Plantilla.rama(apuntado, hecho.cambio.seccion).length),
         // Solo en los dos borrados: lo que había escrito y se ha destruido, y cuántas filas se han ido.
         ...(destruye ? { contenido, filasBorradas, comentariosBorrados } : {}),
@@ -243,6 +245,8 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
         // recién creado no tiene valor guardado: es lo que el editor pone en pantalla.
         campos: (hecho.campos || []).map((c) => ({ ...c, valorInicial: Campos.valorInicial(c) })),
         campo: hecho.cambio.campo === undefined ? null : hecho.cambio.campo,
+        // La fila de la ficha sobre la que actua el cambio, y la lista vigente tras el cambio.
+        ...(esDeFicha ? { campoFicha: hecho.cambio.campoFicha, estructuraFicha: apuntado.estructuraFicha } : {}),
         camposRetirados: Plantilla.camposRetirados(apuntado).length,
         retirados: Plantilla.retirados(apuntado).length,
       },
@@ -573,7 +577,69 @@ const BORRAR = cambio('borrar', (cuerpo, url) => seccionDeLaUrl(url), { cuerpoOp
 
 const BORRAR_CAMPO = cambio('borrar_campo', (cuerpo, url) => campoDeLaUrl(url), { cuerpoOpcional: true });
 
+// ---------------------------------------------------------------- las filas de la ficha
+
+// La estructura de la ficha de situación de aprendizaje es del documento entero (core/plantilla.js →
+// «LOS CAMBIOS DE LA FICHA»), y sus cambios entran por el mismo sitio que los demás: la misma
+// secuencia de `cambio()` —sesión, permiso de la jefatura de departamento, versión de la plantilla y
+// 409—. Se pide con un solo POST con el tipo en el cuerpo, `{ tipo, … }`, en vez de una URL por
+// cambio, porque ninguno es de un apartado y no hay ninguna `seccion` que poner en la URL.
+//
+// La fila sobre la que se actúa va en `campoFicha` y no en `campo`: `campo` es el de un apartado, y
+// `cambio()` lo comprueba contra los campos de `seccion`.
+
+const fila = (cuerpo) => {
+  if (typeof cuerpo.campoFicha !== 'string' || !cuerpo.campoFicha) {
+    return { fallo: malaPeticion('Falta «campoFicha»: la fila de la ficha que se cambia.') };
+  }
+  return { campoFicha: cuerpo.campoFicha };
+};
+
+const FICHA = {
+  anadir_campo_ficha: cambio('anadir_campo_ficha', (cuerpo) => {
+    if (typeof cuerpo.etiqueta !== 'string') return { fallo: malaPeticion('Falta «etiqueta»: el nombre de la fila nueva.') };
+    return {
+      etiqueta: cuerpo.etiqueta, posicion: cuerpo.posicion, ancho: cuerpo.ancho,
+      grupo: cuerpo.grupo, solo_si_hay: cuerpo.solo_si_hay,
+    };
+  }, { estado: 201 }),
+  renombrar_campo_ficha: cambio('renombrar_campo_ficha', (cuerpo) => {
+    const pedido = fila(cuerpo);
+    if (pedido.fallo) return pedido;
+    if (typeof cuerpo.etiqueta !== 'string') return { fallo: malaPeticion('Falta «etiqueta»: el nombre nuevo de la fila.') };
+    return { ...pedido, etiqueta: cuerpo.etiqueta };
+  }),
+  mover_campo_ficha: cambio('mover_campo_ficha', (cuerpo) => {
+    const pedido = fila(cuerpo);
+    if (pedido.fallo) return pedido;
+    if (cuerpo.delta !== undefined && typeof cuerpo.delta !== 'number') {
+      return { fallo: malaPeticion('«delta» es cuántos sitios se mueve la fila: -1 para subirla, 1 para bajarla.') };
+    }
+    return { ...pedido, delta: cuerpo.delta };
+  }),
+  retirar_campo_ficha: cambio('retirar_campo_ficha', (cuerpo) => fila(cuerpo)),
+  restaurar_campo_ficha: cambio('restaurar_campo_ficha', (cuerpo) => fila(cuerpo)),
+};
+
+// Un tipo que no es de la ficha se contesta DESPUÉS de saber quién pregunta y si puede: el 400 no
+// debe adelantarse al 401 ni al 403.
+const FICHA_DESCONOCIDA = cambio('cambio_de_ficha', (cuerpo) => ({
+  fallo: malaPeticion(`«tipo» es el cambio que se pide a la ficha: ${Object.keys(FICHA).join(', ')}.`),
+}));
+
+async function CAMBIAR_FICHA(peticion, parametros) {
+  let tipo;
+  try {
+    const cuerpo = await peticion.clone().json();
+    tipo = cuerpo && typeof cuerpo === 'object' ? cuerpo.tipo : undefined;
+  } catch (e) {
+    tipo = undefined;
+  }
+  const manejador = Object.prototype.hasOwnProperty.call(FICHA, tipo) ? FICHA[tipo] : FICHA_DESCONOCIDA;
+  return manejador(peticion, parametros);
+}
+
 module.exports = {
   GET, ANADIR, RENOMBRAR, MOVER, RETIRAR, RESTAURAR, BORRAR, ANADIR_CAMPO, RETIRAR_CAMPO, RESTAURAR_CAMPO, BORRAR_CAMPO,
-  RENOMBRAR_CAMPO, MOVER_CAMPO,
+  RENOMBRAR_CAMPO, MOVER_CAMPO, CAMBIAR_FICHA,
 };
