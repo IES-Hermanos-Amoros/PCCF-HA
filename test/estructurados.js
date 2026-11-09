@@ -1167,6 +1167,41 @@ prueba('el panel lo ve quien ve el documento, y nadie más', async () => {
   await esError(await panelDe(u.jefa, 'no-existe'), 404, 'no_encontrado');
 });
 
+// ---------------------------------------------------------------- la cabecera de una tabla
+
+prueba('cabeceraDeTabla: una importada con cabecera declarada la conserva; una creada aquí la decide la negrita', () => {
+  const celda = (bold) => ({ text: 'a', colspan: 1, rowspan: 1, bold });
+  const conNegrita = { filas: [[celda(true), celda(true)], [celda(false), celda(false)]] };
+  const sinNegrita = { filas: [[celda(false), celda(false)], [celda(false), celda(false)]] };
+  const importada = { columnas: ['A', 'B'] };
+  const creada = { columnas: ['A', 'B'], inicial: { filas: 2, columnas: 2 } };
+
+  assert.equal(Est.cabeceraDeTabla(importada, sinNegrita), true, 'importada, primera fila sin negrita');
+  assert.equal(Est.cabeceraDeTabla(importada, conNegrita), true, 'importada, con negrita');
+  assert.equal(Est.cabeceraDeTabla(creada, conNegrita), true, 'creada, con negrita');
+  assert.equal(Est.cabeceraDeTabla(creada, sinNegrita), false, 'creada, sin negrita');
+  // Un campo sin `columnas` (el Word no declaraba cabecera) se rige por la negrita, como sin campo.
+  assert.equal(Est.cabeceraDeTabla({ id: 'x' }, sinNegrita), false);
+  assert.equal(Est.cabeceraDeTabla({ id: 'x' }, conNegrita), true);
+  assert.equal(Est.cabeceraDeTabla(null, conNegrita), true, 'sin campo manda la negrita');
+  assert.equal(Est.cabeceraDeTabla(undefined, sinNegrita), false);
+  // Basta con que una celda de la primera fila no vaya en negrita para que, sin campo, no sea cabecera.
+  assert.equal(Est.cabeceraDeTabla(creada, { filas: [[celda(true), celda(false)]] }), false);
+
+  // Los bordes: sin filas o sin rejilla no hay cabecera, ni siquiera la que declara el campo.
+  assert.equal(Est.cabeceraDeTabla(importada, { filas: [] }), false);
+  assert.equal(Est.cabeceraDeTabla(creada, { filas: [] }), false);
+  for (const v of [null, undefined, 'a', 7, [], {}, { pares: [] }]) {
+    assert.equal(Est.cabeceraDeTabla(importada, v), false, JSON.stringify(v));
+  }
+  assert.equal(Est.cabeceraDeTabla(importada, { filas: 'no' }), false);
+
+  assert.equal(Est.cabeceraFijaDelCampo(importada), true);
+  assert.equal(Est.cabeceraFijaDelCampo(creada), false);
+  assert.equal(Est.cabeceraFijaDelCampo({ id: 'x' }), false);
+  assert.equal(Est.cabeceraFijaDelCampo(null), false);
+});
+
 // ---------------------------------------------------------------- las reglas de estilo de una celda
 
 prueba('la alineación y el tamaño de letra de una celda: una regla, y null cuando no hay nada que emitir', () => {

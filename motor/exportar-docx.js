@@ -153,14 +153,17 @@ function anchos(filas, ncols) {
 // `anchosPedidos` son los pesos relativos que trae el valor de la tabla, uno por columna. Si no
 // vienen —o no cuadran con las columnas que de verdad tiene— cada columna mide lo que diga su
 // cantidad de texto, que es como salen todas las tablas importadas del Word.
-function tabla(filas, anchosPedidos) {
+//
+// `cabecera` dice si la primera fila es la cabecera que se repite al cambiar de página: la decide
+// `Est.cabeceraDeTabla` con el campo, y quien no tiene campo deja que la decida la negrita.
+function tabla(filas, anchosPedidos, cabecera) {
   if (!filas || !filas.length) return '';
   const { filas: rej, ncols } = rejilla(filas);
   if (!ncols) return '';
   const w = Array.isArray(anchosPedidos) && anchosPedidos.length === ncols
     ? repartir(anchosPedidos) : anchos(rej, ncols);
   const ancho = (c) => w.slice(c.col, c.col + c.span).reduce((a, b) => a + b, 0);
-  const cabecera = filas[0].every((c) => c.bold);
+  if (cabecera === undefined) cabecera = Est.cabeceraDeTabla(null, { filas });
   const borde = (l) => `<w:${l} w:val="single" w:sz="4" w:space="0" w:color="${GRIS_BORDE}"/>`;
   const xmlFilas = rej.map((r, i) => {
     const tcs = r.map((c) => {
@@ -224,7 +227,7 @@ function campo(c, valor) {
     case 'auto.ficha_modulo': case 'tabla_clave_valor': return tabla(valor.filas && valor.filas.length ? valor.filas : (valor.pares ? filasParejas(valor) : null));
     // Incluye derivado.resumen_situaciones: se escribe tal como se importó. Y es el caso de la
     // tabla genérica editable, la única que puede traer sus propios anchos de columna.
-    default: return tabla(valor.filas, valor.anchos);
+    default: return tabla(valor.filas, valor.anchos, Est.cabeceraDeTabla(c, valor));
   }
 }
 
