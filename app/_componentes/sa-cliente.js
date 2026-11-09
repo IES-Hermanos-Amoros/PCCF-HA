@@ -94,8 +94,11 @@ export function sinFilas(ficha) {
 // leer— se le pone el de su posición: sin número no entra en el resumen que
 // imprime el PDF (`resumenSituaciones` de motor/render-generico.js la descarta) y
 // quedaría fuera sin que nada lo dijera.
-export function completa(ficha, num) {
-  const f = { ...Sa.fichaVacia(num), ...(ficha || {}) };
+//
+// `campos` es la estructura de la tabla de la ficha del documento (`estructuraFicha` de la
+// plantilla); sin ella, la de siempre.
+export function completa(ficha, num, campos) {
+  const f = { ...Sa.fichaVacia(num, undefined, campos), ...(ficha || {}) };
   if (f.num === null || f.num === undefined) f.num = num === undefined ? null : num;
   return f;
 }
@@ -129,7 +132,7 @@ export function fichasDe(apartado) {
       lista: items.map((it, i) => {
         const item = it || {};
         const f = Array.isArray(item.ficha) ? item.ficha[0] : item.ficha;
-        const base = completa(f, i + 1);
+        const base = completa(f, i + 1, apartado.estructuraFicha);
         const { titulo, ficha, ...resto } = item;
         return { ...base, titulo: titulo || base.titulo || '', [RESTO]: resto };
       }),
@@ -140,7 +143,7 @@ export function fichasDe(apartado) {
   if (!campo) return { donde: null, lista: [] };
   const valor = apartado.valores ? apartado.valores[campo.id] : null;
   const fichas = Array.isArray(valor) ? valor : (valor ? [valor] : []);
-  return { donde: campo.id, lista: fichas.map((f, i) => completa(f, i + 1)) };
+  return { donde: campo.id, lista: fichas.map((f, i) => completa(f, i + 1, apartado.estructuraFicha)) };
 }
 
 // Y la vuelta: la lista de fichas en la forma que guarda el apartado.
@@ -174,8 +177,8 @@ export function renumerar(lista) {
   return Sa.renumerar(lista).map((f, i) => (f.num === antes[i] ? f : sinFilas(f)));
 }
 
-export function anadir(lista) {
-  const r = Sa.anadirVacia(lista, EVALUACION_NUEVA);
+export function anadir(lista, campos) {
+  const r = Sa.anadirVacia(lista, EVALUACION_NUEVA, campos);
   return { lista: renumerar(r.lista), num: r.num };
 }
 

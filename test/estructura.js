@@ -2031,6 +2031,50 @@ prueba('la ruta de la ficha usa el control de version de la plantilla (409)', as
   assert.equal(bien.status, 200);
 });
 
+// La estructura de la ficha llega a la pantalla (GET) y a la validación (PATCH): una fila con id
+// propio se guarda, y el GET manda la estructura solo en los apartados que pintan fichas.
+prueba('la estructura de la ficha viaja en el GET solo donde hay fichas y el PATCH acepta las filas propias', async () => {
+  const { repo, u, doc } = await escenario();
+  const ruta = 'modulos/situaciones-de-aprendizaje/situacion';
+  const plantilla = JSON.parse(JSON.stringify((await repo.documentos.obtener(doc._id)).plantilla));
+  const repetidor = plantilla.secciones.find((s) => s.id === 'modulos').hijos
+    .find((h) => h.id === 'modulos/situaciones-de-aprendizaje').hijos[0];
+  repetidor.campos = [{ id: 'titulo', tipo: 'texto', etiqueta: 'Título' }, { id: 'ficha', tipo: 'ficha_situacion_aprendizaje', etiqueta: 'Ficha', multiple: true }];
+  plantilla.secciones.find((s) => s.id === 'anexos').hijos[0].campos.push({ id: 'ficha', tipo: 'ficha_situacion_aprendizaje', etiqueta: 'Ficha' });
+  await repo.documentos.actualizar(doc._id, { plantilla });
+
+  // Sin estructura propia no se manda nada: el cliente usa la de siempre.
+  let cuerpo = await (await leer(u.jefa, doc._id, ruta, PROG)).json();
+  assert.equal('estructuraFicha' in cuerpo, false);
+
+  const creada = await cambiarFicha(u.jefa, doc._id, { tipo: 'anadir_campo_ficha', etiqueta: 'Actividad estrella' });
+  assert.equal(creada.status, 201);
+  const propio = (await creada.json()).campoFicha;
+
+  cuerpo = await (await leer(u.jefa, doc._id, ruta, PROG)).json();
+  assert.ok(Array.isArray(cuerpo.estructuraFicha));
+  assert.ok(cuerpo.estructuraFicha.some((c) => c.id === propio));
+  cuerpo = await (await leer(u.jefa, doc._id, 'anexos/actas')).json();
+  assert.ok(Array.isArray(cuerpo.estructuraFicha), 'un apartado con campo de ficha la recibe');
+  cuerpo = await (await leer(u.jefa, doc._id, 'introduccion')).json();
+  assert.equal('estructuraFicha' in cuerpo, false, 'un apartado sin fichas no la recibe');
+
+  // El PATCH, en un campo suelto y en un repetidor: la fila propia pasa y una clave que no es de
+  // la estructura sigue sin pasar.
+  const ficha = { ...Sa.fichaVacia(1, undefined, plantilla.estructuraFicha), titulo: 'Una', [propio]: ['algo'] };
+  const version = async (seccion, unidad) => (await (await leer(u.jefa, doc._id, seccion, unidad)).json()).updatedAt;
+  const suelta = async (f) => guardar(u.jefa, doc._id, 'anexos/actas', null, { valores: { ficha: f }, esperaUpdatedAt: await version('anexos/actas') });
+  assert.equal((await suelta(ficha)).status, 200);
+  await esError(await suelta({ ...ficha, inventada: ['x'] }), 400, 'peticion');
+
+  const items = (f) => ({ items: [{ titulo: 'Una', ficha: [f] }] });
+  const lista = async (f) => guardar(u.jefa, doc._id, ruta, PROG, { valores: items(f), esperaUpdatedAt: await version(ruta, PROG) });
+  const r = await lista(ficha);
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const dicho = await esError(await lista({ ...ficha, inventada: ['x'] }), 400, 'peticion');
+  assert.match(dicho.mensaje, /inventada/);
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {

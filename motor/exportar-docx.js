@@ -216,14 +216,14 @@ function filasPonderacion(p) {
 const filasParejas = (v) => v.pares.map((p) => [celda(p.etiqueta, { bold: true }), celda(p.valor)]);
 
 // ---------------------------------------------------------------- campos
-function campo(c, valor) {
+function campo(c, valor, estructuraFicha) {
   if (valor === undefined || valor === null) return '';
-  if (Array.isArray(valor) && c.tipo !== 'texto_largo') return valor.map((v) => campo(c, v)).join('');
+  if (Array.isArray(valor) && c.tipo !== 'texto_largo') return valor.map((v) => campo(c, v, estructuraFicha)).join('');
   switch (c.tipo) {
     case 'texto_largo': return bloques(valor);
     case 'auto.tabla_ra_ce': return tabla(Est.queSeImprime(c, valor) === 'ra' ? filasRaCe(valor) : valor.filas);
     case 'ponderacion_ra_ce': return tabla(valor.ra !== null && valor.ra !== undefined && valor.ce ? filasPonderacion(valor) : valor.filas);
-    case 'ficha_situacion_aprendizaje': return tabla(valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor) ? filasDeFicha(valor) : null));
+    case 'ficha_situacion_aprendizaje': return tabla(valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor, estructuraFicha) ? filasDeFicha(valor, estructuraFicha) : null));
     case 'auto.ficha_modulo': case 'tabla_clave_valor': {
       const que = Est.queSeImprime(c, valor);
       if (que === 'filas') return tabla(valor.filas, valor.anchos, Est.cabeceraDeTabla(c, valor));
@@ -238,17 +238,17 @@ function campo(c, valor) {
 // ---------------------------------------------------------------- recorrido de la plantilla
 // `nivel` es la profundidad de título en el Word que se escribe (no el nivel del
 // original: ese puede saltarse niveles).
-function seccion(sec, valores, numero, nivel) {
+function seccion(sec, valores, numero, nivel, estructuraFicha) {
   if (sec.repetidor) {
     // los ítems repetidos cuelgan del padre, sin número propio: "Situación de aprendizaje 2: título"
     const v = (valores[sec.id] || {}).items || [];
     return v.map((it, i) => titulo(`${sec.titulo} ${i + 1}: ${it.titulo}`, nivel)
-      + sec.campos.filter((c) => c.id !== 'titulo').map((c) => campo(c, it[c.id])).join('')).join('');
+      + sec.campos.filter((c) => c.id !== 'titulo').map((c) => campo(c, it[c.id], estructuraFicha)).join('')).join('');
   }
   const v = valores[sec.id] || {};
   return titulo(`${numero}. ${sec.titulo}`, nivel)
-    + sec.campos.map((c) => campo(c, v[c.id])).join('')
-    + (sec.hijos || []).map((h, i) => seccion(h, valores, `${numero}.${i + 1}`, nivel + 1)).join('');
+    + sec.campos.map((c) => campo(c, v[c.id], estructuraFicha)).join('')
+    + (sec.hijos || []).map((h, i) => seccion(h, valores, `${numero}.${i + 1}`, nivel + 1, estructuraFicha)).join('');
 }
 
 function cuerpo({ plantilla, datos, instancias }) {
@@ -257,7 +257,7 @@ function cuerpo({ plantilla, datos, instancias }) {
     : todas.filter((x, i) => (instancias || []).includes(i) || (instancias || []).includes(x.titulo));
   return plantilla.secciones.map((sec, i) => {
     const numero = String(i + 1);
-    if (!sec.instancias) return seccion(sec, datos.documento || {}, numero, 1);
+    if (!sec.instancias) return seccion(sec, datos.documento || {}, numero, 1, plantilla.estructuraFicha);
     // un título de primer nivel por grupo ("Módulos del primer curso"); solo el
     // primero lleva el número de la sección, que es único en la plantilla
     const grupos = [];
@@ -269,7 +269,7 @@ function cuerpo({ plantilla, datos, instancias }) {
       + sel.filter((inst) => (inst.grupo || sec.titulo) === g).map((inst) => {
         const n = `${numero}.${todas.indexOf(inst) + 1}`;
         return titulo(`${n}. ${inst.titulo}`, 2)
-          + (sec.hijos || []).map((h, j) => seccion(h, inst.valores || {}, `${n}.${j + 1}`, 3)).join('');
+          + (sec.hijos || []).map((h, j) => seccion(h, inst.valores || {}, `${n}.${j + 1}`, 3, plantilla.estructuraFicha)).join('');
       }).join('')).join('');
   }).join('');
 }
