@@ -20,6 +20,7 @@ const P = require('../core/permisos');
 const S = require('../core/sa');
 const C = require('../core/conciliar');
 const CAT = require('../core/unidades');
+const Conf = require('../core/confirmar');
 
 let fallos = 0;
 const prueba = (nombre, fn) => {
@@ -536,6 +537,44 @@ prueba('reparte las unidades la jefatura del departamento, y el soporte', () => 
   // Y nadie reparte en un departamento que no ve.
   assert.strictEqual(P.puedeRepartirUnidades(usuario('jefe_departamento'), { departamento: 'matematicas' }), false, 'ni en el de al lado');
   assert.strictEqual(P.puedeRepartirUnidades(null, donde), false, 'ni sin usuario');
+});
+
+// ----------------------------------------------------------------- el foco de una confirmación
+//
+// Las tres confirmaciones en dos pasos de la aplicación comparten la decisión de a quién le toca el
+// foco (core/confirmar.js). El `focus()` no se puede probar sin navegador; la decisión sí, y es
+// donde estaba el fallo: devolver el foco a un botón que el repintado acaba de quitar del árbol.
+
+prueba('el foco de una confirmación: al abrir va al paso, al cancelar al botón, al terminar al aviso', () => {
+  const todo = { abrir: true, paso: true, aviso: true };
+  assert.strictEqual(Conf.foco('abrir', todo), 'paso', 'el botón que se pulsó ya no está en el árbol');
+  assert.strictEqual(Conf.foco('cancelar', todo), 'abrir', 'de ahí salió, y vuelve a estar');
+  assert.strictEqual(Conf.foco('terminar', todo), 'aviso', 'la fila puede haberse ido; el aviso no');
+  // Los tres gestos están contemplados y ninguno se queda sin destino con la pantalla entera.
+  for (const gesto of Conf.GESTOS) {
+    assert.ok(Conf.DESTINOS.includes(Conf.foco(gesto, todo)), gesto);
+  }
+});
+
+prueba('el foco no se manda a un elemento que ya no está en la pantalla', () => {
+  // Terminar es el caso que rompía: se confirma, la fila desaparece y el botón de abrir con ella.
+  assert.strictEqual(Conf.foco('terminar', { aviso: true }), 'aviso');
+  assert.strictEqual(Conf.foco('terminar', { abrir: true }), 'abrir', 'sin aviso, al botón que queda');
+  // Cancelar devuelve el foco al botón de abrir, pero si la lista se ha recargado por medio y ese
+  // botón ya no está, al aviso antes que al paso, que también se acaba de ir.
+  assert.strictEqual(Conf.foco('cancelar', { aviso: true, paso: true }), 'aviso');
+  assert.strictEqual(Conf.foco('cancelar', { paso: true }), 'paso');
+  // Abrir quiere el paso; sin paso, el aviso.
+  assert.strictEqual(Conf.foco('abrir', { abrir: true, aviso: true }), 'aviso');
+  // Y si no hay a dónde ir, no se toca el foco: dejarlo donde está es mejor que mandarlo a un
+  // sitio cualquiera, que es como se acaba al principio de la página.
+  for (const gesto of Conf.GESTOS) {
+    assert.strictEqual(Conf.foco(gesto, {}), null, gesto + ' sin pantalla');
+    assert.strictEqual(Conf.foco(gesto, null), null, gesto + ' sin nada');
+  }
+  // Un gesto que no existe no mueve nada.
+  assert.strictEqual(Conf.foco('otro', { abrir: true, paso: true, aviso: true }), null);
+  assert.strictEqual(Conf.foco(undefined, { abrir: true }), null);
 });
 
 // ----------------------------------------------------------------- resumen
