@@ -869,7 +869,10 @@
   // Lo que sí cuesta de verdad es que `resumenSituaciones` del motor lee `ficha[0]`: la
   // segunda ficha de un ítem se imprime pero no aparece en la tabla resumen. Es un defecto
   // del documento importado, no de esta puerta, y se arregla separando el encabezado en dos.
-  function motivoItems(valor, campos) {
+  // `estructuraFicha` es la del documento, que puede tener filas renombradas, añadidas o
+  // retiradas: sin ella, una ficha con ids propios se rechazaría al guardar justo en la puerta
+  // que existe para que lo guardado sea lo que el generador espera.
+  function motivoItems(valor, campos, estructuraFicha) {
     if (!esObjeto(valor)) {
       return 'un apartado de fichas se guarda como { items: [...] }, la lista entera.';
     }
@@ -910,12 +913,12 @@
           }
           for (let k = 0; k < item[id].length; k += 1) {
             const m = motivoFicha(item[id][k],
-              item[id].length > 1 ? `${donde}, tabla ${k + 1}` : donde);
+              item[id].length > 1 ? `${donde}, tabla ${k + 1}` : donde, estructuraFicha);
             if (m) return m;
           }
           continue;
         }
-        const m = motivoDeCampo(campo, item[id], {});
+        const m = motivoDeCampo(campo, item[id], { estructuraFicha });
         if (m) return `en ${donde}, ${m}`;
       }
     }
@@ -982,7 +985,7 @@
       case TIPO_PONDERACION:
         return motivoPonderaciones(valor, { multiple: !!campo.multiple, raModulo: contexto.raModulo });
       case TIPO_FICHA:
-        return motivoFichas(valor, { multiple: !!campo.multiple });
+        return motivoFichas(valor, { multiple: !!campo.multiple }, contexto.estructuraFicha);
       case TIPO_TABLA:
         return motivoDeTablas(valor, campo, contexto.guardado, (v, donde, guardada) => motivoDeRejilla(v, donde, { guardada }));
       case TIPO_CLAVE_VALOR:

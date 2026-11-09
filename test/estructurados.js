@@ -521,6 +521,27 @@ prueba('la puerta del repetidor exige la lista entera y una ficha por sitio', ()
   malo({ items: [{ titulo: 'Una', ficha: [Sa.fichaVacia(1, '1ª')], texto: [{ type: 'tabla' }] }] }, 'tipo «tabla»');
 });
 
+prueba('la puerta del repetidor admite las filas propias del documento y solo esas', () => {
+  const campos = [
+    { id: 'titulo', tipo: 'texto' },
+    { id: 'ficha', tipo: 'ficha_situacion_aprendizaje', multiple: true },
+  ];
+  // Una estructura con una fila anadida por la jefatura y otra retirada.
+  const estructura = Sa.CAMPOS_POR_OMISION
+    .map((c) => (c.id === 'recursos' ? { ...c, retirado: true } : c))
+    .concat([{ id: 'salidas', etiqueta: 'Salidas profesionales', ancho: 4 }]);
+
+  const conPropia = { items: [{ titulo: 'Una', ficha: [{ ...Sa.fichaVacia(1, '1ª', estructura), salidas: ['Perfil web'] }] }] };
+  // Sin la estructura del documento, la fila propia es una clave desconocida y no se guarda:
+  // es lo que hacia que una ficha valida fuese rechazada justo en la puerta.
+  assert.ok(Est.motivoItems(conPropia, campos), 'sin estructura tiene que rechazarla');
+  assert.equal(Est.motivoItems(conPropia, campos, estructura), null, 'con la estructura del documento se admite');
+
+  // Y seguir admitiendo la fila propia no abre la puerta a cualquier cosa.
+  const inventada = { items: [{ titulo: 'Una', ficha: [{ ...Sa.fichaVacia(1, '1ª', estructura), loquesea: ['x'] }] }] };
+  assert.ok(Est.motivoItems(inventada, campos, estructura), 'una clave inventada se sigue rechazando');
+});
+
 prueba('renumerar suelta la tabla importada, salvo si es lo único que tiene la ficha', () => {
   // Con cuerpo: se le cambia el número y la tabla se vuelve a montar desde los campos.
   const con = Object.assign({ filas: FILAS_FICHA }, Sa.fichaVacia(5, '1ª'));

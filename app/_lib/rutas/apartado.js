@@ -119,7 +119,6 @@ const C = require('../../../core/permisos');
 const Estructurados = require('../../../core/estructurados');
 const CamposCore = require('../../../core/campos');
 const RaCe = require('../../../core/ra-ce');
-const Sa = require('../../../core/sa');
 const { listasDeTexto } = require('../../../motor/compartidos');
 const {
   conErrores, abrirDocumento, puedeEditarApartado, buscarSeccion, leerJson, raDelModulo,
@@ -413,34 +412,6 @@ function conflictoDeEscritura(e) {
   );
 }
 
-// `motivoItems` comprueba cada ficha contra la estructura de siempre, y una estructura con ids
-// propios la rechazaría. Se le dan las fichas sustituidas por una vacía, que sirve para que siga
-// comprobando todo lo demás (la lista, los títulos, que cada ítem traiga su ficha), y las fichas
-// de verdad se miran después con la estructura del documento. Una ficha sin nada (lista vacía o
-// ausente) se deja tal cual para que `motivoItems` diga lo que ya dice.
-function motivoItemsConEstructura(valores, campos, estructuraFicha) {
-  const fichas = (campos || []).filter((c) => c.tipo === Estructurados.TIPO_FICHA).map((c) => c.id);
-  const items = Array.isArray(valores && valores.items) ? valores.items : null;
-  const sustituidos = items && items.map((item) => {
-    if (!item || typeof item !== 'object') return item;
-    const copia = { ...item };
-    for (const id of fichas) if (Array.isArray(copia[id]) && copia[id].length) copia[id] = [Sa.fichaVacia(1)];
-    return copia;
-  });
-  const motivo = Estructurados.motivoItems(items ? { ...valores, items: sustituidos } : valores, campos);
-  if (motivo || !items) return motivo;
-  for (let i = 0; i < items.length; i += 1) {
-    for (const id of fichas) {
-      const lista = items[i][id];
-      for (let k = 0; k < lista.length; k += 1) {
-        const m = Estructurados.motivoFicha(lista[k],
-          lista.length > 1 ? `la ficha ${i + 1}, tabla ${k + 1}` : `la ficha ${i + 1}`, estructuraFicha);
-        if (m) return m;
-      }
-    }
-  }
-  return null;
-}
 
 // Comprueba los valores contra la plantilla de esta rama. Devuelve { fallo } o {}.
 //
@@ -474,9 +445,7 @@ function revisarValores(valores, { seccion, info, contexto, guardados = {}, estr
   // «quita esa», dos pestañas acabarían con un orden que no eligió ninguna de las dos. Es el mismo
   // argumento que el del reparto de unidades (docs/api.md).
   if (info.seccion.repetidor) {
-    const motivo = estructuraFicha
-      ? motivoItemsConEstructura(valores, info.campos, estructuraFicha)
-      : Estructurados.motivoItems(valores, info.campos);
+    const motivo = Estructurados.motivoItems(valores, info.campos, estructuraFicha);
     if (motivo) {
       return {
         fallo: fallo(400, 'peticion',
@@ -497,9 +466,7 @@ function revisarValores(valores, { seccion, info, contexto, guardados = {}, estr
     if (!campo) {
       return { fallo: fallo(400, 'peticion', `El apartado «${seccion}» no tiene ningún campo «${id}». No se ha guardado nada.`, { campo: id }) };
     }
-    const motivo = estructuraFicha && campo.tipo === Estructurados.TIPO_FICHA
-      ? Estructurados.motivoFichas(valor, { multiple: !!campo.multiple }, estructuraFicha)
-      : Estructurados.motivoDeCampo(campo, valor, { ...contexto, guardado: guardados[id] });
+    const motivo = Estructurados.motivoDeCampo(campo, valor, { ...contexto, guardado: guardados[id], estructuraFicha });
     if (motivo) {
       return {
         fallo: fallo(400, 'peticion',
