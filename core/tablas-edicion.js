@@ -41,12 +41,20 @@
 // tiene motivo para devolver un 400 a algo que salió de este fichero. `motivoDeNo` dice por qué
 // una operación no se puede, para apagar el botón y explicarlo en lugar de dejarlo sin respuesta.
 //
-// LA CABECERA ES LA NEGRITA DE LA PRIMERA FILA
+// LA CABECERA: LA NEGRITA DE LA PRIMERA FILA, SALVO EN UNA IMPORTADA CON CABECERA DECLARADA
 //
-// No hay ningún otro dato: la primera fila es la cabecera si TODAS sus celdas van en negrita, y eso
-// es lo que hace que se repita al cambiar de página. Poner la cabecera es poner `bold: true` a la
-// primera fila; quitarla es ponérselo a `false`. El texto no se toca. Quitar la fila de la cabecera
-// con «quitar fila» también la quita: la fila que pasa a ser la primera no va en negrita.
+// La primera fila es la cabecera si TODAS sus celdas van en negrita, y eso es lo que hace que se
+// repita al cambiar de página. Poner la cabecera es poner `bold: true` a la primera fila; quitarla
+// es ponérselo a `false`. El texto no se toca. Quitar la fila de la cabecera con «quitar fila»
+// también la quita: la fila que pasa a ser la primera no va en negrita.
+//
+// La excepción es la tabla que venía del Word con una fila de cabecera declarada: su cabecera la
+// decide el CAMPO (`campo.columnas`) y no la negrita, así que ni el PDF ni el Word la pierden aunque
+// su primera fila no vaya en negrita. Quién decide es `cabeceraDeTabla` de core/estructurados.js,
+// la misma función que usan los dos motores; aquí se le pasa el campo siempre que se conoce. En
+// esa tabla poner la cabecera sigue valiendo (añade la negrita) y quitarla se niega. Las operaciones
+// que reescriben la primera fila (quitar fila, añadir columna) razonan solo con la negrita: lo que
+// les importa es cómo van las celdas, no si la fila se repite.
 //
 // EL FONDO, QUE NO ES LA NEGRITA
 //
@@ -241,9 +249,9 @@
     return valor.filas.some((f) => f.some((c) => (c.colspan || 1) > 1 || (c.rowspan || 1) > 1));
   }
 
-  // La primera fila entera en negrita. Una tabla sin filas no tiene cabecera.
-  const tieneCabecera = (valor) => esRejilla(valor) && valor.filas.length > 0
-    && valor.filas[0].every((c) => c.bold === true);
+  // Si la primera fila es la cabecera que se imprime. Con `campo` manda la regla entera de
+  // `cabeceraDeTabla`; sin él, la negrita de la primera fila. Una tabla sin filas no tiene cabecera.
+  const tieneCabecera = (valor, campo) => Estructurados().cabeceraDeTabla(campo, valor);
 
   // Una celda como las del importador: las cuatro claves y ninguna más.
   const celdaNueva = (text, bold) => ({ text: text || '', colspan: 1, rowspan: 1, bold: !!bold });
@@ -447,11 +455,12 @@
   };
 
   const MOTIVO_CLAVE_VALOR_CELDAS = 'Una tabla de clave y valor tiene un formato fijo (concepto en negrita, contenido normal): no se combinan celdas ni se cambia su negrita.';
+  const MOTIVO_CABECERA_DECLARADA = 'Esta tabla venía del Word con una fila de cabecera declarada, así que su primera fila se repite al cambiar de página y eso no se cambia desde aquí. Sí puedes cambiar su texto y su estilo.';
   const MOTIVO_CLAVE_VALOR_ANCHOS = 'Una tabla de clave y valor tiene las dos columnas fijas: el concepto a la izquierda y el resto del ancho para su contenido.';
 
   // Por qué no se puede una operación, o null si se puede. `args` es el de la operación. Es la
   // misma función para apagar el botón y para que `aplicar` se niegue: no pueden discrepar.
-  function motivoDeNo(valor, op, args = {}) {
+  function motivoDeNo(valor, op, args = {}, campo) {
     const E = Estructurados();
     const claveValor = esClaveValor(valor);
     if (!claveValor && !esRejilla(valor)) return 'Esto no es una tabla.';
@@ -505,6 +514,8 @@
       case 'cabecera':
         if (claveValor) return 'Una tabla de clave y valor no tiene fila de cabecera.';
         if (!n) return 'La tabla no tiene filas: añade una antes de ponerle cabecera.';
+        // Ponerla vale siempre (añade la negrita). Quitarla, no: en esta tabla la decide el campo.
+        if (args.puesta === false && Estructurados().cabeceraFijaDelCampo(campo)) return MOTIVO_CABECERA_DECLARADA;
         return null;
       case 'ancho': {
         if (claveValor) return MOTIVO_CLAVE_VALOR_ANCHOS;
@@ -576,7 +587,7 @@
     }
   }
 
-  const puede = (valor, op, args) => motivoDeNo(valor, op, args) === null;
+  const puede = (valor, op, args, campo) => motivoDeNo(valor, op, args, campo) === null;
 
   // ---------------------------------------------------------------- las operaciones
 
@@ -603,9 +614,10 @@
   // cuadrícula; en el resto, `columna` es el índice de la celda en su fila.
   //
   // `contexto.columnas` es el ancho con el que abrir una fila en una tabla que se ha quedado sin
-  // ninguna. Devuelve el mismo objeto si la operación no se puede hacer o no cambia nada.
+  // ninguna. `contexto.campo` es el campo de la tabla, que hace falta para saber si su cabecera se
+  // puede quitar. Devuelve el mismo objeto si la operación no se puede hacer o no cambia nada.
   function aplicar(valor, op, args = {}, contexto = {}) {
-    if (motivoDeNo(valor, op, args) !== null) return valor;
+    if (motivoDeNo(valor, op, args, contexto.campo) !== null) return valor;
     const E = Estructurados();
 
     if (esClaveValor(valor)) {
@@ -798,23 +810,23 @@
   // Cualquier valor de los dos tipos como una lista de filas de celdas { text, bold, colspan,
   // rowspan }, y si la primera es cabecera. Sirve a la vista previa de la creación y a la del
   // editor: así las dos pintan el mismo valor de la misma manera.
-  function paraPintar(valor) {
+  function paraPintar(valor, campo) {
     if (esClaveValor(valor)) {
       return {
         cabecera: false,
         filas: valor.pares.map((p) => [{ text: p.etiqueta, bold: true }, { text: p.valor }]),
       };
     }
-    if (esRejilla(valor)) return { cabecera: tieneCabecera(valor), filas: valor.filas };
+    if (esRejilla(valor)) return { cabecera: tieneCabecera(valor, campo), filas: valor.filas };
     return { cabecera: false, filas: [] };
   }
 
   // El fondo que una celda lleva DE VERDAD, con el nombre que entienden los dos motores: lo decide
   // `fondoDeCelda` de core/estructurados.js, así que la pantalla no puede pintar una tabla distinta
   // de la que se imprime.
-  function fondoEfectivo(valor, fila, columna) {
+  function fondoEfectivo(valor, fila, columna, campo) {
     if (!esRejilla(valor) || !valor.filas[fila] || !valor.filas[fila][columna]) return null;
-    return Estructurados().fondoDeCelda(valor.filas[fila][columna], fila === 0 && tieneCabecera(valor));
+    return Estructurados().fondoDeCelda(valor.filas[fila][columna], fila === 0 && tieneCabecera(valor, campo));
   }
 
   // Lo mismo con la alineación y el tamaño de letra: null cuando la celda sale como siempre. Los
@@ -857,7 +869,7 @@
   // `columnaRejilla` es la columna de la CUADRÍCULA donde empieza la celda, que es la que se
   // ensancha o se estrecha; `columna` es su índice dentro de la fila, que es lo que piden las
   // operaciones. Confundirlas en una tabla con combinaciones da formato a otra celda.
-  function formatoDeCelda(valor, eleccion) {
+  function formatoDeCelda(valor, eleccion, campo) {
     const d = elegirCelda(valor, eleccion);
     if (!d) return null;
     const celda = valor.filas[d.fila][d.columna];
@@ -872,10 +884,10 @@
       ancho: p.ancho,
       alto: p.alto,
       combinada: p.ancho > 1 || p.alto > 1,
-      enCabecera: d.fila === 0 && tieneCabecera(valor),
+      enCabecera: d.fila === 0 && tieneCabecera(valor, campo),
       negrita: celda.bold === true,
       fondo: clave(celda.fondo),
-      fondoEfectivo: fondoEfectivo(valor, d.fila, d.columna),
+      fondoEfectivo: fondoEfectivo(valor, d.fila, d.columna, campo),
       alineacion: clave(celda.alineacion),
       alineacionEfectiva: alineacionEfectiva(valor, d.fila, d.columna),
       tamano: clave(celda.tamano),
