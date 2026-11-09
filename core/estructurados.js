@@ -230,6 +230,31 @@
     return c.tamano === 'pequena' || c.tamano === 'grande' ? c.tamano : null;
   }
 
+  // QUÉ TABLA TIENE FILA DE CABECERA, la que se repite al cambiar de página. Es la única copia de la
+  // regla: la leen el PDF, el Word y el editor, y escrita en cada uno acabó diciendo cosas distintas
+  // de la misma tabla.
+  //
+  // `campo.columnas` es la señal de que el Word original DECLARABA una fila de cabecera: el
+  // importador la rellena con los títulos solo en ese caso. Una tabla importada conserva por eso su
+  // cabecera aunque su primera fila no vaya en negrita, que es lo que hace el documento de partida.
+  // Una tabla creada en la aplicación (`campo.inicial`) no tiene esa señal que valga —su
+  // `columnas` lo pone el asistente al crearla—: su cabecera la decide solo la negrita de la primera
+  // fila, y por eso poner o quitar la cabecera en el editor es poner o quitar la negrita.
+  //
+  // `cabeceraFijaDelCampo` es la primera mitad de la regla: la cabecera que decide el campo y no la
+  // negrita, que el editor no puede quitar. Sin campo (una tabla que no cuelga de ninguno) manda la
+  // negrita. Una tabla sin filas o un valor que no es una rejilla no tienen cabecera.
+  function cabeceraFijaDelCampo(campo) {
+    return !!(esObjeto(campo) && campo.columnas && !campo.inicial);
+  }
+
+  function cabeceraDeTabla(campo, valor) {
+    if (!esObjeto(valor) || !Array.isArray(valor.filas) || !valor.filas.length) return false;
+    if (cabeceraFijaDelCampo(campo)) return true;
+    const primera = valor.filas[0];
+    return Array.isArray(primera) && primera.every((c) => esObjeto(c) && !!c.bold);
+  }
+
   function motivoDeFilas(filas, donde) {
     if (!Array.isArray(filas)) return `${donde} no es una lista de filas.`;
     for (let i = 0; i < filas.length; i += 1) {
@@ -869,7 +894,7 @@
     CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES, CLAVES_CELDA,
     FONDOS_CELDA, ALINEACIONES_CELDA, TAMANOS_CELDA,
     ALINEACION_CELDA_OMISION, TAMANO_CELDA_OMISION,
-    seGuarda, fondoDeCelda, alineacionDeCelda, tamanoDeCelda,
+    seGuarda, fondoDeCelda, alineacionDeCelda, tamanoDeCelda, cabeceraDeTabla, cabeceraFijaDelCampo,
     motivoDeFilas, motivoDeRejilla, motivoDeForma, columnasDeRejilla, motivoDeClaveValor,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,

@@ -1712,6 +1712,88 @@ prueba('una importada torcida se guarda por el PATCH con un cambio de texto o de
   assert.ok(/más corta que la primera/.test(JSON.stringify(await r.json())));
 });
 
+// ================================================================ la cabecera de una importada
+
+const { exportarDocx } = require('../motor/exportar-docx');
+
+// Una tabla como la que deja el importador cuando el Word declaraba la cabecera: el campo lleva
+// `columnas` y no `inicial`, y la primera fila NO va en negrita.
+const CAMPO_DECLARADO = { id: 'declarada', tipo: 'tabla', etiqueta: 'Declarada', columnas: ['Ámbito', 'Norma'] };
+const VALOR_DECLARADO = { filas: [[c('Ámbito'), c('Norma')], [c('Estatal'), c('RD 1147/2011')]] };
+
+const motoresDe = (campo, valor) => {
+  const plantilla = { tipo: 'programacion_didactica', origen: 'x.docx', version: null, generada: '2026-01-01T00:00:00.000Z',
+    secciones: [{ id: 'a', titulo: 'A', nivel: 1, presencia: 1, campos: [campo], hijos: [] }] };
+  const datos = { departamento: 'informatica', documento: { a: { [campo.id]: valor } }, instancias: [], asignaciones: {}, compartidos: {} };
+  return { plantilla, datos };
+};
+const cabecerasDelPdf = (campo, valor) => tablasDe(buildDocDefinition({ ...motoresDe(campo, valor), titulo: 'T', subtitulo: 'S' }))
+  .map((t) => t.table.headerRows);
+const cabecerasDelWordDe = async (campo, valor) => {
+  const bytes = await exportarDocx({ ...motoresDe(campo, valor), titulo: 'T' });
+  const xml = await (await JSZip.loadAsync(Buffer.from(bytes))).file('word/document.xml').async('string');
+  return xml.split('<w:tblHeader/>').length - 1;
+};
+
+prueba('una importada con cabecera declarada: el PDF, el Word y el editor dicen lo mismo aunque su primera fila no vaya en negrita', async () => {
+  assert.equal(VALOR_DECLARADO.filas[0].some((x) => x.bold), false, 'de partida, sin negrita');
+  const pdf = cabecerasDelPdf(CAMPO_DECLARADO, VALOR_DECLARADO);
+  assert.deepEqual(pdf, [1], 'el PDF repite la primera fila');
+  assert.equal(await cabecerasDelWordDe(CAMPO_DECLARADO, VALOR_DECLARADO), 1, 'el Word también');
+  assert.equal(Edicion.tieneCabecera(VALOR_DECLARADO, CAMPO_DECLARADO), true, 'y el editor');
+  assert.equal(Edicion.paraPintar(VALOR_DECLARADO, CAMPO_DECLARADO).cabecera, true);
+  assert.equal(Edicion.formatoDeCelda(VALOR_DECLARADO, { fila: 0, columna: 0 }, CAMPO_DECLARADO).enCabecera, true);
+
+  // Ninguno pinta nada: el sombreado depende de la negrita, y esta fila no la tiene.
+  const def = tablasDe(buildDocDefinition({ ...motoresDe(CAMPO_DECLARADO, VALOR_DECLARADO), titulo: 'T', subtitulo: 'S' }))[0];
+  assert.equal(def.table.body[0][0].fillColor, undefined);
+  assert.equal(Edicion.fondoEfectivo(VALOR_DECLARADO, 0, 0, CAMPO_DECLARADO), null);
+
+  // Con la primera fila en negrita, los tres pintan el azul de la cabecera.
+  const conNegrita = Edicion.aplicar(VALOR_DECLARADO, 'cabecera', { puesta: true }, { campo: CAMPO_DECLARADO });
+  assert.ok(conNegrita.filas[0].every((x) => x.bold === true));
+  assert.deepEqual(cabecerasDelPdf(CAMPO_DECLARADO, conNegrita), [1]);
+  assert.equal(await cabecerasDelWordDe(CAMPO_DECLARADO, conNegrita), 1);
+  const azul = tablasDe(buildDocDefinition({ ...motoresDe(CAMPO_DECLARADO, conNegrita), titulo: 'T', subtitulo: 'S' }))[0].table.body[0][0].fillColor;
+  assert.equal(azul, '#D9E2F3');
+  assert.equal(Edicion.fondoEfectivo(conNegrita, 0, 0, CAMPO_DECLARADO), 'cabecera');
+});
+
+prueba('una tabla creada en la aplicación decide su cabecera por la negrita en los tres, y quitarla la quita', async () => {
+  const campo = { ...CAMPO_DECLARADO, id: 'creada', inicial: { filas: 2, columnas: 2, cabecera: false } };
+  assert.deepEqual(cabecerasDelPdf(campo, VALOR_DECLARADO), [0]);
+  assert.equal(await cabecerasDelWordDe(campo, VALOR_DECLARADO), 0);
+  assert.equal(Edicion.tieneCabecera(VALOR_DECLARADO, campo), false);
+
+  const con = Edicion.aplicar(VALOR_DECLARADO, 'cabecera', { puesta: true }, { campo });
+  assert.deepEqual(cabecerasDelPdf(campo, con), [1]);
+  assert.equal(await cabecerasDelWordDe(campo, con), 1);
+  assert.equal(Edicion.tieneCabecera(con, campo), true);
+
+  assert.equal(Edicion.motivoDeNo(con, 'cabecera', { puesta: false }, campo), null, 'quitarla se puede');
+  const sin = Edicion.aplicar(con, 'cabecera', { puesta: false }, { campo });
+  assert.notEqual(sin, con);
+  assert.deepEqual(cabecerasDelPdf(campo, sin), [0]);
+  assert.equal(await cabecerasDelWordDe(campo, sin), 0);
+  assert.equal(Edicion.tieneCabecera(sin, campo), false);
+});
+
+prueba('en una importada con cabecera declarada quitar la cabecera se niega con el porqué y lo que sí se puede; ponerla no', () => {
+  const m = Edicion.motivoDeNo(VALOR_DECLARADO, 'cabecera', { puesta: false }, CAMPO_DECLARADO);
+  assert.ok(/venía del Word/.test(m) && /se repite al cambiar de página/.test(m) && /Sí puedes cambiar su texto y su estilo/.test(m), m);
+  assert.equal(Edicion.puede(VALOR_DECLARADO, 'cabecera', { puesta: false }, CAMPO_DECLARADO), false);
+  // Negado también cuando ya va en negrita: la decide el campo, no la negrita.
+  const negrita = Edicion.aplicar(VALOR_DECLARADO, 'cabecera', { puesta: true }, { campo: CAMPO_DECLARADO });
+  assert.ok(Edicion.motivoDeNo(negrita, 'cabecera', { puesta: false }, CAMPO_DECLARADO));
+  assert.equal(Edicion.aplicar(negrita, 'cabecera', { puesta: false }, { campo: CAMPO_DECLARADO }), negrita, 'aplicar se niega igual');
+  // Ponerla vale: añade la negrita.
+  assert.equal(Edicion.motivoDeNo(VALOR_DECLARADO, 'cabecera', { puesta: true }, CAMPO_DECLARADO), null);
+  assert.notEqual(Edicion.aplicar(VALOR_DECLARADO, 'cabecera', { puesta: true }, { campo: CAMPO_DECLARADO }), VALOR_DECLARADO);
+  // Escribir y dar estilo sigue valiendo.
+  assert.equal(Edicion.motivoDeNo(VALOR_DECLARADO, 'texto', { fila: 0, columna: 0, valor: 'x' }, CAMPO_DECLARADO), null);
+  assert.equal(Edicion.motivoDeNo(VALOR_DECLARADO, 'negrita', { fila: 0, columna: 0, puesta: true }, CAMPO_DECLARADO), null);
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {

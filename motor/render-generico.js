@@ -99,7 +99,7 @@ const TAMANO = { pequena: 8, grande: 12 };
 function tablaGenerica(rows, opts = {}) {
   if (!rows || !rows.length) return para('(tabla vacía)', { italics: true, color: GRIS });
   const { ncols, body } = rejilla(rows);
-  const cabecera = opts.cabecera !== undefined ? opts.cabecera : rows[0].every((c) => c.bold);
+  const cabecera = opts.cabecera !== undefined ? opts.cabecera : Est.cabeceraDeTabla(null, { filas: rows });
   const cuerpo = body.map((r, i) => r.map((c) => {
     if (c._ph) return {};
     const cell = { text: c.text || '', colSpan: c.colspan > 1 ? c.colspan : undefined, rowSpan: c.rowspan > 1 ? c.rowspan : undefined, fontSize: opts.fontSize };
@@ -191,10 +191,8 @@ function pintarCampo(campo, valor, ctx) {
       valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor) ? filasDeFicha(valor) : null),
       { cabecera: false, fontSize: 8.5 },
     )];
-    // Una tabla creada en la aplicación (`inicial`) tiene la cabecera que dice su primera fila, no
-    // `columnas`: es el mismo criterio que el Word, y lo que hace que quitar la cabecera sea quitar
-    // la negrita (core/estructurados.js, `motivoDeRejilla`).
-    default: return [tablaGenerica(valor.filas, { cabecera: campo.columnas && !campo.inicial ? true : undefined, anchos: valor.anchos })];
+    // La cabecera la decide `Est.cabeceraDeTabla`, la misma regla que usan el Word y el editor.
+    default: return [tablaGenerica(valor.filas, { cabecera: Est.cabeceraDeTabla(campo, valor), anchos: valor.anchos })];
   }
 }
 

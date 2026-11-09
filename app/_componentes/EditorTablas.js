@@ -132,7 +132,7 @@ export default function EditorTabla({ campo, valor, guardada, onCambio }) {
   const claveValor = Edicion.esClaveValor(valor);
   const filas = Edicion.filasDe(valor);
   const columnas = Edicion.columnasDe(valor);
-  const cabecera = Edicion.tieneCabecera(valor);
+  const cabecera = Edicion.tieneCabecera(valor, campo);
   const posiciones = claveValor ? null : Edicion.posiciones(valor);
   const enRejilla = (i, j) => (posiciones && posiciones[i] && posiciones[i][j]) || { columna: j, ancho: 1, alto: 1 };
 
@@ -179,7 +179,7 @@ export default function EditorTabla({ campo, valor, guardada, onCambio }) {
   // El formato de la celda elegida, tal y como lo lee el panel. null cuando no hay ninguna elegida
   // o cuando la tabla se ha quedado sin filas: entonces el panel sale apagado y lo dice.
   const elegida = claveValor ? null : Edicion.elegirCelda(valor, eleccion);
-  const formato = claveValor ? null : Edicion.formatoDeCelda(valor, eleccion);
+  const formato = claveValor ? null : Edicion.formatoDeCelda(valor, eleccion, campo);
 
   // Entrar en una celda la elige. Si ya lo estaba se devuelve el MISMO objeto para que React no
   // repinte la tabla entera en cada tabulación.
@@ -188,14 +188,14 @@ export default function EditorTabla({ campo, valor, guardada, onCambio }) {
   // Una operación del módulo puro. Si no cambia nada (no se puede), no hace nada: el botón ya
   // estaba apagado y dice por qué. `foco` recibe el valor nuevo y dice dónde ponerlo.
   const hacer = (op, args, { dice, foco } = {}) => {
-    const siguiente = Edicion.aplicar(valor, op, args, { columnas: ancho.current });
+    const siguiente = Edicion.aplicar(valor, op, args, { columnas: ancho.current, campo });
     if (siguiente === valor) return;
     onCambio(siguiente);
     if (dice) setAviso(typeof dice === 'function' ? dice(siguiente) : dice);
     if (foco) pendiente.current = foco(siguiente);
   };
 
-  const motivoDe = (op, args) => Edicion.motivoDeNo(valor, op, args);
+  const motivoDe = (op, args) => Edicion.motivoDeNo(valor, op, args, campo);
 
   // Lo que la puerta diría de este valor. Lo que sale de las operaciones siempre pasa; esto es por
   // si el valor que llega ya traía un defecto, que se diga delante de quien lo va a guardar.
@@ -360,7 +360,7 @@ export default function EditorTabla({ campo, valor, guardada, onCambio }) {
   // celda elegida lleva la suya: desde dónde se cambia el formato es el panel, pero qué celda se
   // está tocando y qué formato tiene se ven aquí.
   const claseCelda = (i, j, celda) => {
-    const fondo = Edicion.fondoEfectivo(valor, i, j);
+    const fondo = Edicion.fondoEfectivo(valor, i, j, campo);
     const alineacion = Edicion.alineacionEfectiva(valor, i, j);
     const tamano = Edicion.tamanoEfectivo(valor, i, j);
     return [fondo === 'cabecera' ? 'celda-cab' : '', fondo === 'etiqueta' ? 'celda-neg' : '',
@@ -386,11 +386,11 @@ export default function EditorTabla({ campo, valor, guardada, onCambio }) {
         </Boton>
       )}
       {claveValor ? null : (
-        <label className="tb-cabecera" title={motivoDe('cabecera', {}) || undefined}>
+        <label className="tb-cabecera" title={motivoDe('cabecera', { puesta: !cabecera }) || undefined}>
           <input
             type="checkbox"
             checked={cabecera}
-            disabled={!!motivoDe('cabecera', {})}
+            disabled={!!motivoDe('cabecera', { puesta: !cabecera })}
             onChange={(ev) => ponerCabecera(ev.target.checked)}
           />
           {' '}Primera fila de cabecera
@@ -420,7 +420,9 @@ export default function EditorTabla({ campo, valor, guardada, onCambio }) {
           </p>
           <p>
             La <strong>fila de cabecera</strong> es la primera cuando va entera en negrita, y es la que
-            se repite arriba al cambiar de página en el PDF.
+            se repite arriba al cambiar de página en el PDF y en el Word. Una tabla que venía del Word
+            con la cabecera declarada la conserva aunque su primera fila no vaya en negrita, y no se
+            puede quitar desde aquí.
           </p>
           <p>
             <strong>Texto</strong> y <strong>Letra</strong> alinean la celda elegida y le cambian el
