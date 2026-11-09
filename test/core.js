@@ -738,6 +738,73 @@ prueba('el foco no se manda a un elemento que ya no está en la pantalla', () =>
   assert.strictEqual(Conf.foco(undefined, { abrir: true }), null);
 });
 
+// ----------------------------------------------------------------- estructura de la ficha
+
+const FE = require('../core/ficha-estructura');
+
+const CAMPOS_FE = [{ id: 'ce', etiqueta: 'Criterios' }, { id: 'recursos', etiqueta: 'Recursos' }];
+
+prueba('el recuento cuenta las fichas con texto detras de cada campo, por id', () => {
+  const lista = [
+    { ce: ['a'], recursos: [], filas: [[{ text: 'x' }]] },
+    { ce: [' '], recursos: ['libro'] },
+    { ce: 'texto suelto' },
+    {},
+  ];
+  const r = FE.recuento(lista, CAMPOS_FE);
+  assert.strictEqual(r.total, 4);
+  assert.strictEqual(r.conRejilla, 1);
+  assert.strictEqual(r.sinRejilla, 3);
+  assert.strictEqual(FE.conTextoEn(r, 'ce'), 2, 'un campo solo con espacios no cuenta');
+  assert.strictEqual(r.porCampo.ce.conTextoYRejilla, 1);
+  assert.strictEqual(FE.conTextoEn(r, 'recursos'), 1);
+  assert.strictEqual(FE.conTextoEn(r, 'no_existe'), 0);
+});
+
+prueba('las fichas de una fila se sacan del campo de fichas y de los repetidores', () => {
+  const v = { f: [{ ce: ['a'] }, { ce: [] }], items: [{ ficha: [{ ce: ['b'] }] }, { ficha: { ce: [] } }, { titulo: 'sin ficha' }], otro: [{ ce: ['no'] }] };
+  assert.strictEqual(FE.fichasDeValores(v, ['f']).length, 4);
+  assert.strictEqual(FE.fichasDeValores(null, ['f']).length, 0);
+});
+
+prueba('retirar dice en cuantas fichas deja de imprimirse el texto: con 0, con 1 y con varias', () => {
+  const cambio = { tipo: 'campo_ficha_retirado', campoFicha: 'ce', etiqueta: 'Criterios' };
+  const con = (n, total) => FE.recuento(Array.from({ length: total }, (_, i) => (i < n ? { ce: ['x'] } : {})), CAMPOS_FE);
+  const cero = FE.informeDeCambio(cambio, con(0, 5));
+  assert.strictEqual(cero.alerta, null);
+  assert.ok(cero.estado.indexOf('No se ha borrado nada') >= 0);
+  const uno = FE.informeDeCambio(cambio, con(1, 5));
+  assert.ok(uno.alerta.indexOf('«Criterios» en 1 ficha de 5') >= 0, uno.alerta);
+  const varias = FE.informeDeCambio(cambio, con(3, 5));
+  assert.ok(varias.alerta.indexOf('«Criterios» en 3 fichas de 5') >= 0, varias.alerta);
+  assert.ok(FE.avisoAntesDeRetirar(CAMPOS_FE[0], con(3, 5)).indexOf('3 fichas de 5') >= 0);
+  assert.ok(FE.avisoAntesDeRetirar(CAMPOS_FE[0], con(0, 5)).indexOf('ninguna ficha') >= 0);
+});
+
+prueba('restaurar, renombrar, mover y anadir tambien informan', () => {
+  const r = FE.recuento([{ ce: ['x'] }, { ce: ['y'] }], CAMPOS_FE);
+  const rest = FE.informeDeCambio({ tipo: 'campo_ficha_restaurado', campoFicha: 'ce', etiqueta: 'Criterios' }, r);
+  assert.ok(rest.alerta.indexOf('Vuelve a imprimirse el texto de «Criterios» en 2 fichas de 2') >= 0);
+  const ren = FE.informeDeCambio({ tipo: 'campo_ficha_renombrado', campoFicha: 'ce', etiqueta: 'Nuevo', antes: 'Viejo' }, r);
+  assert.ok(ren.estado.indexOf('«Viejo» renombrada a «Nuevo»') >= 0);
+  assert.strictEqual(ren.alerta, null);
+  const mov = FE.informeDeCambio({ tipo: 'campo_ficha_movido', campoFicha: 'ce', etiqueta: 'Criterios', posicion: 2, filas: 12 }, r);
+  assert.ok(mov.estado.indexOf('2.ª de 12') >= 0);
+  const ana = FE.informeDeCambio({ tipo: 'campo_ficha_anadido', campoFicha: 'x', etiqueta: 'Nueva', posicion: 3 }, r);
+  assert.ok(ana.alerta.indexOf('en blanco en las 2 fichas') >= 0);
+});
+
+prueba('la frase de la tabla propia dice el numero de fichas que conservan la del Word', () => {
+  const ficha = (rej) => (rej ? { filas: [[{ text: 'x' }]] } : {});
+  const frase = (lista) => FE.fraseDeTablaPropia(FE.recuento(lista, CAMPOS_FE));
+  assert.ok(frase([]).indexOf('Todavía no hay') === 0);
+  assert.ok(frase([ficha(0), ficha(0)]).indexOf('Las 2 fichas siguen la estructura') === 0);
+  assert.ok(frase([ficha(1), ficha(1), ficha(1)]).indexOf('Las 3 fichas conservan la tabla tal como vino del Word') === 0);
+  const mixta = frase([ficha(1), ficha(0), ficha(0)]);
+  assert.ok(mixta.indexOf('1 ficha de las 3 conserva') === 0 && mixta.indexOf('Las otras 2 siguen la estructura') > 0, mixta);
+  assert.ok(!/rejilla|modelo/i.test(mixta), 'sin tecnicismos');
+});
+
 // ----------------------------------------------------------------- resumen
 
 console.log(fallos ? `\n${fallos} prueba(s) con fallos` : '\nTodas las pruebas correctas');
