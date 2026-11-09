@@ -194,7 +194,7 @@ async function compartidosDe(repo, documentoId, seccion, valores) {
 function inicialesDe(campos, valores) {
   const out = {};
   for (const c of campos || []) {
-    if (c.tipo !== Estructurados.TIPO_TABLA && c.tipo !== Estructurados.TIPO_CLAVE_VALOR) continue;
+    if (Estructurados.TIPOS_EDITABLES.indexOf(c.tipo) < 0) continue;
     const v = valores && valores[c.id];
     if (v === undefined || v === null) out[c.id] = CamposCore.valorInicial(c);
   }

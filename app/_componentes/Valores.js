@@ -264,7 +264,8 @@ export function Valor({ valor, etiqueta, compartidos }) {
 
   if (typeof valor === 'object') {
     if (Array.isArray(valor.ra)) return <RaCe ra={valor.ra} etiqueta={etiqueta} />;
-    if (Array.isArray(valor.pares)) return <Pares pares={valor.pares} etiqueta={etiqueta} />;
+    // Con `filas` no vacío se imprime la rejilla y no los pares (core/estructurados.js, `queSeImprime`).
+    if (Array.isArray(valor.pares) && !(Array.isArray(valor.filas) && valor.filas.length)) return <Pares pares={valor.pares} etiqueta={etiqueta} />;
     if (Array.isArray(valor.filas)) return <Tabla filas={valor.filas} etiqueta={etiqueta} />;
     return <SinVista valor={valor} etiqueta={etiqueta} />;
   }

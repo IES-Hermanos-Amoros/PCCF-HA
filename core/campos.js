@@ -234,7 +234,7 @@
     const E = Estructurados();
     if (!campo) return null;
     const ini = campo.inicial || {};
-    if (campo.tipo === E.TIPO_TABLA) {
+    if (campo.tipo === E.TIPO_TABLA || E.TIPOS_REJILLA.indexOf(campo.tipo) >= 0) {
       const filas = [];
       for (let i = 0; i < (ini.filas || 0); i += 1) {
         const fila = [];

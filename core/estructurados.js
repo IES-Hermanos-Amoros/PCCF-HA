@@ -95,6 +95,8 @@
   const TIPO_TEXTO = 'texto';
   const TIPO_TABLA = 'tabla';
   const TIPO_CLAVE_VALOR = 'tabla_clave_valor';
+  const TIPO_TABLA_RA_CE = 'auto.tabla_ra_ce';
+  const TIPO_RESUMEN = 'derivado.resumen_situaciones';
 
   // El id del valor de una sección repetidora. No es un campo de la plantilla: el
   // importador guarda los ítems repetidos como `{ items: [...] }` (ver `extraer` en
@@ -105,7 +107,20 @@
   // —la tabla de RA y CE, la ficha del módulo— tienen cada uno su forma y su editor y
   // llegarán cuando les toque: hasta entonces se rechazan, porque un campo que entra sin
   // puerta es un documento que deja de salir.
-  const TIPOS = [TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_PONDERACION, TIPO_FICHA, TIPO_TABLA, TIPO_CLAVE_VALOR];
+  // Los tipos que guardan una rejilla `{ filas, anchos? }` y que el generador imprime por su rama
+  // genérica, igual que una `tabla`. `auto.ficha_modulo` guarda además `pares` (ver `queSeImprime`).
+  // `auto.tabla_ra_ce` NO está: se imprime desde `ra`, y de `ra` salen los RA del módulo para el
+  // selector de situaciones y las validaciones, así que editar sus `filas` no se vería en ningún sitio.
+  const TIPOS_REJILLA = ['auto.competencias_objetivos', 'auto.contenidos', 'dual_ra_ce', 'auto.ficha_modulo'];
+
+  // Los tipos que además pueden llevar `pares`, la tabla de clave y valor.
+  const TIPOS_CON_PARES = [TIPO_CLAVE_VALOR, 'auto.ficha_modulo'];
+
+  // LA LISTA DE LOS TIPOS QUE TIENEN EDITOR DE TABLAS (core/tablas-edicion.js, `esEditable`).
+  // Una sola, para que el editor, la puerta y la lista de valores iniciales no discutan.
+  const TIPOS_EDITABLES = [TIPO_TABLA, TIPO_CLAVE_VALOR].concat(TIPOS_REJILLA);
+
+  const TIPOS = [TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_PONDERACION, TIPO_FICHA].concat(TIPOS_EDITABLES);
 
   // Lo más grande que cabe en una tabla de la programación. La mayor de la PD real tiene 48
   // filas y 7 columnas; los topes no están para recortar el documento sino porque `anchos()`
@@ -116,6 +131,32 @@
   const MAX_PARES = 100;
 
   const seGuarda = (campo) => !!campo && TIPOS.indexOf(campo.tipo) >= 0;
+
+  // QUÉ PARTE DE UN VALOR DE TABLA SE IMPRIME. Es la única copia de la regla: la leen el PDF, el Word
+  // y el editor, y escrita en cada uno cada motor elegía una representación distinta de la misma
+  // tabla (el PDF los `pares`, el Word las `filas`) y la que se editaba no era la que se leía.
+  //
+  // Un valor puede traer las dos: el importador deja `filas`, la tabla tal como venía del Word, y
+  // además `pares` en las fichas de módulo y en las de clave y valor. Gana `filas` porque es la fiel
+  // al documento: `pares` es una reconstrucción que pierde los rótulos que agrupan filas y las
+  // celdas combinadas. `pares` solo manda cuando no hay `filas` (una tabla de clave y valor creada
+  // aquí, o una que el importador no supo leer como rejilla).
+  //
+  //   'ra'      `auto.tabla_ra_ce` con `ra`: se monta la tabla de resultados y criterios
+  //   'filas'   la rejilla, con su estilo por celda y sus anchos
+  //   'pares'   la tabla de dos columnas de clave y valor
+  //   'ninguno' no hay nada que imprimir
+  //   'propio'  ponderaciones, fichas de situación y tabla resumen: cada una tiene su regla en los
+  //             motores y esta función no decide por ellas
+  function queSeImprime(campo, valor) {
+    const tipo = esObjeto(campo) ? campo.tipo : undefined;
+    if (tipo === TIPO_PONDERACION || tipo === TIPO_FICHA || tipo === TIPO_RESUMEN) return 'propio';
+    if (!esObjeto(valor)) return 'ninguno';
+    if (tipo === TIPO_TABLA_RA_CE && Array.isArray(valor.ra) && valor.ra.length) return 'ra';
+    if (Array.isArray(valor.filas) && valor.filas.length) return 'filas';
+    if (Array.isArray(valor.pares)) return 'pares';
+    return 'ninguno';
+  }
 
   // ---------------------------------------------------------------- utilidades de forma
 
@@ -479,16 +520,16 @@
   // izquierda a 150 pt (`pintarClaveValor`). Un par sin nada escrito se guarda: una fila a
   // medio rellenar es el estado normal mientras se escribe.
   //
-  // El importador deja además `filas`, la tabla tal como venía del Word, y el generador solo
-  // la usa si no hay pares (`pintarClaveValor` cae a ella: así se importan las que el lector
-  // no supo interpretar). Con las dos a la vez el PDF imprime los pares y el exportador a
-  // Word las `filas` (`tabla_clave_valor` de motor/exportar-docx.js las prefiere), y lo
-  // escrito en la aplicación no saldría igual en las dos salidas. Por eso quien edita manda
-  // SOLO `pares`, y una escritura que trae las dos se rechaza en lugar de elegir una por él.
+  // El importador deja además `filas`, la tabla tal como venía del Word. Pueden convivir: lo que
+  // se imprime lo decide `queSeImprime` (manda `filas` si no está vacío) y los dos motores y el
+  // editor la obedecen, así que no hay dos versiones que puedan salir distintas. Una importada se
+  // edita por sus `filas` y conserva el estilo por celda y los anchos; una creada aquí solo trae
+  // `pares` y se edita en pares. Los `pares` que acompañan a unas `filas` no se imprimen: los
+  // conserva el saneado de nombres de persona (motor/sanear.js).
   function motivoDeClaveValor(valor, donde) {
     if (!esObjeto(valor)) return `${donde} no es una tabla de clave y valor { pares: [{ etiqueta, valor }] }.`;
-    const extra = sobran(valor, ['pares', 'filas']);
-    if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en una tabla de clave y valor: solo «pares».`;
+    const extra = sobran(valor, ['pares', 'filas', 'anchos']);
+    if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en una tabla de clave y valor: solo «pares», o «filas» y «anchos».`;
     if (valor.pares === undefined && valor.filas === undefined) {
       return `falta «pares» en ${donde}: una tabla sin filas es { pares: [] }.`;
     }
@@ -511,11 +552,23 @@
     if (valor.filas !== undefined) {
       const m = motivoDeFilas(valor.filas, `la tabla importada de ${donde}`);
       if (m) return m;
-      if (valor.filas.length && Array.isArray(valor.pares) && valor.pares.length) {
-        return `${donde} trae a la vez «pares» y «filas», que son la misma tabla escrita de dos maneras: el PDF imprimiría una y el Word la otra. Al editarla se manda solo «pares».`;
-      }
+      const a = motivoDeAnchos(valor.anchos, columnasDeRejilla(valor.filas), donde);
+      if (a) return a;
+    } else if (valor.anchos !== undefined) {
+      return `${donde} lleva «anchos» sin «filas»: los anchos son de las columnas de una rejilla.`;
     }
     return null;
+  }
+
+  // La ficha del módulo: una rejilla que además puede traer los `pares` que dejó el importador.
+  // Se comprueba cada mitad con su regla; los `pares` solos (una ficha escrita sin rejilla) valen.
+  function motivoDeFichaModulo(valor, donde, guardada) {
+    if (!esObjeto(valor) || valor.pares === undefined) return motivoDeRejilla(valor, donde, { guardada });
+    const { pares, ...resto } = valor;
+    const p = motivoDeClaveValor({ pares }, donde);
+    if (p) return p;
+    if (resto.filas === undefined && resto.anchos === undefined) return null;
+    return motivoDeRejilla(resto, donde, { guardada });
   }
 
   // Los dos tipos son `multiple` o no según el campo: el importador guarda una lista cuando
@@ -877,6 +930,12 @@
       default:
         break;
     }
+    if (campo.tipo === 'auto.ficha_modulo') {
+      return motivoDeTablas(valor, campo, contexto.guardado, motivoDeFichaModulo);
+    }
+    if (TIPOS_REJILLA.indexOf(campo.tipo) >= 0) {
+      return motivoDeTablas(valor, campo, contexto.guardado, (v, donde, guardada) => motivoDeRejilla(v, donde, { guardada }));
+    }
     // Las tablas derivadas no se guardan nunca: se calculan. El resumen de situaciones es
     // la tabla que en el Word hay que repasar a mano cada vez que se mueve una SA, y la
     // gracia de la aplicación es que no haya que repasarla; si se pudiera guardar a mano,
@@ -890,11 +949,11 @@
   // ---------------------------------------------------------------- exportado
 
   const api = {
-    TIPOS, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_TABLA, TIPO_CLAVE_VALOR,
+    TIPOS, TIPOS_EDITABLES, TIPOS_REJILLA, TIPOS_CON_PARES, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_TABLA, TIPO_CLAVE_VALOR,
     CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES, CLAVES_CELDA,
     FONDOS_CELDA, ALINEACIONES_CELDA, TAMANOS_CELDA,
     ALINEACION_CELDA_OMISION, TAMANO_CELDA_OMISION,
-    seGuarda, fondoDeCelda, alineacionDeCelda, tamanoDeCelda, cabeceraDeTabla, cabeceraFijaDelCampo,
+    seGuarda, queSeImprime, fondoDeCelda, alineacionDeCelda, tamanoDeCelda, cabeceraDeTabla, cabeceraFijaDelCampo,
     motivoDeFilas, motivoDeRejilla, motivoDeForma, columnasDeRejilla, motivoDeClaveValor,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,

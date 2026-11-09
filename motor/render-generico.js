@@ -123,8 +123,8 @@ function tablaGenerica(rows, opts = {}) {
 }
 
 // ---------------------------------------------------------------- pintado por tipo de campo
-function pintarRaCe(v) {
-  if (!v || !v.ra || !v.ra.length) return tablaGenerica(v && v.filas);
+function pintarRaCe(campo, v) {
+  if (Est.queSeImprime(campo, v) !== 'ra') return tablaGenerica(v && v.filas);
   return { table: { headerRows: 1, widths: ['*', '*'], body: [[th('Resultados de aprendizaje'), th('Criterios de evaluación')], ...v.ra.map((r) => [{ text: [{ text: `RA${r.num}. `, bold: true }, r.texto] }, { stack: r.ce.map((ce) => ({ text: `${ce.letra}) ${ce.texto}`, margin: [0, 0, 0, 2] })) }])] }, layout, margin: [0, 0, 0, 10] };
 }
 function pintarPonderaciones(lista, avisos, convenioCe) {
@@ -153,8 +153,10 @@ function pintarPonderaciones(lista, avisos, convenioCe) {
   if (estructurado && tablas.length > 1) out.unshift(para(`Suma de las ponderaciones de los RA: ${pct(sumaRA)}.`, { color: Val.sumaRaCuadra(sumaRA) ? VERDE : ROJO }));
   return out;
 }
-function pintarClaveValor(v) {
-  if (!v || !v.pares || !v.pares.length) return tablaGenerica(v && v.filas);
+function pintarClaveValor(campo, v) {
+  const que = Est.queSeImprime(campo, v);
+  if (que === 'filas') return tablaGenerica(v.filas, { cabecera: Est.cabeceraDeTabla(campo, v), anchos: v.anchos });
+  if (que !== 'pares' || !v.pares.length) return tablaGenerica(v && v.filas);
   return { table: { widths: [150, '*'], body: v.pares.map((p) => [label(p.etiqueta), { text: p.valor || '' }]) }, layout, margin: [0, 0, 0, 10] };
 }
 function resumenSituaciones(items) {
@@ -181,9 +183,9 @@ function pintarCampo(campo, valor, ctx) {
   if (Array.isArray(valor) && campo.tipo !== 'texto_largo' && campo.tipo !== 'ponderacion_ra_ce') return valor.flatMap((v) => pintarCampo(campo, v, ctx));
   switch (campo.tipo) {
     case 'texto_largo': return bloques(valor);
-    case 'auto.tabla_ra_ce': return [pintarRaCe(valor)];
+    case 'auto.tabla_ra_ce': return [pintarRaCe(campo, valor)];
     case 'ponderacion_ra_ce': return pintarPonderaciones(valor, ctx.avisos, ctx.convenioCe);
-    case 'auto.ficha_modulo': case 'tabla_clave_valor': return [pintarClaveValor(valor)];
+    case 'auto.ficha_modulo': case 'tabla_clave_valor': return [pintarClaveValor(campo, valor)];
     case 'derivado.resumen_situaciones': return ctx.resumenCalculado ? [para('Tabla resumen calculada a partir de las fichas de situación de aprendizaje.', { italics: true, color: GRIS, fontSize: 8.5 }), ctx.resumenCalculado] : [tablaGenerica(valor.filas)];
     // Una SA creada o editada en la aplicación no tiene tabla importada: se
     // monta a partir de sus campos, con la maquetación del documento.
