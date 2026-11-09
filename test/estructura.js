@@ -1172,6 +1172,45 @@ prueba('la confirmación de un borrado acepta el título sin tildes, y no se cum
   assert.equal(Plantilla.mismoTitulo(largo, largo), true);
 });
 
+prueba('si el contenido no se puede destruir, el cambio ya esta hecho y la respuesta lo dice', async () => {
+  // Pasó de verdad: el servidor de desarrollo guarda el repositorio en `globalThis` y sobrevive a la
+  // recarga en caliente, así que después de añadir `apartados.borrar` el que estaba en pie seguía sin
+  // tenerlo. El cambio de estructura se escribía y la destrucción del contenido estallaba.
+  //
+  // Lo que NO se puede contestar entonces es un error: un error dice «no se sabe si se ha llegado a
+  // borrar», y aquí sí se sabe. El apartado se ha ido y no vuelve. Lo que no se sabe es si lo que
+  // tenía escrito sigue guardado, y eso es lo que hay que decir, porque nadie iría a buscarlo solo.
+  const { repo, u, doc } = await escenario();
+  assert.ok(await guardados(repo, doc._id, 'atencion-a-la-diversidad'), 'el apartado tiene que empezar con algo escrito');
+  await cambio(await retirar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+
+  const bueno = repo.apartados.borrar;
+  repo.apartados.borrar = () => { throw new Error('repo.apartados.borrar is not a function'); };
+  let hecho;
+  try {
+    hecho = await cambio(await borrar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+  } finally {
+    repo.apartados.borrar = bueno;
+  }
+
+  // El cambio de estructura SÍ se hizo: eso es lo que se contesta.
+  assert.equal(hecho.cambio.tipo, 'borrado');
+  assert.equal(hecho.retirados, 0);
+  const e = await (await estructuraDe(u.jefa, doc._id)).json();
+  assert.ok(!e.apartados.some((x) => x.seccion === 'atencion-a-la-diversidad'), 'el apartado sigue en la estructura');
+  await esError(await restaurar(u.jefa, doc._id, 'atencion-a-la-diversidad'), 404, 'no_encontrado');
+
+  // Y la otra mitad se dice en voz alta, con el motivo, en lugar de tragarse el fallo.
+  assert.ok(hecho.contenidoSinDestruir, 'la respuesta no avisa de que el contenido sigue guardado');
+  assert.match(hecho.contenidoSinDestruir, /borrar is not a function/);
+  assert.ok(await guardados(repo, doc._id, 'atencion-a-la-diversidad'), 'esta prueba no ha simulado el fallo');
+
+  // Cuando no falla nada, no se avisa de nada.
+  await cambio(await retirarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  const limpio = await cambio(await borrarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  assert.equal(limpio.contenidoSinDestruir, undefined, 'avisa de un fallo que no ha habido');
+});
+
 prueba('borrar un apartado se lleva sus comentarios, y borrar un campo no toca ninguno', async () => {
   // Un hilo de comentarios habla de un apartado y se lista por `seccion` + `unidadId`. Si el
   // apartado se destruye y el hilo se queda, nadie puede volver a leerlo ni a borrarlo: la sección

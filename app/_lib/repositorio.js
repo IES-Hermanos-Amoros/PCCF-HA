@@ -15,6 +15,13 @@
 // caliente a cada cambio: sin esto, con el adaptador de memoria se perdería el
 // documento importado en cada guardado de un fichero, y con el de Mongo se
 // abriría una conexión nueva por recarga hasta agotar el límite de Atlas.
+//
+// EL PRECIO: AÑADIR UN MÉTODO AL REPOSITORIO OBLIGA A REINICIAR `npm run dev`.
+// El objeto cacheado se construyó con el código de antes, y la recarga en
+// caliente no lo sustituye, así que el método nuevo no existe para el servidor
+// que está en pie y la pantalla recibe un «repo.algo is not a function» que
+// parece un fallo del código recién escrito y no lo es. Pasó al añadir
+// `apartados.borrar`.
 
 'use strict';
 

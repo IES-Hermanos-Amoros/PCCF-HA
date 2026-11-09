@@ -185,18 +185,30 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
     // condicionada, la que decide si el cambio es válido, y destruir antes dejaría un apartado vacío
     // en pie si esa escritura perdiera la carrera. Con el apartado ya fuera de la plantilla nadie
     // puede escribir en él, así que lo que se destruye es lo que se contó.
+    //
+    // Y SI FALLA ESTE SEGUNDO PASO, el cambio de estructura YA ESTÁ HECHO: no se puede contestar un
+    // error, porque un error dice «no se sabe si se ha llegado a borrar» y aquí sí se sabe —el
+    // apartado se ha ido y no vuelve—. Se contesta el 200 que corresponde a lo que pasó, con
+    // `contenidoSinDestruir` para que la pantalla pueda decir la otra mitad: que lo que tenía
+    // escrito puede seguir guardado, invisible, y que eso hay que mirarlo. Tragarse el fallo en
+    // silencio sería peor que el aviso alarmista, porque nadie iría a buscar esas filas.
     let filasBorradas = 0;
     let comentariosBorrados = 0;
-    if (tipo === 'borrar') {
-      filasBorradas = await repo.apartados.borrar(documento._id, hecho.cambio.secciones);
-      // Y los comentarios de esos apartados. Un hilo habla de un apartado concreto y se lista por
-      // `seccion` + `unidadId`: con la sección fuera de la plantilla no se podría volver a leer ni
-      // a borrar, así que dejarlo sería guardar para siempre lo que escribieron otras personas sin
-      // que nadie pueda llegar a ello. Borrar un campo no toca ningún comentario: el hilo es del
-      // apartado, no del campo, y el apartado sigue ahí.
-      comentariosBorrados = await repo.comentarios.borrar(documento._id, hecho.cambio.secciones);
-    } else if (tipo === 'borrar_campo') {
-      filasBorradas = await repo.apartados.quitarClave(documento._id, hecho.cambio.seccion, hecho.cambio.campo);
+    let contenidoSinDestruir = null;
+    try {
+      if (tipo === 'borrar') {
+        filasBorradas = await repo.apartados.borrar(documento._id, hecho.cambio.secciones);
+        // Y los comentarios de esos apartados. Un hilo habla de un apartado concreto y se lista por
+        // `seccion` + `unidadId`: con la sección fuera de la plantilla no se podría volver a leer ni
+        // a borrar, así que dejarlo sería guardar para siempre lo que escribieron otras personas sin
+        // que nadie pueda llegar a ello. Borrar un campo no toca ningún comentario: el hilo es del
+        // apartado, no del campo, y el apartado sigue ahí.
+        comentariosBorrados = await repo.comentarios.borrar(documento._id, hecho.cambio.secciones);
+      } else if (tipo === 'borrar_campo') {
+        filasBorradas = await repo.apartados.quitarClave(documento._id, hecho.cambio.seccion, hecho.cambio.campo);
+      }
+    } catch (fallo) {
+      contenidoSinDestruir = fallo && fallo.message ? fallo.message : 'La base de datos no ha contestado.';
     }
 
     // Cuántas unidades repiten este apartado. Se cuentan solo si hace falta: un apartado común no
@@ -221,6 +233,9 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
           : (tipo === 'borrar' ? hecho.cambio.apartados : Plantilla.rama(apuntado, hecho.cambio.seccion).length),
         // Solo en los dos borrados: lo que había escrito y se ha destruido, y cuántas filas se han ido.
         ...(destruye ? { contenido, filasBorradas, comentariosBorrados } : {}),
+        // Solo si el contenido no se pudo destruir después de hacerse el cambio: lo que se ha ido
+        // se ha ido, pero lo escrito puede seguir guardado y sin forma de llegar a él.
+        ...(contenidoSinDestruir ? { contenidoSinDestruir } : {}),
         // Los campos que el cambio ha creado, tal como quedan en la plantilla, cada uno con el valor
         // con el que se abre mientras no tenga ninguno (core/campos.js → `valorInicial`). Un campo
         // recién creado no tiene valor guardado: es lo que el editor pone en pantalla.

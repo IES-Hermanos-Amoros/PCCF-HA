@@ -14,7 +14,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { BorrarCampo } from './BorrarDefinitivo';
-import { cambiarEstructura } from './estructura-cliente';
+import {
+  avisoDeContenidoSinDestruir, cambiarEstructura, yaDiceQueNoHaCambiado,
+} from './estructura-cliente';
 
 const mensajeDeError = (error) => (error ? error.message : null);
 
@@ -110,8 +112,10 @@ export function QuitarCampos({
         <div className="nota nota-error" role="alert">
           <div>
             {/* El rechazo del servidor no cambia nada: ni la plantilla ni lo escrito. Eso se dice
-                primero, porque es lo que hay que saber antes de leer el motivo. */}
-            <strong>No se ha cambiado nada. </strong>
+                primero, porque es lo que hay que saber antes de leer el motivo… salvo cuando el
+                mensaje del servidor ya lo dice, que es lo normal en los rechazos y en los dos
+                conflictos de estructura: decirlo dos veces se lee peor que decirlo una. */}
+            {yaDiceQueNoHaCambiado(error) ? null : <strong>No se ha cambiado nada. </strong>}
             {mensajeDeError(error)}
           </div>
         </div>
@@ -136,7 +140,10 @@ export function CamposRetirados({
   const borrado = async (x, r) => {
     setError(null);
     setAviso(`Campo «${x.etiqueta || x.campo}» de «${x.titulo}» borrado para siempre`
-      + ((r.contenido && r.contenido.conContenido) ? ' junto con todo lo que había escrito.' : '. No había nada escrito.'));
+      + ((r.contenido && r.contenido.conContenido) ? ' junto con todo lo que había escrito.' : '. No había nada escrito.')
+      // Si la destrucción del contenido falló DESPUÉS del cambio, se dice: el campo se ha ido, pero
+      // lo escrito puede seguir guardado y nadie iría a buscarlo.
+      + (avisoDeContenidoSinDestruir(r) || ''));
     if (onCambiado) await onCambiado('borrar_campo', r);
   };
   const restaurar = async (x) => {

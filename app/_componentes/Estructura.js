@@ -52,7 +52,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Ayuda from './Ayuda';
 import {
-  cambiarEstructura, hermanosDe, todasLasUnidades, unidadDelCamino,
+  avisoDeContenidoSinDestruir, cambiarEstructura, hermanosDe, todasLasUnidades, unidadDelCamino,
+  yaDiceQueNoHaCambiado,
 } from './estructura-cliente';
 import AnadirCampo from './AnadirCampo';
 import { BorrarApartado } from './BorrarDefinitivo';
@@ -61,13 +62,10 @@ import { CamposDelApartadoNuevo } from './NuevoCampo';
 
 // El mensaje del servidor se enseña tal cual: ya está redactado y en castellano
 // (docs/api.md, «Errores»). Lo único que se le añade delante es que no se ha
-// cambiado nada, que es lo primero que hay que saber… salvo cuando el propio
-// mensaje ya lo dice, y entonces no se repite: un aviso que dice dos veces lo
-// mismo se lee peor que uno que lo dice una.
+// cambiado nada, salvo cuando el propio mensaje ya lo dice: eso lo decide
+// `yaDiceQueNoHaCambiado`, que vive en estructura-cliente.js porque esta pantalla
+// y la de los campos leen los errores del MISMO envoltorio del servidor.
 const mensajeDeError = (error) => (error ? error.message : null);
-const yaDiceQueNoHaCambiado = (error) => /no se ha (cambiado|escrito|guardado)/i.test(
-  (error && error.message) || '',
-);
 
 // «3 apartados» / «1 apartado», que es lo que hay que decir al retirar: un
 // apartado se lleva por delante lo que tenga dentro.
@@ -529,7 +527,10 @@ export function ApartadosRetirados({
     setError(null);
     setAviso(`«${x.titulo || x.seccion}» se ha borrado para siempre`
       + (r.apartadosAfectados > 1 ? `, junto con los ${cuantos(r.apartadosAfectados - 1)} que tenía dentro` : '')
-      + (c.conContenido ? ' y con todo lo que había escrito.' : '. No había nada escrito.'));
+      + (c.conContenido ? ' y con todo lo que había escrito.' : '. No había nada escrito.')
+      // Si la destrucción del contenido falló DESPUÉS del cambio, se dice: el apartado se ha ido,
+      // pero lo escrito puede seguir guardado y nadie iría a buscarlo.
+      + (avisoDeContenidoSinDestruir(r) || ''));
     if (onCambiado) await onCambiado('borrar', r);
   };
 

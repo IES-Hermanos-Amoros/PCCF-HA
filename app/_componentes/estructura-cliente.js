@@ -129,6 +129,30 @@ export function cuantoHayEscritoEnCampo(contenido) {
   return 'Hay contenido escrito en él.';
 }
 
+// ¿EL MENSAJE DEL SERVIDOR YA DICE QUE NO SE HA CAMBIADO NADA? Es lo primero que hay que saber al
+// leer un error, así que la pantalla lo pone delante… salvo cuando el propio mensaje ya lo dice, y
+// entonces no se repite: un aviso que dice dos veces lo mismo se lee peor que uno que lo dice una.
+//
+// El envoltorio de los cambios de estructura (`app/_lib/rutas/estructura.js`) termina así los
+// rechazos y los dos conflictos, y es el MISMO para los apartados y para los campos. Por eso está
+// aquí y no copiada en cada pantalla: una sola copia no puede discrepar consigo misma.
+export const yaDiceQueNoHaCambiado = (error) => /no se ha (cambiado|escrito|guardado)/i.test(
+  (error && error.message) || '',
+);
+
+// LA OTRA MITAD DE UN BORRADO QUE SALIÓ A MEDIAS. El cambio de estructura se escribe antes de
+// destruir el contenido, así que si lo segundo falla el apartado YA SE HA IDO y no vuelve. El
+// servidor lo contesta con un 200 y un `contenidoSinDestruir`, porque un error diría «no se sabe si
+// se ha llegado a borrar» y eso sería falso. Lo que de verdad no se sabe es si lo que tenía escrito
+// sigue guardado, invisible y sin forma de llegar a él, y eso hay que decirlo: nadie iría a buscar
+// esas filas por su cuenta.
+export function avisoDeContenidoSinDestruir(respuesta) {
+  const motivo = respuesta && respuesta.contenidoSinDestruir;
+  if (!motivo) return null;
+  return ' Pero lo que tenía escrito puede seguir guardado, sin forma de llegar a él:'
+    + ` avisa a quien lleva la aplicación. El servidor ha dicho: ${motivo}`;
+}
+
 // El encabezado del aviso cuando un borrado falla. Se decide por el estado de la respuesta y no por
 // lo que diga el mensaje: un 4xx es el servidor rechazando el cambio antes de escribir nada; sin
 // respuesta, o con un 5xx, no se sabe hasta dónde llegó y lo honesto es decirlo.
