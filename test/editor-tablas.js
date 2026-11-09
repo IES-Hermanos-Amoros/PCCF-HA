@@ -356,9 +356,11 @@ prueba('se editan las tablas creadas y las importadas; las listas de tablas y lo
   // Una lista de tablas importada sigue en lectura: son varias tablas en un solo valor.
   assert.equal(Edicion.esEditable({ ...importada, multiple: true }), false);
   assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor', multiple: true }), false);
-  // Con el valor guardado: una clave y valor que solo quedó como `filas` no se abre, ni un valor que no es de su tipo.
+  // Con el valor guardado: una clave y valor que solo quedó como `filas` se abre como rejilla; un valor que no es de su tipo, no.
   assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor' }, { pares: [] }), true);
-  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor' }, { filas: [[c('a'), c('b')]] }), false);
+  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor' }, { filas: [[c('a'), c('b')]] }), true);
+  assert.equal(Edicion.esEditable({ id: 'k', tipo: 'tabla_clave_valor' }, { texto: 'x' }), false);
+  assert.equal(Edicion.esEditable({ id: 't', tipo: 'tabla' }, { pares: [] }), false, 'una tabla sin filas no es una clave y valor');
   assert.equal(Edicion.esEditable(importada, { filas: [[c('a')]] }), true);
   assert.equal(Edicion.esEditable(importada, [{ filas: [] }]), false);
   assert.equal(Edicion.esEditable(campoCreado({ tipo: 'texto_largo' })), false);
@@ -797,14 +799,20 @@ prueba('clave y valor: escribir, añadir y quitar filas; sin columnas ni cabecer
   assert.equal(lleno.pares.length, Est.MAX_PARES - 1);
 });
 
-prueba('una clave y valor importada se abre sin su tabla de Word, que es lo que la puerta pide', () => {
+prueba('una clave y valor importada se abre por su tabla de Word, que es la que se imprime; la creada aquí, en pares', () => {
   const campo = { ...campoCreado({ tipo: 'tabla_clave_valor' }) };
   const importado = { pares: [{ etiqueta: 'a', valor: 'b' }], filas: [[c('a', { bold: true }), c('b')]] };
   const v = Edicion.valorDe(campo, importado);
-  assert.equal('filas' in v, false);
+  assert.equal(v, importado, 'no se le quita nada');
+  assert.equal(Edicion.esRejilla(v), true);
+  assert.equal(Edicion.esClaveValor(v), false);
   assert.equal(Est.motivoDeCampo(campo, v), null);
-  assert.notEqual(Est.motivoDeCampo(campo, importado), null);
   assert.deepEqual(Edicion.valorDe(campo, null), Campos.valorInicial(campo), 'sin valor se abre con el inicial');
+  // La creada aquí no tiene filas y se edita en pares; la rejilla vacía sigue siendo una rejilla.
+  assert.equal(Edicion.esClaveValor({ pares: [{ etiqueta: 'a', valor: 'b' }] }), true);
+  assert.equal(Edicion.esClaveValor({ pares: [{ etiqueta: 'a', valor: 'b' }], filas: [] }), true);
+  assert.equal(Edicion.esRejilla({ filas: [] }), true);
+  assert.equal(Edicion.esRejilla({ filas: [], pares: [] }), false);
 });
 
 prueba('al azar: ninguna sucesión de operaciones saca un valor que la puerta rechace', () => {
@@ -1792,6 +1800,106 @@ prueba('en una importada con cabecera declarada quitar la cabecera se niega con 
   // Escribir y dar estilo sigue valiendo.
   assert.equal(Edicion.motivoDeNo(VALOR_DECLARADO, 'texto', { fila: 0, columna: 0, valor: 'x' }, CAMPO_DECLARADO), null);
   assert.equal(Edicion.motivoDeNo(VALOR_DECLARADO, 'negrita', { fila: 0, columna: 0, puesta: true }, CAMPO_DECLARADO), null);
+});
+
+// ================================================================ qué se imprime de un valor de tabla
+
+prueba('queSeImprime: filas si las hay, pares si no, y ra solo en la tabla de RA y CE', () => {
+  const filas = [[c('a'), c('b')]];
+  const pares = [{ etiqueta: 'a', valor: 'b' }];
+  const kv = { tipo: 'tabla_clave_valor' };
+  assert.equal(Est.queSeImprime(kv, { filas, pares }), 'filas');
+  assert.equal(Est.queSeImprime(kv, { pares }), 'pares');
+  assert.equal(Est.queSeImprime(kv, { pares, filas: [] }), 'pares');
+  assert.equal(Est.queSeImprime(kv, { pares: [] }), 'pares');
+  assert.equal(Est.queSeImprime(kv, { filas: [] }), 'ninguno');
+  assert.equal(Est.queSeImprime(kv, null), 'ninguno');
+  assert.equal(Est.queSeImprime(null, { filas }), 'filas');
+  const raCe = { tipo: 'auto.tabla_ra_ce' };
+  assert.equal(Est.queSeImprime(raCe, { ra: [{ num: 1 }], filas }), 'ra');
+  assert.equal(Est.queSeImprime(raCe, { ra: [], filas }), 'filas');
+  assert.equal(Est.queSeImprime({ tipo: 'tabla' }, { ra: [{ num: 1 }], filas }), 'filas');
+  for (const tipo of ['ponderacion_ra_ce', 'ficha_situacion_aprendizaje', 'derivado.resumen_situaciones']) {
+    assert.equal(Est.queSeImprime({ tipo }, { filas, pares }), 'propio');
+  }
+});
+
+prueba('la lista de tipos editables es una, y auto.tabla_ra_ce y los de datos derivados no están', () => {
+  assert.deepEqual(Est.TIPOS_EDITABLES, ['tabla', 'tabla_clave_valor', 'auto.competencias_objetivos', 'auto.contenidos', 'dual_ra_ce', 'auto.ficha_modulo']);
+  for (const tipo of Est.TIPOS_EDITABLES) assert.equal(Est.seGuarda({ tipo }), true, tipo);
+  for (const tipo of ['auto.tabla_ra_ce', 'ponderacion_ra_ce_x', 'derivado.resumen_situaciones']) {
+    assert.equal(Edicion.esEditable({ id: 'x', tipo }), false, tipo);
+  }
+  assert.equal(Edicion.esEditable({ id: 'x', tipo: 'auto.competencias_objetivos', multiple: true }), false);
+  for (const tipo of Est.TIPOS_REJILLA) {
+    const campo = { id: 'x', tipo };
+    assert.equal(Edicion.esEditable(campo, { filas: [[c('a')]] }), true, tipo);
+    assert.equal(Edicion.esEditable(campo, { filas: [], ra: [] }), true, tipo);
+    assert.equal(Edicion.esEditable(campo), true, tipo);
+    assert.deepEqual(Campos.valorInicial(campo), { filas: [] }, tipo);
+  }
+});
+
+prueba('la puerta guarda las rejillas de los tipos nuevos y la ficha del módulo con sus pares', () => {
+  const rej = { filas: [[c('a', { bold: true }), c('b')]], anchos: [1, 2] };
+  for (const tipo of Est.TIPOS_REJILLA) assert.equal(Est.motivoDeCampo({ id: 'x', tipo }, tipo === 'auto.ficha_modulo' ? { ...rej, pares: [{ etiqueta: 'a', valor: 'b' }] } : rej), null, tipo);
+  const ficha = { id: 'f', tipo: 'auto.ficha_modulo' };
+  assert.equal(Est.motivoDeCampo(ficha, { pares: [{ etiqueta: 'a', valor: 'b' }] }), null, 'la ficha escrita solo en pares');
+  assert.ok(Est.motivoDeCampo(ficha, { filas: rej.filas, pares: [{ etiqueta: 'a' }] }));
+  assert.ok(Est.motivoDeCampo({ id: 'x', tipo: 'dual_ra_ce' }, { filas: rej.filas, pares: [] }), 'solo la ficha lleva pares');
+  assert.ok(Est.motivoDeCampo({ id: 'x', tipo: 'auto.contenidos' }, { filas: [[c('a', { zzz: 1 })]] }));
+});
+
+const textosDelPdf = (campo, valor) => tablasDe(buildDocDefinition({ ...motoresDe(campo, valor), titulo: 'T', subtitulo: 'S' }))
+  .flatMap((t) => t.table.body.flat())
+  .map((x) => (x && (typeof x === 'string' ? x : (Array.isArray(x.text) ? x.text.map((y) => y.text || y).join('') : x.text))))
+  .filter(Boolean);
+const textosDelWord = async (campo, valor) => {
+  const xml = await (await JSZip.loadAsync(Buffer.from(await exportarDocx({ ...motoresDe(campo, valor), titulo: 'T' })))).file('word/document.xml').async('string');
+  const cuerpo = xml.slice(xml.indexOf('<w:tbl>'));
+  return (cuerpo.match(/<w:t[ >][^<]*|<w:t>[^<]*/g) || []).map((x) => x.replace(/^<w:t[^>]*>/, '')).filter(Boolean);
+};
+
+prueba('una clave y valor o ficha de módulo con las dos formas imprime lo mismo en el PDF y en el Word: la rejilla, con combinadas y anchos', async () => {
+  const filas = [
+    [c('MÓDULO PROFESIONAL', { colspan: 3, bold: true })],
+    [c('Identificación', { rowspan: 2, bold: true }), c('Código', { bold: true }), c('0373')],
+    [c('Módulo', { bold: true }), c('Lenguajes de marcas')],
+  ];
+  const pares = [{ etiqueta: 'Código', valor: 'PARESCOD' }, { etiqueta: 'Módulo', valor: 'PARESMOD' }];
+  for (const tipo of ['tabla_clave_valor', 'auto.ficha_modulo']) {
+    const campo = { id: 'k', tipo, etiqueta: 'Ficha' };
+    const valor = { filas, pares };
+    const pdf = textosDelPdf(campo, valor);
+    const word = await textosDelWord(campo, valor);
+    assert.deepEqual(pdf, ['MÓDULO PROFESIONAL', 'Identificación', 'Código', '0373', 'Módulo', 'Lenguajes de marcas'], tipo);
+    assert.deepEqual(word, pdf, tipo + ': el Word imprime lo mismo');
+    assert.equal(pdf.some((t) => /PARES/.test(t)), false);
+    // Los anchos y el estilo por celda llegan a las dos salidas.
+    const conAnchos = { ...valor, anchos: [1, 1, 4] };
+    const t = tablasDe(buildDocDefinition({ ...motoresDe(campo, conAnchos), titulo: 'T', subtitulo: 'S' }))[0];
+    assert.equal(t.table.widths.length, 3);
+    assert.notDeepEqual(t.table.widths, tablasDe(buildDocDefinition({ ...motoresDe(campo, valor), titulo: 'T', subtitulo: 'S' }))[0].table.widths);
+  }
+});
+
+prueba('editar una celda de una clave y valor importada cambia lo que sale en el PDF y en el Word', async () => {
+  const campo = { id: 'k', tipo: 'tabla_clave_valor', etiqueta: 'Ficha' };
+  const importado = { pares: [{ etiqueta: 'Código', valor: 'viejo' }], filas: [[c('Código', { bold: true }), c('viejo')]] };
+  const editado = Edicion.aplicar(Edicion.valorDe(campo, importado), 'texto', { fila: 0, columna: 1, valor: 'NUEVO' }, { campo });
+  assert.equal(editado.filas[0][1].text, 'NUEVO');
+  assert.equal(Edicion.paraPintar(editado, campo).filas[0][1].text, 'NUEVO', 'la pantalla enseña lo que se imprime');
+  assert.equal(Est.motivoDeCampo(campo, editado), null, 'y la puerta lo guarda');
+  assert.ok(textosDelPdf(campo, editado).includes('NUEVO'));
+  assert.ok((await textosDelWord(campo, editado)).includes('NUEVO'));
+  assert.equal(textosDelPdf(campo, editado).includes('viejo'), false);
+
+  // La creada en la aplicación sigue en pares, y sale por pares en las dos.
+  const creada = { pares: [{ etiqueta: 'A', valor: 'uno' }] };
+  const cambiada = Edicion.aplicar(creada, 'texto', { fila: 0, columna: 1, valor: 'DOS' });
+  assert.equal(cambiada.pares[0].valor, 'DOS');
+  assert.deepEqual(textosDelPdf(campo, cambiada), ['A', 'DOS']);
+  assert.deepEqual(await textosDelWord(campo, cambiada), ['A', 'DOS']);
 });
 
 // ---------------------------------------------------------------- ejecución

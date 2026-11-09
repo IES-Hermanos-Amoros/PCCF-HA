@@ -221,10 +221,14 @@ function campo(c, valor) {
   if (Array.isArray(valor) && c.tipo !== 'texto_largo') return valor.map((v) => campo(c, v)).join('');
   switch (c.tipo) {
     case 'texto_largo': return bloques(valor);
-    case 'auto.tabla_ra_ce': return tabla(valor.ra && valor.ra.length ? filasRaCe(valor) : valor.filas);
+    case 'auto.tabla_ra_ce': return tabla(Est.queSeImprime(c, valor) === 'ra' ? filasRaCe(valor) : valor.filas);
     case 'ponderacion_ra_ce': return tabla(valor.ra !== null && valor.ra !== undefined && valor.ce ? filasPonderacion(valor) : valor.filas);
     case 'ficha_situacion_aprendizaje': return tabla(valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor) ? filasDeFicha(valor) : null));
-    case 'auto.ficha_modulo': case 'tabla_clave_valor': return tabla(valor.filas && valor.filas.length ? valor.filas : (valor.pares ? filasParejas(valor) : null));
+    case 'auto.ficha_modulo': case 'tabla_clave_valor': {
+      const que = Est.queSeImprime(c, valor);
+      if (que === 'filas') return tabla(valor.filas, valor.anchos, Est.cabeceraDeTabla(c, valor));
+      return tabla(que === 'pares' ? filasParejas(valor) : null);
+    }
     // Incluye derivado.resumen_situaciones: se escribe tal como se importó. Y es el caso de la
     // tabla genérica editable, la única que puede traer sus propios anchos de columna.
     default: return tabla(valor.filas, valor.anchos, Est.cabeceraDeTabla(c, valor));

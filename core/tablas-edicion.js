@@ -160,20 +160,20 @@
 
   // ---------------------------------------------------------------- qué es y qué forma tiene
 
-  // ¿Este campo tiene editor? Una tabla o una tabla de clave y valor que no es una lista de tablas,
-  // la haya creado alguien aquí o la haya traído el Word.
+  // ¿Este campo tiene editor? Los de `Estructurados.TIPOS_EDITABLES` que no son una lista de
+  // tablas, los haya creado alguien aquí o los haya traído el Word.
   //
   // `guardado`, si se pasa, es el valor que tiene el campo, y sirve para descartar lo que el editor
-  // no sabe abrir: el de una tabla de clave y valor que el importador no supo leer en pares y dejó
-  // solo como `filas` (se editaría como una rejilla y el servidor no admite en ese tipo ni los
-  // anchos de columna), y cualquier valor que no tenga la forma de su tipo. Sin valor guardado se
-  // abre con el de nacimiento del campo y no hay nada que descartar.
+  // no sabe abrir: cualquier valor que no tenga la forma de su tipo (una rejilla sin `filas`, o una
+  // clave y valor sin `filas` ni `pares`). Sin valor guardado se abre con el de nacimiento del campo
+  // y no hay nada que descartar.
   function esEditable(campo, guardado) {
     const E = Estructurados();
-    if (!campo || (campo.tipo !== E.TIPO_TABLA && campo.tipo !== E.TIPO_CLAVE_VALOR) || campo.multiple) return false;
+    if (!campo || E.TIPOS_EDITABLES.indexOf(campo.tipo) < 0 || campo.multiple) return false;
     if (guardado === undefined || guardado === null) return true;
     if (!esObjeto(guardado)) return false;
-    return campo.tipo === E.TIPO_TABLA ? Array.isArray(guardado.filas) : Array.isArray(guardado.pares);
+    if (Array.isArray(guardado.filas)) return true;
+    return E.TIPOS_CON_PARES.indexOf(campo.tipo) >= 0 && Array.isArray(guardado.pares);
   }
 
   // ¿Vino del Word? Lo que deja el importador es un campo sin `inicial`, que es la señal de que se
@@ -181,8 +181,11 @@
   // documento original.
   const esImportada = (campo) => !!campo && !esObjeto(campo.inicial);
 
-  const esClaveValor = (valor) => esObjeto(valor) && Array.isArray(valor.pares);
-  const esRejilla = (valor) => esObjeto(valor) && Array.isArray(valor.filas) && !Array.isArray(valor.pares);
+  // Cuál de las dos se edita lo decide `queSeImprime`, para que se edite lo que se imprime: un valor
+  // con `filas` no vacío es una rejilla aunque traiga `pares`. Una rejilla vacía sin `pares` sigue
+  // siéndolo: es la tabla que existe y a la que no se le ha escrito nada.
+  const esClaveValor = (valor) => esObjeto(valor) && Estructurados().queSeImprime(null, valor) === 'pares';
+  const esRejilla = (valor) => esObjeto(valor) && Array.isArray(valor.filas) && !esClaveValor(valor);
 
   const sumaDeAnchos = (fila) => fila.reduce((a, c) => a + ((c && c.colspan) || 1), 0);
 
@@ -267,12 +270,12 @@
   }
 
   // El valor con el que se abre el editor: el guardado si lo hay, y si no, el de nacimiento del
-  // campo. Una clave y valor importada trae además `filas`: se quita, porque se guarda solo
-  // `pares` (core/estructurados.js, `motivoDeClaveValor`).
+  // campo. Una clave y valor que se edita en pares no necesita unas `filas` vacías al lado; las que
+  // tienen contenido mandan y se editan como rejilla (`queSeImprime`), así que no se tocan.
   function valorDe(campo, guardado) {
     const C = Campos();
     const v = esObjeto(guardado) ? guardado : C.valorInicial(campo);
-    return C.sinFilas(v);
+    return Estructurados().queSeImprime(null, v) === 'filas' ? v : C.sinFilas(v);
   }
 
   // ---------------------------------------------------------------- lo que no se puede

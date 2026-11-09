@@ -536,19 +536,23 @@ prueba('la cabecera de una tabla creada es la negrita de su primera fila, y no s
   assert.deepEqual(cabeceras({ ...CAMPO_TABLA, columnas: ['a', 'b', 'c', 'd'] }, [ancho(4), ancho(4)]), [1], 'importada con columnas: cabecera forzada, como siempre');
 });
 
-prueba('clave y valor: pares con etiqueta y valor, y la tabla importada solo si no hay pares', () => {
+prueba('clave y valor: pares con etiqueta y valor, y la tabla importada puede ir al lado', () => {
   const buenos = { pares: [{ etiqueta: 'Módulo', valor: 'Programación' }, { etiqueta: '', valor: '' }] };
   assert.equal(Est.motivoDeCampo(CAMPO_KV, buenos), null);
   assert.ok(/no existe en una fila/.test(Est.motivoDeCampo(CAMPO_KV, { pares: [{ etiqueta: 'a', valor: 'b', x: 1 }] })));
   assert.ok(/«valor»/.test(Est.motivoDeCampo(CAMPO_KV, { pares: [{ etiqueta: 'a' }] })));
   assert.ok(/solo «pares»/.test(Est.motivoDeCampo(CAMPO_KV, { pares: [], otra: 1 })));
 
-  // Lo que deja el importador: pares y filas a la vez. Se rechaza con el motivo, y `sinFilas` lo arregla.
+  // Lo que deja el importador: pares y filas a la vez. Conviven porque `queSeImprime` dice cuál sale
+  // (las filas) y los dos motores la obedecen; antes se rechazaba porque cada motor elegía una.
   const importada = { pares: [{ etiqueta: 'a', valor: 'b' }], filas: [[c('a', { bold: true }), c('b')]] };
-  assert.ok(/a la vez «pares» y «filas»/.test(Est.motivoDeCampo(CAMPO_KV, importada)));
+  assert.equal(Est.motivoDeCampo(CAMPO_KV, importada), null);
   assert.equal(Est.motivoDeCampo(CAMPO_KV, Campos.sinFilas(importada)), null);
-  // Sin pares, las filas importadas se aceptan: así se importan las que el lector no supo leer.
   assert.equal(Est.motivoDeCampo(CAMPO_KV, { filas: [[c('a'), c('b')]] }), null);
+  // Con filas se pueden poner los anchos de la rejilla; las filas tienen que cuadrar con ellos.
+  assert.equal(Est.motivoDeCampo(CAMPO_KV, { ...importada, anchos: [1, 3] }), null);
+  assert.ok(/proporci/.test(Est.motivoDeCampo(CAMPO_KV, { ...importada, anchos: [1, 3, 2] })));
+  assert.ok(/sin «filas»/.test(Est.motivoDeCampo(CAMPO_KV, { pares: [], anchos: [1, 2] })));
 });
 
 // ================================================================ 2. el catálogo
