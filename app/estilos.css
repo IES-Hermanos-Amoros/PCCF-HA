@@ -1009,7 +1009,7 @@ del > mark.quita { text-decoration-thickness: 2px; }
 .editor-tabla { gap: 8px; }
 .editor-tabla .toolbar { margin-bottom: 0; }
 .tb-cabecera { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; cursor: pointer; }
-.tabla-editable { table-layout: auto; }
+.tabla-editable { table-layout: auto; font-size: 13px; }
 .tabla-editable td { padding: 3px; vertical-align: top; }
 /* El fondo y la negrita son independientes: una celda puede ir sombreada sin negrita y al revés. */
 .tabla-editable .celda-cab { background: var(--azul-suave); }
@@ -1021,26 +1021,64 @@ del > mark.quita { text-decoration-thickness: 2px; }
 .tabla-editable .celda-derecha .celda-campo { text-align: right; }
 .tabla-editable .celda-pequena .celda-campo { font-size: 85%; }
 .tabla-editable .celda-grande .celda-campo { font-size: 126%; }
-.celda-fondo select { font-size: 11.5px; padding: 1px 2px; max-width: 15ch; }
-/* El ancho de una columna se mueve de una en una y el porcentaje va entre los dos botones. */
-.celda-ancho { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; }
 .celda-ancho-pct { font-size: 11px; color: var(--suave); min-width: 4ch; text-align: center; }
+/* LA CASILLA ES PARA ESCRIBIR. Dentro solo hay el cuadro de texto, que se queda con el ancho, y un
+   botón estrecho que lleva al panel de formato de esa celda. Con doce columnas —las tablas reales
+   del departamento llegan ahí—, siete controles por casilla dejaban la casilla sin sitio. */
+.celda-caja { display: flex; align-items: stretch; gap: 2px; }
+.celda-caja > .celda-campo { flex: 1 1 auto; width: auto; min-width: 0; }
+.celda-formato {
+  flex: none; width: 22px; padding: 0; border: 1px solid transparent; border-radius: 5px;
+  background: transparent; color: var(--suave); font-size: 10.5px; font-weight: 600;
+  letter-spacing: -.2px; cursor: pointer;
+}
+.celda-formato:hover { color: var(--acento); border-color: var(--acento); }
+.celda-formato:focus-visible { outline: 2px solid var(--acento); outline-offset: -1px; }
 .celda-campo {
-  display: block; width: 100%; min-width: 7ch; min-height: 2em; box-sizing: border-box;
+  display: block; width: 100%; min-width: 9ch; min-height: 2.6em; box-sizing: border-box;
   border: 1px solid transparent; border-radius: 5px; background: transparent; color: inherit;
-  font: inherit; line-height: 1.4; padding: 3px 5px; resize: none; outline: none; overflow: hidden;
+  font: inherit; line-height: 1.45; padding: 4px 6px; resize: none; outline: none; overflow: hidden;
   field-sizing: content;
 }
 .celda-campo:hover { border-color: var(--borde); }
 .celda-campo:focus { border-color: var(--acento); background: var(--panel); }
+/* Qué celda está elegida se ve EN LA CELDA, no solo en el panel que la formatea. Es un filo por
+   dentro y no un fondo: el fondo de la celda es el que se va a imprimir y no se puede tapar. */
+.tabla-editable .celda-elegida { box-shadow: inset 0 0 0 2px var(--acento); }
 .tabla-editable .celda-acciones { white-space: nowrap; width: 1%; vertical-align: middle; }
 .tabla-editable tfoot .celda-acciones { text-align: center; width: auto; border-style: dashed; }
 .tabla-editable .celda-acciones .mini { margin: 0 1px; }
 .tabla-editable .celda-acciones .mini:disabled { opacity: .45; cursor: not-allowed; }
-.celda-herr { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
-.celda-herr .mini { padding: 1px 6px; font-size: 11.5px; }
-.celda-herr .mini:disabled { opacity: .45; cursor: not-allowed; }
-.celda-herr .mini[aria-pressed="true"] { background: var(--azul-suave); border-color: var(--acento); font-weight: 700; }
+
+/* EL PANEL DE FORMATO DE LA CELDA ELEGIDA: uno para toda la tabla, en el sitio donde está la barra
+   de filas y columnas. No es un modal —en esta aplicación no hay ninguno—, es otra barra: así el
+   formato tiene un solo sitio y la tabla no salta cuando se cambia de celda. */
+.panel-celda {
+  display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center;
+  padding: 8px 10px; background: var(--panel-2);
+  border: 1px solid var(--borde); border-left: 3px solid var(--acento); border-radius: 9px;
+}
+.panel-celda .sep { width: 1px; align-self: stretch; min-height: 20px; background: var(--borde); margin: 0 3px; }
+/* En qué celda estamos, con el mismo aire que `.tb-donde` de la barra de al lado. */
+.panel-celda-donde {
+  font-size: 11.5px; color: var(--acento); font-weight: 600; white-space: nowrap;
+  border: 1px solid var(--acento); border-radius: 999px; padding: 2px 10px;
+}
+.panel-celda-sin { border-left-color: var(--borde); }
+.panel-celda-sin .panel-celda-donde { color: var(--suave); border-color: var(--borde); border-style: dashed; }
+.panel-celda-grupo { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.panel-celda-grupo > .ayuda { white-space: nowrap; }
+.panel-celda > .ayuda { flex: 1 1 100%; line-height: 1.45; }
+.panel-celda-campo { display: inline-flex; }
+.panel-celda select {
+  font-size: 11.5px; max-width: 24ch; padding: 3px 5px; color: var(--texto);
+  border: 1px solid var(--borde); border-radius: 6px; background: var(--panel);
+}
+.panel-celda select:focus { border-color: var(--acento); outline: none; }
+.panel-celda .mini[aria-pressed="true"] {
+  background: var(--azul-suave); border-color: var(--acento); color: var(--texto); font-weight: 700;
+}
+.panel-celda .mini:disabled, .panel-celda select:disabled { opacity: .45; cursor: not-allowed; }
 
 .nuevo-campo {
   display: flex; flex-direction: column; gap: 12px; margin: 4px 0 10px;
