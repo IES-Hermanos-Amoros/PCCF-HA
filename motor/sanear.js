@@ -118,10 +118,11 @@ const CAMPOS_DOCENTES = ['introduccion', 'no_evaluables', 'evaluables', 'refuerz
 // profesionales para la empleabilidad».
 const ETIQUETA_NORMATIVA = /\b(resultados?|criterios?|competencias?|objetivos?|saberes|contenidos?)\b/;
 
-// Y a qué campo del generador se parece una etiqueta que no está en `F.CAMPOS`,
-// para poder inventar su contenido igual. Las hay: un módulo escribe
-// «Actividades de profundización», «Actividades de proyecto intermodular»,
-// «Actividades Complementarias» y «Materiales y recursos disponibles».
+// Y a qué campo del generador se parece una etiqueta que no está en
+// `CAMPOS_DOCENTES`, para poder inventar su contenido igual. Las hay por los dos
+// motivos: etiquetas que `F.CAMPOS` no tiene, y campos de la ficha que sí están
+// en `F.CAMPOS` pero para los que el generador no tiene plantillas propias
+// («Actividades de proyecto intermodular», «Actividades Complementarias»).
 //
 // El orden importa: «no evaluables» antes que «evaluables», y «recuperación»
 // antes que cualquier regla con «evaluaci». Lo que no se parezca a nada se trata
@@ -1184,8 +1185,13 @@ function sanearTablaFicha(filas, cabecera, g, hechos) {
         const etiqueta = String(c.text == null ? '' : c.text);
         if (ETIQUETA_NORMATIVA.test(F.norm(etiqueta))) return;      // sale del decreto: se conserva
 
+        // Un campo de la ficha para el que el generador no tiene plantillas propias se
+        // reescribe como una etiqueta desconocida: con las del campo al que se parece y con
+        // su etiqueta por sufijo, para que no salga el mismo texto que en la fila de la que
+        // las toma.
         const conocido = porEtiqueta.get(F.norm(etiqueta));
-        const campo = conocido ? conocido.id : campoParecido(etiqueta);
+        const propio = conocido && CAMPOS_DOCENTES.indexOf(conocido.id) >= 0 ? conocido : null;
+        const campo = propio ? propio.id : campoParecido(etiqueta);
         if (CAMPOS_DOCENTES.indexOf(campo) < 0) return;
         const celdas = [];
         for (let k = i + 1; k < fin; k += 1) {
@@ -1197,7 +1203,7 @@ function sanearTablaFicha(filas, cabecera, g, hechos) {
         // formativas»: no hay nada que reescribir.
         if (!celdas.length) return;
         const originales = [].concat(...celdas.map((celda) => F.aLineas(celda.text)));
-        const lineas = nuevas(campo, conocido ? campo : F.norm(etiqueta), originales, conocido ? '' : F.norm(etiqueta));
+        const lineas = nuevas(campo, propio ? campo : F.norm(etiqueta), originales, propio ? '' : F.norm(etiqueta));
         // Se reparte el texto inventado entre las celdas del bloque en el mismo
         // orden y con las mismas líneas que tenía cada una.
         let n = 0;
@@ -1224,11 +1230,19 @@ function sanearFicha(ficha, modulo, g) {
     if (!hechos[k]) hechos[k] = inventarActividades(g, cabecera, campo, originales.length, originales, sufijo);
     return hechos[k];
   };
-  CAMPOS_DOCENTES.forEach((campo) => {
-    if (Array.isArray(ficha[campo]) && ficha[campo].length) {
-      ficha[campo] = nuevas(campo, campo, ficha[campo], '').slice();
-      tocada = true;
-    }
+  // Se recorren TODOS los campos del modelo y no solo `CAMPOS_DOCENTES`: lo que
+  // no se limpia aquí se publica. Los normativos salen del real decreto y se
+  // conservan; los demás son material del profesorado, y el que no tiene
+  // plantillas propias se reescribe con las del campo al que se parece, igual
+  // que en la tabla, para que las dos formas de la ficha digan lo mismo.
+  F.CAMPOS.forEach((c) => {
+    if (!Array.isArray(ficha[c.id]) || !ficha[c.id].length) return;
+    const propio = CAMPOS_DOCENTES.indexOf(c.id) >= 0;
+    if (!propio && ETIQUETA_NORMATIVA.test(F.norm(c.etiqueta))) return;
+    const campo = propio ? c.id : campoParecido(c.etiqueta);
+    const clave = propio ? campo : F.norm(c.etiqueta);
+    ficha[c.id] = nuevas(campo, clave, ficha[c.id], propio ? '' : F.norm(c.etiqueta)).slice();
+    tocada = true;
   });
   return tocada;
 }

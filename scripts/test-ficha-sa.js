@@ -138,11 +138,68 @@ prueba('una SA nueva sale de la aplicación con todos sus apartados', () => {
   nueva.raTexto = 'RA3. Consulta la información almacenada.';
   nueva.ra = F.raDeTexto(nueva.raTexto);
   nueva.ce = ['RA3.a. Se han identificado las herramientas.'];
+  // Las dos filas que no están en todas las fichas solo se imprimen si tienen
+  // algo escrito, así que para ver todas las etiquetas hay que escribirlas.
+  nueva.intermodular = ['Puesta en común con el resto de módulos.'];
+  nueva.complementarias = ['Visita a una empresa del sector.'];
   const filas = F.filasDeFicha(nueva);
   const texto = JSON.stringify(filas);
   assert.ok(texto.indexOf('Situación de aprendizaje 3') >= 0);
   assert.ok(texto.indexOf('Consultas SQL') >= 0);
   F.CAMPOS.forEach((campo) => assert.ok(texto.indexOf(campo.etiqueta) >= 0, 'falta la etiqueta ' + campo.etiqueta));
+});
+
+prueba('las dos filas que no están en todas las fichas no se imprimen vacías', () => {
+  // Una ficha que no las trae no puede ganar dos filas en blanco por el hecho de
+  // volver a montarse: lo que se imprime es el documento, y esas filas no son
+  // suyas. Los demás campos vacíos sí imprimen su fila, porque su hueco está en
+  // todas las fichas del Word.
+  const sin = F.filasDeFicha(F.fichaVacia(1));
+  const texto = JSON.stringify(sin);
+  ['intermodular', 'complementarias'].forEach((id) => {
+    const campo = F.CAMPOS.filter((x) => x.id === id)[0];
+    assert.ok(texto.indexOf(campo.etiqueta) < 0, 'sobra la etiqueta ' + campo.etiqueta);
+  });
+  assert.ok(texto.indexOf('Materiales y recursos didácticos disponibles') >= 0,
+    'las filas de todas las fichas se siguen imprimiendo vacías');
+
+  const con = F.filasDeFicha(Object.assign(F.fichaVacia(1), { intermodular: ['Proyecto con el módulo de bases de datos.'] }));
+  assert.equal(con.length, sin.length + 2, 'la fila nueva y su valor');
+  assert.ok(JSON.stringify(con).indexOf('Actividades de proyecto intermodular') >= 0);
+});
+
+prueba('las etiquetas que el Word escribe de otra manera también se reconocen', () => {
+  // Los módulos de Digitalización y de Sostenibilidad redactan estas filas así, y
+  // antes de reconocerlas su texto no entraba en ningún campo.
+  const filas = [
+    [c('Situación de aprendizaje 4', { rowspan: 2, bold: true }), c('Cloud', { rowspan: 2, bold: true }), c('Sesiones', { bold: true }), c('6', { bold: true })],
+    [c('Evaluación', { bold: true }), c('2ª', { bold: true })],
+    [c('Resultado(s) de aprendizaje', { bold: true }), c('RA3. Identifica sistemas en la nube.', { colspan: 3 })],
+    [c('Competencias personales y sociales. Aprendizajes de carácter transversal', { colspan: 4, bold: true })],
+    [c('− Trabajo colaborativo en entornos digitales.', { colspan: 4 })],
+    [c('Actividades de proyecto intermodular', { colspan: 4, bold: true })],
+    [c('− Puesta en común con el módulo de empresa.', { colspan: 4 })],
+    [c('Actividades de refuerzo', { colspan: 2, bold: true }), c('Actividades de profundización', { colspan: 2, bold: true })],
+    [c('− Fichas de repaso.', { colspan: 2 }), c('− Reto avanzado.', { colspan: 2 })],
+    [c('Actividades Complementarias', { colspan: 4, bold: true })],
+    [c('− Debate sobre la analítica de datos.', { colspan: 4 })],
+    [c('Materiales y recursos disponibles', { colspan: 4, bold: true })],
+    [c('− Aula virtual del módulo.', { colspan: 4 })],
+  ];
+  const f = F.fichaDeFilas(filas);
+  assert.deepEqual(f.competencias, ['Trabajo colaborativo en entornos digitales.']);
+  assert.deepEqual(f.intermodular, ['Puesta en común con el módulo de empresa.']);
+  assert.deepEqual(f.ampliacion, ['Reto avanzado.'], '«profundización» es la «ampliación» del modelo');
+  assert.deepEqual(f.complementarias, ['Debate sobre la analítica de datos.']);
+  assert.deepEqual(f.recursos, ['Aula virtual del módulo.']);
+
+  // Y lo que se IMPRIME es la etiqueta canónica, que es la que fija el formato.
+  const texto = JSON.stringify(F.filasDeFicha(f));
+  assert.ok(texto.indexOf('Competencias profesionales para la empleabilidad') >= 0);
+  assert.ok(texto.indexOf('Actividades de ampliación') >= 0);
+  assert.ok(texto.indexOf('Materiales y recursos didácticos disponibles') >= 0);
+  assert.ok(texto.indexOf('Actividades de profundización') < 0, 'la variante no se escribe');
+  assert.ok(texto.indexOf('Materiales y recursos disponibles\\"') < 0, 'ni la de los materiales');
 });
 
 // ---------------------------------------------------------------- hasta el PDF

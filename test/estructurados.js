@@ -766,6 +766,10 @@ prueba('y una ficha nueva se imprime con las mismas etiquetas que la importada',
   nueva.competencias = ['h) Desarrollar interfaces gráficos de usuario.'];
   nueva.objetivos = ['a) Ajustar la configuración lógica del sistema.'];
   nueva.introduccion = ['Test de iniciación.'];
+  // Las dos filas que no están en todas las fichas del Word solo se imprimen si
+  // tienen algo escrito (`filasDeFicha`), así que aquí se escriben.
+  nueva.intermodular = ['Puesta en común con el resto de módulos.'];
+  nueva.complementarias = ['Visita a una empresa del sector.'];
   assert.equal((await guardarLista(u.ana, doc._id, PROG, lista.concat([nueva]), updatedAt)).status, 200);
 
   const impresas = tablasDeFicha(await definicion(u.ana, doc._id, PROG));
