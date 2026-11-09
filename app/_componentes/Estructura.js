@@ -55,6 +55,7 @@ import {
   cambiarEstructura, hermanosDe, todasLasUnidades, unidadDelCamino,
 } from './estructura-cliente';
 import AnadirCampo from './AnadirCampo';
+import { BorrarApartado } from './BorrarDefinitivo';
 import { QuitarCampos } from './QuitarCampo';
 import { CamposDelApartadoNuevo } from './NuevoCampo';
 
@@ -512,17 +513,30 @@ export default function Estructura({
 // alimenta la tarjeta: la portada no pide nada por su cuenta.
 
 export function ApartadosRetirados({
-  documentoId, retirados, plantillaVersion, onCambiado,
+  documentoId, retirados, plantillaVersion, cuantasUnidades, comoSeLlaman, onCambiado,
 }) {
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
+  const [aviso, setAviso] = useState(null);
 
   const lista = Array.isArray(retirados) ? retirados : [];
-  if (!lista.length) return null;
+  // Con el aviso del último borrado se sigue pintando aunque la lista haya quedado vacía: es lo
+  // único que dice que se ha hecho.
+  if (!lista.length && !aviso) return null;
+
+  const borrado = async (x, r) => {
+    const c = r.contenido || {};
+    setError(null);
+    setAviso(`«${x.titulo || x.seccion}» se ha borrado para siempre`
+      + (r.apartadosAfectados > 1 ? `, junto con los ${cuantos(r.apartadosAfectados - 1)} que tenía dentro` : '')
+      + (c.conContenido ? ' y con todo lo que había escrito.' : '. No había nada escrito.'));
+    if (onCambiado) await onCambiado('borrar', r);
+  };
 
   const restaurar = async (seccion) => {
     setEnviando(seccion);
     setError(null);
+    setAviso(null);
     try {
       const r = await cambiarEstructura(documentoId, 'restaurar', {
         seccion,
@@ -565,9 +579,21 @@ export function ApartadosRetirados({
             >
               {enviando === x.seccion ? 'restaurando…' : 'restaurar'}
             </button>
+            {/* La otra salida, y la única que destruye. Primero hay que haberlo retirado: por eso
+                está aquí y en ningún otro sitio. */}
+            <BorrarApartado
+              documentoId={documentoId}
+              retirado={x}
+              plantillaVersion={plantillaVersion}
+              cuantasUnidades={cuantasUnidades}
+              comoSeLlaman={comoSeLlaman}
+              ocupado={!!enviando}
+              onBorrado={borrado}
+            />
           </li>
         ))}
       </ul>
+      <p className={aviso ? 'bien' : 'sr'} role="status">{aviso || ''}</p>
       {error ? (
         <div className="nota nota-error" role="alert">
           <div>

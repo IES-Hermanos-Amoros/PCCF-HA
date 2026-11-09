@@ -13,6 +13,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { BorrarCampo } from './BorrarDefinitivo';
 import { cambiarEstructura } from './estructura-cliente';
 
 const mensajeDeError = (error) => (error ? error.message : null);
@@ -122,7 +123,7 @@ export function QuitarCampos({
 // ------------------------------------------------- los campos quitados
 
 export function CamposRetirados({
-  documentoId, retirados, plantillaVersion, onCambiado,
+  documentoId, retirados, plantillaVersion, cuantasUnidades, comoSeLlaman, onCambiado,
 }) {
   const [enviando, setEnviando] = useState(null);
   const [aviso, setAviso] = useState(null);
@@ -132,6 +133,12 @@ export function CamposRetirados({
   if (!lista.length && !aviso) return null;
 
   const clave = (x) => `${x.seccion}\u0000${x.campo}`;
+  const borrado = async (x, r) => {
+    setError(null);
+    setAviso(`Campo «${x.etiqueta || x.campo}» de «${x.titulo}» borrado para siempre`
+      + ((r.contenido && r.contenido.conContenido) ? ' junto con todo lo que había escrito.' : '. No había nada escrito.'));
+    if (onCambiado) await onCambiado('borrar_campo', r);
+  };
   const restaurar = async (x) => {
     setEnviando(clave(x));
     setError(null);
@@ -173,16 +180,27 @@ export function CamposRetirados({
             {x.apartadoRetirado ? (
               <span className="ayuda">El apartado está retirado: restáuralo primero.</span>
             ) : (
-              <button
-                className="mini"
-                type="button"
-                onClick={() => restaurar(x)}
-                disabled={!!enviando}
-              >
-                {enviando === clave(x)
-                  ? 'Restaurando…'
-                  : `Restaurar el campo «${x.etiqueta || x.campo}» de «${x.titulo}»`}
-              </button>
+              <>
+                <button
+                  className="mini"
+                  type="button"
+                  onClick={() => restaurar(x)}
+                  disabled={!!enviando}
+                >
+                  {enviando === clave(x)
+                    ? 'Restaurando…'
+                    : `Restaurar el campo «${x.etiqueta || x.campo}» de «${x.titulo}»`}
+                </button>
+                <BorrarCampo
+                  documentoId={documentoId}
+                  retirado={x}
+                  plantillaVersion={plantillaVersion}
+                  cuantasUnidades={cuantasUnidades}
+                  comoSeLlaman={comoSeLlaman}
+                  ocupado={!!enviando}
+                  onBorrado={borrado}
+                />
+              </>
             )}
           </li>
         ))}
