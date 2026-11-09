@@ -218,8 +218,10 @@
   // Las celdas que `rejilla()` del motor sabe colocar. Son estas claves y ninguna más: una de
   // regalo viaja hasta pdfmake dentro del objeto de la celda y cambia la tabla sin que nadie lo
   // haya pedido. El importador escribe las cuatro primeras; «fondo», «alineacion» y «tamano» solo
-  // las escribe el editor.
-  const CLAVES_CELDA = ['text', 'colspan', 'rowspan', 'bold', 'fondo', 'alineacion', 'tamano'];
+  // las escribe el editor. «campo» es el id del campo de la ficha de situación de aprendizaje al
+  // que pertenece una celda de etiqueta: sirve para saber qué fila es qué campo sin fiarse del
+  // texto de la etiqueta, que la jefatura puede renombrar.
+  const CLAVES_CELDA = ['text', 'colspan', 'rowspan', 'bold', 'fondo', 'alineacion', 'tamano', 'campo'];
 
   // Los fondos que una celda puede pedir, por NOMBRE y no por color: así el PDF, el Word y la
   // pantalla pintan lo mismo con la misma paleta del centro, cada uno en su sintaxis.
@@ -319,6 +321,7 @@
         if (celda.bold !== undefined && typeof celda.bold !== 'boolean') return `${suyo} tiene «bold» y no es true ni false.`;
         if (celda.fondo !== undefined && !FONDOS_CELDA.includes(celda.fondo)) return `${suyo} tiene un «fondo» que no vale: los fondos son ${comillas(FONDOS_CELDA)}.`;
         if (celda.alineacion !== undefined && !ALINEACIONES_CELDA.includes(celda.alineacion)) return `${suyo} tiene una «alineacion» que no vale: las alineaciones son ${comillas(ALINEACIONES_CELDA)}.`;
+        if (celda.campo !== undefined && (typeof celda.campo !== 'string' || !celda.campo.trim())) return `${suyo} tiene un «campo» que no es una cadena con el id de un campo.`;
         if (celda.tamano !== undefined && !TAMANOS_CELDA.includes(celda.tamano)) return `${suyo} tiene un «tamano» que no vale: los tamaños son ${comillas(TAMANOS_CELDA)}.`;
       }
     }
@@ -775,15 +778,16 @@
 
   // ---------------------------------------------------------------- fichas de situación de aprendizaje
 
-  // La cabecera de la ficha. El cuerpo son los `CAMPOS` de core/sa.js, que no se repiten
-  // aquí: están escritos allí y allí se añaden.
+  // La cabecera de la ficha. El cuerpo son los campos de la estructura (`CAMPOS_POR_OMISION` de
+  // core/sa.js si no se da otra), que no se repiten aquí: están escritos allí y allí se añaden.
+  // Los retirados siguen siendo claves válidas: una ficha guardada puede conservar su texto.
   const CLAVES_CABECERA = ['num', 'titulo', 'sesiones', 'evaluacion', 'raTexto', 'ra', 'filas'];
 
-  const clavesDeFicha = () => CLAVES_CABECERA.concat(Sa().CAMPOS.map((c) => c.id));
+  const clavesDeFicha = (campos) => CLAVES_CABECERA.concat((campos || Sa().CAMPOS_POR_OMISION).map((c) => c.id));
 
-  function motivoFicha(ficha, donde = 'la ficha') {
+  function motivoFicha(ficha, donde = 'la ficha', campos) {
     if (!esObjeto(ficha)) return `${donde} no es un objeto con los campos de la situación de aprendizaje.`;
-    const extra = sobran(ficha, clavesDeFicha());
+    const extra = sobran(ficha, clavesDeFicha(campos));
     if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en una ficha de situación de aprendizaje.`;
 
     // El número puede ser 0: ocho fichas de la PD real lo traen, y el documento es el que
@@ -812,7 +816,7 @@
       }
     }
 
-    for (const campo of Sa().CAMPOS) {
+    for (const campo of (campos || Sa().CAMPOS_POR_OMISION)) {
       if (ficha[campo.id] === undefined) continue;
       const m = motivoDeLineas(ficha[campo.id], `«${campo.etiqueta}» de ${donde}`);
       if (m) return m;
@@ -829,14 +833,14 @@
     // ficha nueva: una ficha nueva nace con todos sus campos presentes y vacíos
     // (`fichaVacia` de core/sa.js).
     const tieneTabla = Array.isArray(ficha.filas) && ficha.filas.length;
-    if (!tieneTabla && !Sa().esSemantica(ficha)) {
+    if (!tieneTabla && !Sa().esSemantica(ficha, campos)) {
       return `${donde} no trae ningún campo de la situación de aprendizaje ni «raTexto», así que el documento no sabría qué imprimir: una ficha nueva se crea con todos sus campos presentes y vacíos.`;
     }
     return null;
   }
 
-  function motivoFichas(valor, { multiple = true } = {}) {
-    if (!multiple) return motivoFicha(valor);
+  function motivoFichas(valor, { multiple = true } = {}, campos) {
+    if (!multiple) return motivoFicha(valor, undefined, campos);
     if (!Array.isArray(valor)) {
       return 'este campo guarda una lista de fichas de situación de aprendizaje, y esto no es una lista.';
     }
@@ -844,7 +848,7 @@
       return 'la lista de fichas está vacía: un apartado sin fichas se queda sin el campo, no con una lista vacía.';
     }
     for (let i = 0; i < valor.length; i += 1) {
-      const m = motivoFicha(valor[i], `la ficha ${i + 1}`);
+      const m = motivoFicha(valor[i], `la ficha ${i + 1}`, campos);
       if (m) return m;
     }
     return null;

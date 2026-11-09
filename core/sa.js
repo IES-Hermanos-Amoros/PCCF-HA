@@ -15,8 +15,8 @@
 //
 //   Las dos conversiones que hacen falta para que una SA se vea, cambie y cree
 //   desde la aplicación:
-//     fichaDeFilas(filas, cabecera)  tabla importada -> modelo
-//     filasDeFicha(ficha)            modelo          -> tabla, la que imprime el PDF
+//     fichaDeFilas(filas, cabecera, campos)  tabla importada -> modelo
+//     filasDeFicha(ficha, campos)            modelo          -> tabla, la que imprime el PDF
 //   La segunda es la que permite que una SA nueva, que nunca estuvo en un Word,
 //   salga impresa igual que las importadas. Lo que se ve en la aplicación es lo
 //   que sale en el PDF, porque los dos usan esta misma función.
@@ -56,6 +56,15 @@
 //   parámetro y, si no se pasa, deja ''. El mockup pasa '1ª' para conservar lo que
 //   ya hacía. Esto es una decisión pendiente, no un acuerdo.
 //
+// LA ESTRUCTURA ES UN PARÁMETRO
+//
+//   La lista de campos de la ficha (`CAMPOS_POR_OMISION`, la de siempre) es la estructura
+//   que se usa cuando nadie dice otra. Todas las funciones que dependen de ella reciben la
+//   estructura como ÚLTIMO argumento opcional, para que el departamento pueda tener la suya
+//   (etiquetas cambiadas, campos añadidos, movidos o retirados) sin que esta lógica cambie.
+//   Cada campo es `{ id, etiqueta, ancho, grupo?, solo_si_hay?, retirado? }`; uno `retirado`
+//   ni se imprime ni se lee: para esta lógica es como si no estuviera en la lista.
+//
 // Esto es lógica pura: sin DOM, sin localStorage, sin red, sin node. Vale como
 // <script> en el mockup, como `require` en el motor y en las pruebas, y como
 // `import` desde Next. Cuelga de `global.Core.sa`, igual que core/permisos.js.
@@ -69,7 +78,7 @@
   //
   // `solo_si_hay` son las dos filas que NO están en todas las fichas: solo las
   // traen los módulos que las escriben. Ver `filasDeFicha`.
-  const CAMPOS = [
+  const CAMPOS_POR_OMISION = [
     { id: 'ce', etiqueta: 'Criterios de evaluación', ancho: 4 },
     { id: 'competencias', etiqueta: 'Competencias profesionales para la empleabilidad', ancho: 4 },
     { id: 'objetivos', etiqueta: 'Objetivos de aprendizaje', ancho: 4 },
@@ -122,10 +131,26 @@
       .toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
-  const POR_ETIQUETA = new Map();
-  CAMPOS.forEach((c) => {
-    [c.etiqueta].concat(SINONIMOS[c.id] || []).forEach((e) => POR_ETIQUETA.set(norm(e), c));
-  });
+  // Los campos que cuentan de una estructura: los retirados no se imprimen ni se leen.
+  const vigentes = (campos) => (campos || CAMPOS_POR_OMISION).filter((c) => !c.retirado);
+
+  // El mapa etiqueta -> campo que usa el lector, de la estructura que toque. Se memoriza por
+  // lista porque `fichaDeFilas` se llama en bucle sobre cientos de fichas con la misma
+  // estructura, y rehacer el mapa en cada una sería trabajo tirado. Una estructura nueva
+  // (otro array) es otra entrada: no hay nada que invalidar.
+  const MAPAS = new WeakMap();
+  function porEtiqueta(campos) {
+    const lista = campos || CAMPOS_POR_OMISION;
+    let mapa = MAPAS.get(lista);
+    if (!mapa) {
+      mapa = new Map();
+      vigentes(lista).forEach((c) => {
+        [c.etiqueta].concat(SINONIMOS[c.id] || []).forEach((e) => mapa.set(norm(e), c));
+      });
+      MAPAS.set(lista, mapa);
+    }
+    return mapa;
+  }
 
   // ---------------------------------------------------------------- texto
 
@@ -180,13 +205,14 @@
   // La cabecera: "Situación de aprendizaje 3 | título | Sesiones | 12"
   // Las etiquetas pueden llevar el valor al lado (en la misma fila) o debajo (la
   // fila es toda de etiquetas en negrita y el valor va en la siguiente).
-  function leerFilas(filas) {
+  function leerFilas(filas, campos) {
     const f = Array.isArray(filas) ? filas : [];
+    const mapa = porEtiqueta(campos);
     const usadas = new Set();
     const out = {
       num: null, titulo: '', sesiones: null, evaluacion: '', raTexto: '', ra: [],
     };
-    CAMPOS.forEach((c) => { out[c.id] = []; });
+    vigentes(campos).forEach((c) => { out[c.id] = []; });
 
     if (f.length) {
       const n = textoDe(f[0], 0).match(/(\d+)/);
@@ -215,7 +241,7 @@
       }
 
       // etiquetas con el valor debajo: la fila es toda de etiquetas conocidas
-      const etiquetas = fila.map((c) => POR_ETIQUETA.get(norm(c && c.text)));
+      const etiquetas = fila.map((c) => mapa.get(norm(c && c.text)));
       if (!etiquetas.length || etiquetas.some((c) => !c)) return;
       const siguiente = f[i + 1] || [];
       etiquetas.forEach((campo, j) => { out[campo.id] = aLineas(textoDe(siguiente, j)); });
@@ -229,8 +255,8 @@
 
   // El modelo de una rejilla importada. `cabecera`, si viene, manda sobre lo
   // deducido de la tabla.
-  function fichaDeFilas(filas, cabecera) {
-    const out = leerFilas(filas).ficha;
+  function fichaDeFilas(filas, cabecera, campos) {
+    const out = leerFilas(filas, campos).ficha;
     if (cabecera) {
       ['num', 'titulo', 'sesiones', 'evaluacion'].forEach((k) => {
         if (cabecera[k] !== undefined && cabecera[k] !== null && cabecera[k] !== '') out[k] = cabecera[k];
@@ -246,10 +272,14 @@
     text: String(text == null ? '' : text), colspan: 1, rowspan: 1, bold: false,
   }, opts);
 
-  // Se usa la maquetación mayoritaria del documento: las actividades de
-  // introducción, no evaluables y evaluables en una fila, refuerzo y ampliación en
-  // otra, y recuperación y materiales a todo lo ancho.
-  function filasDeFicha(ficha) {
+  // La maquetación sale de la estructura, no de una lista de filas escrita a mano: los
+  // campos, en su orden, se van colocando en filas de `COLUMNAS` columnas (cada uno ocupa su
+  // `ancho`), y un grupo distinto siempre empieza fila nueva. Con la estructura por omisión
+  // da la maquetación mayoritaria del documento: las actividades de introducción, no
+  // evaluables y evaluables en una fila, refuerzo y ampliación en otra, y recuperación y
+  // materiales a todo lo ancho. La cabecera de las actividades se escribe una vez, delante de
+  // la primera fila del grupo `actividades` que llegue a imprimirse.
+  function filasDeFicha(ficha, campos) {
     const s = ficha || {};
     const out = [];
     const ancho = (v) => (v > 1 ? v : 1);
@@ -263,27 +293,42 @@
     out.push([celda('Evaluación', { bold: true }), celda(s.evaluacion, { bold: true })]);
     out.push([celda('Resultado(s) de aprendizaje', { bold: true }), celda(s.raTexto, { colspan: 3 })]);
 
-    const bloque = (ids) => {
-      const campos = ids.map((id) => CAMPOS.filter((c) => c.id === id)[0]).filter(Boolean);
+    const bloque = (campos) => {
       // UN CAMPO `solo_si_hay` VACÍO NO IMPRIME SU FILA. Los demás sí, en blanco, porque su
       // fila está en TODAS las fichas del documento y ese hueco es parte del formato; estas
       // solo las escriben algunos módulos, así que una ficha que no las trae no puede ganar
       // filas vacías por el hecho de volver a montarse.
       if (campos.every((c) => c.solo_si_hay) && !campos.some((c) => deLineas(s[c.id]).trim())) return;
-      out.push(campos.map((c) => celda(c.etiqueta, { colspan: ancho(c.ancho), bold: true })));
+      // `campo` es el id al que pertenece la etiqueta: quien edite la tabla sabe así qué fila
+      // es qué campo sin fiarse del texto de la etiqueta, que se puede renombrar.
+      out.push(campos.map((c) => celda(c.etiqueta, { colspan: ancho(c.ancho), bold: true, campo: c.id })));
       out.push(campos.map((c) => celda(deLineas(s[c.id]), { colspan: ancho(c.ancho) })));
     };
 
-    bloque(['ce']);
-    bloque(['competencias']);
-    bloque(['objetivos']);
-    out.push([celda(CABECERA_ACTIVIDADES, { colspan: COLUMNAS, bold: true })]);
-    bloque(['introduccion', 'no_evaluables', 'evaluables']);
-    bloque(['intermodular']);
-    bloque(['refuerzo', 'ampliacion']);
-    bloque(['recuperacion']);
-    bloque(['complementarias']);
-    bloque(['recursos']);
+    const filasDeCampos = [];
+    let actual = [];
+    let suma = 0;
+    vigentes(campos).forEach((c) => {
+      const w = ancho(c.ancho);
+      if (actual.length && (suma + w > COLUMNAS || actual[0].grupo !== c.grupo)) {
+        filasDeCampos.push(actual);
+        actual = [];
+        suma = 0;
+      }
+      actual.push(c);
+      suma += w;
+    });
+    if (actual.length) filasDeCampos.push(actual);
+
+    let grupoPuesto = false;
+    filasDeCampos.forEach((fila) => {
+      const imprime = !fila.every((c) => c.solo_si_hay) || fila.some((c) => deLineas(s[c.id]).trim());
+      if (imprime && fila[0].grupo === 'actividades' && !grupoPuesto) {
+        out.push([celda(CABECERA_ACTIVIDADES, { colspan: COLUMNAS, bold: true })]);
+        grupoPuesto = true;
+      }
+      bloque(fila);
+    });
     return out;
   }
 
@@ -293,7 +338,7 @@
   // cuanto la ficha cambia, la rejilla se suelta y lo que se imprime pasa a montarse del
   // modelo (`filasDeFicha`), así que LO QUE NO HAYA ENTRADO EN UN CAMPO desaparece.
   //
-  // El lector reconoce las filas por el TEXTO de su etiqueta (`POR_ETIQUETA`), que es lo único
+  // El lector reconoce las filas por el TEXTO de su etiqueta (`porEtiqueta`), que es lo único
   // que el Word trae. La lista de etiquetas aceptadas siempre irá por detrás de lo que alguien
   // escriba, y lo que no puede pasar es que la pérdida sea muda: de ahí este informe, que dice
   // CON NÚMEROS cuántas filas se entienden y NOMBRA la etiqueta de las que no.
@@ -305,9 +350,9 @@
   // no tiene nada que perder, y la cabecera de las actividades, que `filasDeFicha` vuelve a
   // imprimir igual. Sin esa segunda excepción toda ficha del documento parecería perder algo, y
   // un aviso que sale siempre no avisa de nada.
-  function filasSinCampo(filas) {
+  function filasSinCampo(filas, campos) {
     const f = Array.isArray(filas) ? filas : [];
-    const { usadas } = leerFilas(f);
+    const { usadas } = leerFilas(f, campos);
     const out = [];
     f.forEach((fila, i) => {
       if (usadas.has(i)) return;
@@ -341,9 +386,9 @@
   // EL INFORME ENTERO, para que la pantalla no tenga que componer ninguna frase: `frase` dice
   // lo que se entiende de la tabla y `aviso` lo que no, con el texto con el que se arregla la
   // redacción del Word. `aviso` es null cuando no se pierde nada, que es el caso normal.
-  function informeDeFilas(filas) {
+  function informeDeFilas(filas, campos) {
     const f = Array.isArray(filas) ? filas : [];
-    const sueltas = filasSinCampo(f);
+    const sueltas = filasSinCampo(f, campos);
     const perdidas = sueltas.length;
     const total = f.length;
 
@@ -373,8 +418,8 @@
   // Una ficha con los campos vacíos pero presentes: el formulario se pinta igual
   // con una SA importada y con una nueva. `evaluacion` solo se fija si se pasa;
   // ver la nota de DIFERENCIA en la cabecera.
-  function fichaVacia(num, evaluacion) {
-    const f = fichaDeFilas([]);
+  function fichaVacia(num, evaluacion, campos) {
+    const f = fichaDeFilas([], undefined, campos);
     f.num = num == null ? null : Number(num);
     if (evaluacion !== undefined) f.evaluacion = evaluacion;
     return f;
@@ -382,7 +427,7 @@
 
   // ¿Tiene cuerpo con nombre, o solo la tabla importada? Lo usa el renderer para
   // decidir si imprime `filas` tal cual o las reconstruye desde el modelo.
-  const esSemantica = (v) => !!v && (CAMPOS.some((c) => Array.isArray(v[c.id]) && v[c.id].length)
+  const esSemantica = (v, campos) => !!v && (vigentes(campos).some((c) => Array.isArray(v[c.id]) && v[c.id].length)
     || typeof v.raTexto === 'string');
 
   // ---------------------------------------------------------------- lista de fichas
@@ -392,9 +437,9 @@
   const renumerar = (lista) => lista.map((f, i) => Object.assign({}, f, { num: i + 1 }));
 
   // Añade una ficha vacía al final. Devuelve la lista y el número de la nueva.
-  function anadirVacia(lista, evaluacion) {
+  function anadirVacia(lista, evaluacion, campos) {
     const num = lista.length + 1;
-    const f = fichaVacia(num, evaluacion);
+    const f = fichaVacia(num, evaluacion, campos);
     f.titulo = 'Situación de aprendizaje ' + num;
     return { lista: lista.concat([f]), num };
   }
@@ -485,10 +530,10 @@
   const vacioEnFicha = (x) => x === null || x === undefined || x === ''
     || (Array.isArray(x) && !x.length);
 
-  function completarDesdeFilas(ficha) {
+  function completarDesdeFilas(ficha, campos) {
     const out = { ...(ficha || {}) };
     if (!Array.isArray(out.filas) || !out.filas.length) return out;
-    const deLaTabla = fichaDeFilas(out.filas);
+    const deLaTabla = fichaDeFilas(out.filas, undefined, campos);
     for (const clave of Object.keys(deLaTabla)) {
       if (clave === 'filas') continue;
       if (vacioEnFicha(out[clave]) && !vacioEnFicha(deLaTabla[clave])) out[clave] = deLaTabla[clave];
@@ -497,7 +542,7 @@
   }
 
   const api = {
-    CAMPOS, SINONIMOS, CABECERA_ACTIVIDADES, COLUMNAS, EVALUACIONES,
+    CAMPOS: CAMPOS_POR_OMISION, CAMPOS_POR_OMISION, SINONIMOS, porEtiqueta, CABECERA_ACTIVIDADES, COLUMNAS, EVALUACIONES,
     norm, aLineas, lineas, deLineas, raDeTexto, lineaCe,
     fichaDeFilas, filasDeFicha, fichaVacia, esSemantica, completarDesdeFilas,
     filasSinCampo, informeDeFilas,

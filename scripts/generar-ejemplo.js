@@ -92,7 +92,7 @@ const esNormativa = (etiqueta) => ETIQUETAS_NORMATIVAS.some((e) => F.norm(etique
 
 // Las propias etiquetas de la ficha («Materiales y recursos didácticos
 // disponibles» pasa de 40 caracteres) son texto de la plantilla, no del docente.
-const ETIQUETAS_DE_FICHA = new Set(F.CAMPOS.map((c) => F.norm(c.etiqueta)));
+const ETIQUETAS_DE_FICHA = new Set(F.CAMPOS_POR_OMISION.map((c) => F.norm(c.etiqueta)));
 const esEtiqueta = (texto) => ETIQUETAS_DE_FICHA.has(F.norm(texto))
   || (F.norm(texto).length < 60 && /^(actividades|materiales y recursos|tipificacion)/.test(F.norm(texto)));
 

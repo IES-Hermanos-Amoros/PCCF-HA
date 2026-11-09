@@ -284,7 +284,7 @@ function CampoLineas({ campo, valor, editable, onCambio }) {
 
 // Los campos del cuerpo con el texto de ayuda de la interfaz, como en el
 // prototipo: la lógica no lleva textos de formulario.
-const CAMPOS = Sa.CAMPOS.map((c) => (c.id === 'ce'
+const CAMPOS = Sa.CAMPOS_POR_OMISION.map((c) => (c.id === 'ce'
   ? { ...c, ayuda: 'Uno por línea. Se pueden marcar desde los criterios del módulo.' }
   : c));
 
@@ -341,7 +341,7 @@ function Ficha({ ficha, raModulo, raEstado, editable, onCambio, onVolver }) {
   // es ella la que se imprime; en cuanto algo cambia se suelta y lo impreso pasa a
   // montarse de los campos, así que las filas que no han ido a parar a ningún campo
   // son exactamente las que se van a perder. El lector las reconoce por el TEXTO de
-  // su etiqueta (`POR_ETIQUETA` de core/sa.js), de modo que una redacción distinta se
+  // su etiqueta (`porEtiqueta` de core/sa.js), de modo que una redacción distinta se
   // pierde sin que la tabla parezca rara; lo que no puede es perderse en silencio.
   // El recuento se queda a la vista también cuando no se pierde nada: es lo que
   // permite comprobar de un vistazo que la ficha se sigue entendiendo.

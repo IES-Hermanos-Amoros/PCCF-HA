@@ -102,9 +102,9 @@ export function completa(ficha, num) {
 
 // La tabla que va a salir impresa, con el mismo criterio que el motor: la
 // importada si sigue ahí, y si no la montada desde los campos.
-export const filasDe = (ficha) => (ficha && Array.isArray(ficha.filas) && ficha.filas.length
+export const filasDe = (ficha, campos) => (ficha && Array.isArray(ficha.filas) && ficha.filas.length
   ? ficha.filas
-  : Sa.filasDeFicha(ficha));
+  : Sa.filasDeFicha(ficha, campos));
 
 // ---------------------------------------------------------------- leer el apartado
 

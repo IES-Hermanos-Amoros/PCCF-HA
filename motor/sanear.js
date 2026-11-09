@@ -1151,7 +1151,7 @@ const filaDeEtiquetas = (fila, conocida) => Array.isArray(fila) && fila.length >
 // filas importadas: la decisión de qué se conserva tiene que ser la misma en los
 // dos sitios.
 function sanearTablaFicha(filas, cabecera, g, hechos) {
-  const porEtiqueta = new Map(F.CAMPOS.map((c) => [F.norm(c.etiqueta), c]));
+  const porEtiqueta = new Map(F.CAMPOS_POR_OMISION.map((c) => [F.norm(c.etiqueta), c]));
   const etiquetaConocida = (texto) => {
     const n = F.norm(texto);
     const normativa = ETIQUETA_NORMATIVA.exec(n);
@@ -1235,7 +1235,7 @@ function sanearFicha(ficha, modulo, g) {
   // conservan; los demás son material del profesorado, y el que no tiene
   // plantillas propias se reescribe con las del campo al que se parece, igual
   // que en la tabla, para que las dos formas de la ficha digan lo mismo.
-  F.CAMPOS.forEach((c) => {
+  F.CAMPOS_POR_OMISION.forEach((c) => {
     if (!Array.isArray(ficha[c.id]) || !ficha[c.id].length) return;
     const propio = CAMPOS_DOCENTES.indexOf(c.id) >= 0;
     if (!propio && ETIQUETA_NORMATIVA.test(F.norm(c.etiqueta))) return;
