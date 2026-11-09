@@ -25,6 +25,8 @@
 //     título, el contenido se quedaría huérfano y la lectura devolvería un apartado vacío. Es el
 //     fallo que esta prueba existe para que no vuelva.
 //   · RETIRAR NO BORRA. El contenido sigue en `apartados` y el apartado se restaura con él.
+//   · BORRAR SÍ, Y SOLO LO RETIRADO. Destruye las filas de todas las unidades y del subárbol, o la clave
+//     del campo en todas ellas, y un campo nuevo con el mismo id no resucita lo viejo.
 //   · UN APARTADO DE MÓDULO ES DE LA PLANTILLA: el cambio sale en los once módulos a la vez, y la
 //     respuesta lo dice para que la interfaz lo pueda advertir.
 //   · La versión de la plantilla sube con cada cambio, y no sube con un cambio rechazado.
@@ -156,6 +158,38 @@ const restaurar = (persona, id, seccion, cuerpo) => Estructura.RESTAURAR(
     { metodo: 'POST', cuerpo: cuerpo === undefined ? {} : cuerpo }),
   { id },
 );
+
+
+// Retirar y borrar un campo, y borrar un apartado. El borrado es un DELETE sin cuerpo, o con el
+// `esperaPlantillaVersion` si se quiere.
+const urlCampo = (id, seccion, campo, accion) => `/api/documentos/${id}/estructura/apartado/campo${accion ? `/${accion}` : ''}`
+  + `?seccion=${encodeURIComponent(seccion)}&campo=${encodeURIComponent(campo)}`;
+
+const anadirCampo = (persona, id, seccion, campo) => Estructura.ANADIR_CAMPO(
+  pet(`/api/documentos/${id}/estructura/apartado/campo?seccion=${encodeURIComponent(seccion)}`, persona,
+    { metodo: 'POST', cuerpo: { campo } }),
+  { id },
+);
+
+const retirarCampo = (persona, id, seccion, campo) => Estructura.RETIRAR_CAMPO(
+  pet(urlCampo(id, seccion, campo, 'retirar'), persona, { metodo: 'POST', cuerpo: {} }), { id },
+);
+
+const borrar = (persona, id, seccion, cuerpo) => Estructura.BORRAR(
+  pet(`/api/documentos/${id}/estructura/apartado?seccion=${encodeURIComponent(seccion)}`, persona,
+    { metodo: 'DELETE', cuerpo }),
+  { id },
+);
+
+const borrarCampo = (persona, id, seccion, campo, cuerpo) => Estructura.BORRAR_CAMPO(
+  pet(urlCampo(id, seccion, campo), persona, { metodo: 'DELETE', cuerpo }), { id },
+);
+
+// Todo lo que un borrado rechazado tiene que dejar igual: las filas, la versión y la plantilla.
+async function instantanea(repo, id) {
+  const d = await repo.documentos.obtener(id);
+  return { filas: await foto(repo, id), version: d.plantillaVersion, plantilla: JSON.stringify(d.plantilla), asignaciones: JSON.stringify(d.asignaciones) };
+}
 
 // Un cambio que tiene que salir bien. Devuelve el cuerpo.
 async function cambio(respuesta, estado = 200) {
@@ -438,6 +472,8 @@ prueba('un documento del curso anterior se sigue abriendo y exportando igual des
   await cambio(await renombrar(u.jefa, nuevoId, 'introduccion', { titulo: 'Presentación del ciclo' }));
   await cambio(await mover(u.jefa, nuevoId, 'anexos', { delta: -1 }));
   await cambio(await retirar(u.jefa, nuevoId, 'atencion-a-la-diversidad'));
+  // Y el borrado definitivo de lo retirado, que es el único cambio que destruye contenido.
+  await cambio(await borrar(u.jefa, nuevoId, 'atencion-a-la-diversidad'));
 
   // El curso anterior, exactamente igual. Cualquier diferencia es estructura que se ha colado de un
   // curso al otro, y el `deepStrictEqual` sobre la definición dice qué nodo.
@@ -1050,6 +1086,285 @@ prueba('el apartado añadido se arrastra al curso siguiente con su contenido', a
   assert.equal(fila.origen, 'heredado');
   assert.equal(fila.valores.texto[0].text, 'Materiales de Programación.');
   assert.ok(impreso(await definicionDe(u.ana, nuevoId, PROG), 'Materiales de Programación.'));
+});
+
+
+// ================================================================ 9. borrar de verdad
+
+prueba('borrar algo que no está retirado es un 400 que dice que primero hay que retirarlo, y no cambia nada', async () => {
+  const { repo, u, doc } = await escenario();
+  const antes = await instantanea(repo, doc._id);
+
+  const e = await esError(await borrar(u.jefa, doc._id, 'atencion-a-la-diversidad'), 400, 'peticion');
+  assert.match(e.mensaje, /retir/);
+  assert.match(e.mensaje, /No se ha cambiado nada/);
+  const c = await esError(await borrarCampo(u.jefa, doc._id, 'introduccion', 'texto'), 400, 'peticion');
+  assert.match(c.mensaje, /retir/);
+
+  assert.deepStrictEqual(await instantanea(repo, doc._id), antes, 'un borrado rechazado ha cambiado algo');
+  assert.equal((await (await leer(u.jefa, doc._id, 'atencion-a-la-diversidad', null)).json()).valores.texto[0].text,
+    'Medidas de nivel II y III.');
+
+  // Un apartado escondido porque su padre está retirado tampoco: se borra el padre.
+  await cambio(await retirar(u.jefa, doc._id, 'introduccion'));
+  const hijo = await esError(await borrar(u.jefa, doc._id, 'introduccion/contextualizacion'), 400, 'peticion');
+  assert.match(hijo.mensaje, /Introducción/);
+
+  // Y lo que no existe es un 404, como en el resto de cambios.
+  await esError(await borrar(u.jefa, doc._id, 'no-existe'), 404, 'no_encontrado');
+  await esError(await borrarCampo(u.jefa, doc._id, 'atencion-a-la-diversidad', 'fantasma'), 404, 'no_encontrado');
+  await esError(await Estructura.BORRAR(pet(`/api/documentos/${doc._id}/estructura/apartado`, u.jefa, { metodo: 'DELETE' }), { id: doc._id }),
+    400, 'peticion');
+});
+
+prueba('borrar un apartado retirado destruye su contenido, y restaurarlo ya no lo encuentra', async () => {
+  const { repo, u, doc } = await escenario();
+  assert.ok(await guardados(repo, doc._id, 'atencion-a-la-diversidad'));
+  await cambio(await retirar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+
+  const hecho = await cambio(await borrar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+  assert.equal(hecho.cambio.tipo, 'borrado');
+  assert.equal(hecho.filasBorradas, 1);
+  assert.equal(hecho.apartadosAfectados, 1);
+  assert.equal(hecho.retirados, 0);
+
+  assert.equal(await guardados(repo, doc._id, 'atencion-a-la-diversidad'), null, 'la fila sigue guardada');
+  assert.deepStrictEqual((await repo.apartados.listar(doc._id)).filter((f) => f.seccion === 'atencion-a-la-diversidad'), []);
+  await esError(await leer(u.jefa, doc._id, 'atencion-a-la-diversidad', null), 404, 'no_encontrado');
+  await esError(await restaurar(u.jefa, doc._id, 'atencion-a-la-diversidad'), 404, 'no_encontrado');
+  const e = await (await estructuraDe(u.jefa, doc._id)).json();
+  assert.deepStrictEqual(e.retirados, []);
+  assert.ok(!e.apartados.some((x) => x.seccion === 'atencion-a-la-diversidad'));
+  assert.ok(!impreso(await definicionDe(u.jefa, doc._id), 'Medidas de nivel II y III.'));
+
+  // El reparto de ese apartado se va con él, y un apartado nuevo con el mismo título nace vacío y
+  // sin nadie asignado: ni el texto ni el permiso resucitan.
+  assert.equal(Object.prototype.hasOwnProperty.call((await repo.documentos.obtener(doc._id)).asignaciones, 'atencion-a-la-diversidad'), false);
+  const nuevo = await cambio(await anadir(u.jefa, doc._id, { titulo: 'Atención a la diversidad' }), 201);
+  assert.equal(nuevo.seccion, 'atencion-a-la-diversidad', 'el id se vuelve a generar igual');
+  const abierto = await (await leer(u.luis, doc._id, 'atencion-a-la-diversidad', null)).json();
+  assert.equal(abierto.existe, false);
+  assert.deepStrictEqual(abierto.valores, {});
+  assert.equal(abierto.puedeEditar, false, 'la persona asignada al apartado borrado conserva el permiso');
+});
+
+prueba('borrar un apartado se lleva el subárbol entero y las filas de todas las unidades', async () => {
+  const { repo, u, doc } = await escenario();
+  const raiz = 'modulos/situaciones-de-aprendizaje';
+  const hijo = `${raiz}/situacion`;
+  const filasDe = async () => (await repo.apartados.listar(doc._id)).filter((f) => f.seccion === raiz || f.seccion === hijo);
+  const metodologia = (await repo.apartados.listar(doc._id)).filter((f) => f.seccion === 'modulos/metodologia').length;
+  assert.equal((await filasDe()).length, MODULOS.length, 'la ficha de situación debería tener una fila por módulo');
+  assert.equal(metodologia, MODULOS.length);
+
+  await cambio(await retirar(u.jefa, doc._id, raiz));
+  const hecho = await cambio(await borrar(u.jefa, doc._id, raiz));
+  assert.equal(hecho.afectaUnidades, true);
+  assert.equal(hecho.apartadosAfectados, 2, 'el apartado y su hijo');
+  assert.equal(hecho.filasBorradas, MODULOS.length);
+  assert.equal(hecho.contenido.conContenido, MODULOS.length);
+  assert.equal(hecho.contenido.unidadesConContenido, MODULOS.length);
+
+  assert.deepStrictEqual(await filasDe(), [], 'quedan filas del apartado o de su hijo');
+  for (const unidadId of MODULOS) {
+    assert.equal(await guardados(repo, doc._id, hijo, unidadId), null, `queda la ficha de ${unidadId}`);
+  }
+  assert.equal(Plantilla.buscar((await repo.documentos.obtener(doc._id)).plantilla, hijo), null, 'el hijo sigue en la plantilla');
+  // Las demás, intactas.
+  assert.equal((await repo.apartados.listar(doc._id)).filter((f) => f.seccion === 'modulos/metodologia').length, MODULOS.length);
+  assert.equal((await guardados(repo, doc._id, 'modulos/metodologia', PROG)).valores.texto[0].text, 'Metodología de Programación.');
+  // Y el otro documento no se entera.
+  assert.ok((await repo.apartados.listar(doc._id)).length > 0);
+});
+
+prueba('borrar un apartado con un hijo que ya estaba retirado también lo destruye', async () => {
+  const { repo, u, doc } = await escenario();
+  await escribir(u.jefa, doc._id, 'introduccion/contextualizacion', null, { texto: [{ type: 'p', text: 'Contexto del centro.' }] });
+  await cambio(await retirar(u.jefa, doc._id, 'introduccion/contextualizacion'));
+  await cambio(await retirar(u.jefa, doc._id, 'introduccion'));
+
+  const hecho = await cambio(await borrar(u.jefa, doc._id, 'introduccion'));
+  assert.equal(hecho.filasBorradas, 2);
+  assert.deepStrictEqual((await repo.apartados.listar(doc._id)).filter((f) => f.seccion.startsWith('introduccion')), []);
+  assert.deepStrictEqual((await (await estructuraDe(u.jefa, doc._id)).json()).retirados, []);
+});
+
+prueba('borrar un campo retirado le quita la clave a todas las unidades, y un campo nuevo con el mismo id no resucita lo viejo', async () => {
+  const { repo, u, doc } = await escenario();
+  const seccion = 'modulos/metodologia';
+  await cambio(await retirarCampo(u.jefa, doc._id, seccion, 'texto'));
+  // Retirar conserva la clave en las once.
+  for (const unidadId of MODULOS) {
+    assert.ok((await guardados(repo, doc._id, seccion, unidadId)).valores.texto, `retirar ha quitado el texto de ${unidadId}`);
+  }
+  const antesOtros = await foto(repo, doc._id);
+
+  const hecho = await cambio(await borrarCampo(u.jefa, doc._id, seccion, 'texto'));
+  assert.equal(hecho.cambio.tipo, 'campo_borrado');
+  assert.equal(hecho.filasBorradas, MODULOS.length);
+  assert.equal(hecho.contenido.unidadesConContenido, MODULOS.length);
+  assert.equal(hecho.camposRetirados, 0);
+
+  for (const unidadId of MODULOS) {
+    const fila = await guardados(repo, doc._id, seccion, unidadId);
+    assert.ok(fila, `se ha borrado la fila entera de ${unidadId}`);
+    assert.equal(Object.prototype.hasOwnProperty.call(fila.valores, 'texto'), false, `queda la clave en ${unidadId}`);
+  }
+  // Lo único que ha cambiado son esas once filas.
+  const ahora = await foto(repo, doc._id);
+  assert.deepStrictEqual(diferencias(antesOtros, ahora).sort(), MODULOS.map((m) => `${seccion}|${m}`).sort());
+  assert.deepStrictEqual((await (await estructuraDe(u.jefa, doc._id)).json()).camposRetirados, []);
+
+  // Un campo nuevo con el mismo id sale vacío en las once.
+  const nuevo = await cambio(await anadirCampo(u.jefa, doc._id, seccion, { tipo: 'texto_largo', etiqueta: 'Texto' }), 201);
+  assert.equal(nuevo.campos[0].id, 'texto', 'la prueba necesita que el campo nuevo reciba el mismo id');
+  for (const unidadId of MODULOS) {
+    const abierto = await (await leer(u.jefa, doc._id, seccion, unidadId)).json();
+    assert.equal(abierto.valores.texto, undefined, `el texto viejo reaparece en ${unidadId}`);
+  }
+  assert.ok(!impreso(await definicionDe(u.ana, doc._id, PROG), 'Metodología de Programación.'));
+});
+
+prueba('quien leyó el campo antes de borrarlo no puede volver a escribirlo', async () => {
+  const { repo, u, doc } = await escenario();
+  const antes = await (await leer(u.ana, doc._id, 'modulos/metodologia', PROG)).json();
+  await cambio(await retirarCampo(u.jefa, doc._id, 'modulos/metodologia', 'texto'));
+  await cambio(await borrarCampo(u.jefa, doc._id, 'modulos/metodologia', 'texto'));
+  const r = await guardar(u.ana, doc._id, 'modulos/metodologia', PROG,
+    { valores: { texto: [{ type: 'p', text: 'Lo viejo.' }] }, esperaUpdatedAt: antes.updatedAt });
+  // El campo ya no existe en el apartado, así que no hay dónde escribirlo.
+  assert.equal(r.status, 400);
+  assert.equal(Object.prototype.hasOwnProperty.call((await guardados(repo, doc._id, 'modulos/metodologia', PROG)).valores, 'texto'), false);
+});
+
+prueba('borrar deja la versión de la plantilla subida y el historial dice qué se destruyó', async () => {
+  const { repo, u, doc } = await escenario();
+  await cambio(await retirar(u.jefa, doc._id, 'modulos/metodologia'));
+  assert.equal((await repo.documentos.obtener(doc._id)).plantillaVersion, 2);
+  const hecho = await cambio(await borrar(u.jefa, doc._id, 'modulos/metodologia'));
+  assert.equal(hecho.plantillaVersion, 3);
+  assert.equal((await repo.documentos.obtener(doc._id)).plantillaVersion, 3);
+
+  await cambio(await retirarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  const campo = await cambio(await borrarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  assert.equal(campo.plantillaVersion, 5);
+
+  const { cambios } = await (await estructuraDe(u.jefa, doc._id)).json();
+  const borrado = cambios.find((x) => x.tipo === 'borrado');
+  assert.equal(borrado.seccion, 'modulos/metodologia');
+  assert.equal(borrado.titulo, 'Metodología');
+  assert.deepStrictEqual(borrado.secciones, ['modulos/metodologia']);
+  assert.equal(borrado.apartados, 1);
+  assert.equal(borrado.filas, MODULOS.length);
+  assert.equal(borrado.conContenido, MODULOS.length);
+  assert.equal(borrado.version, 3);
+  assert.equal(borrado.usuario, u.jefa._id);
+  assert.ok(borrado.fecha);
+  const quitado = cambios.find((x) => x.tipo === 'campo_borrado');
+  assert.equal(quitado.campo, 'tabla_normativa');
+  assert.equal(quitado.filas, 1);
+  assert.equal(quitado.conContenido, 1);
+  assert.equal(quitado.version, 5);
+
+  // Un borrado rechazado no sube la versión.
+  await esError(await borrar(u.jefa, doc._id, 'anexos'), 400, 'peticion');
+  assert.equal((await repo.documentos.obtener(doc._id)).plantillaVersion, 5);
+});
+
+prueba('borrar con la versión que el cliente leyó pasa, y con una vieja es un 409 que no destruye nada', async () => {
+  const { repo, u, doc } = await escenario();
+  await cambio(await retirar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+  const antes = await instantanea(repo, doc._id);
+  const e = await esError(await borrar(u.jefa, doc._id, 'atencion-a-la-diversidad', { esperaPlantillaVersion: 1 }), 409, 'conflicto');
+  assert.equal(e.actual, 2);
+  assert.deepStrictEqual(await instantanea(repo, doc._id), antes);
+  await cambio(await borrar(u.jefa, doc._id, 'atencion-a-la-diversidad', { esperaPlantillaVersion: 2 }));
+  assert.equal(await guardados(repo, doc._id, 'atencion-a-la-diversidad'), null);
+});
+
+prueba('borrar exige el mismo permiso que los demás cambios de estructura', async () => {
+  const { repo, u, doc, otro } = await escenario();
+  await cambio(await retirar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+  await cambio(await retirarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  const antes = await instantanea(repo, doc._id);
+
+  for (const quien of [u.ana, u.luis, u.estudios]) {
+    await esError(await borrar(quien, doc._id, 'atencion-a-la-diversidad'), 403, 'sin_permiso');
+    await esError(await borrarCampo(quien, doc._id, 'introduccion', 'tabla_normativa'), 403, 'sin_permiso');
+  }
+  await esError(await borrar(null, doc._id, 'atencion-a-la-diversidad'), 401, 'sin_identificar');
+  await esError(await borrar(u.pepe, doc._id, 'atencion-a-la-diversidad'), 404, 'no_encontrado');
+  assert.deepStrictEqual(await instantanea(repo, doc._id), antes, 'un borrado sin permiso ha cambiado algo');
+  assert.ok(otro);
+
+  // El soporte sí.
+  await cambio(await borrar(u.admin, doc._id, 'atencion-a-la-diversidad'));
+  await cambio(await borrarCampo(u.admin, doc._id, 'introduccion', 'tabla_normativa'));
+});
+
+prueba('el GET cuenta lo que hay escrito en cada cosa retirada, y coincide con lo guardado', async () => {
+  const { repo, u, doc } = await escenario();
+  // Un apartado de módulo con texto en solo tres de los once, y un campo con texto en uno.
+  await anadir(u.jefa, doc._id, { padre: 'modulos', titulo: 'Materiales' });
+  for (const m of MODULOS.slice(0, 3)) {
+    await repo.apartados.escribir(doc._id, 'modulos/materiales', m, { valores: { texto: [{ type: 'p', text: m }] } });
+  }
+  // Una fila con la clave pero sin nada dentro no cuenta como contenido.
+  await repo.apartados.escribir(doc._id, 'modulos/materiales', MODULOS[3], { valores: { texto: [] } });
+  await cambio(await retirar(u.jefa, doc._id, 'modulos/materiales'));
+  await cambio(await retirar(u.jefa, doc._id, 'anexos'));
+  await cambio(await retirarCampo(u.jefa, doc._id, 'modulos/metodologia', 'texto'));
+  await cambio(await retirarCampo(u.jefa, doc._id, 'atencion-a-la-diversidad', 'texto'));
+
+  const e = await (await estructuraDe(u.jefa, doc._id)).json();
+  const retirado = (s) => e.retirados.find((x) => x.seccion === s);
+  assert.deepStrictEqual(retirado('modulos/materiales').contenido,
+    { apartados: 1, filas: 4, conContenido: 3, unidadesConContenido: 3 });
+  // Un apartado sin nada escrito y con un hijo.
+  assert.deepStrictEqual(retirado('anexos').contenido,
+    { apartados: 2, filas: 0, conContenido: 0, unidadesConContenido: 0 });
+
+  const campo = (s, c) => e.camposRetirados.find((x) => x.seccion === s && x.campo === c);
+  assert.deepStrictEqual(campo('modulos/metodologia', 'texto').contenido,
+    { filas: MODULOS.length, conContenido: MODULOS.length, unidadesConContenido: MODULOS.length });
+  assert.deepStrictEqual(campo('atencion-a-la-diversidad', 'texto').contenido,
+    { filas: 1, conContenido: 1, unidadesConContenido: 0 });
+
+  // Lo que el borrado destruye es lo que el GET había dicho.
+  const hecho = await cambio(await borrar(u.jefa, doc._id, 'modulos/materiales'));
+  assert.deepStrictEqual(hecho.contenido, retirado('modulos/materiales').contenido);
+  assert.equal(hecho.filasBorradas, 4);
+});
+
+prueba('un documento del curso anterior no se entera de lo que se borra en el nuevo', async () => {
+  const { repo, u, doc } = await escenario();
+  const nuevoId = await cursoNuevo(u, doc);
+  const antesPdf = comparable(await definicionDe(u.ana, doc._id));
+  const antesPdfModulo = comparable(await definicionDe(u.ana, doc._id, PROG));
+  const antesArbol = JSON.stringify(await nodosDe(u.jefa, doc._id));
+  const antesFilas = await foto(repo, doc._id);
+  const antes = await instantanea(repo, doc._id);
+
+  // En el nuevo: un apartado común, uno de módulo con su subárbol y un campo de módulo.
+  await cambio(await retirar(u.jefa, nuevoId, 'atencion-a-la-diversidad'));
+  await cambio(await borrar(u.jefa, nuevoId, 'atencion-a-la-diversidad'));
+  await cambio(await retirar(u.jefa, nuevoId, 'modulos/situaciones-de-aprendizaje'));
+  const grande = await cambio(await borrar(u.jefa, nuevoId, 'modulos/situaciones-de-aprendizaje'));
+  assert.equal(grande.filasBorradas, MODULOS.length, 'el curso nuevo debería tener sus propias filas');
+  await cambio(await retirarCampo(u.jefa, nuevoId, 'modulos/metodologia', 'texto'));
+  await cambio(await borrarCampo(u.jefa, nuevoId, 'modulos/metodologia', 'texto'));
+  assert.equal(await guardados(repo, nuevoId, 'atencion-a-la-diversidad'), null);
+
+  assert.deepStrictEqual(comparable(await definicionDe(u.ana, doc._id)), antesPdf,
+    'el PDF del curso anterior cambia al borrar en el nuevo');
+  assert.deepStrictEqual(comparable(await definicionDe(u.ana, doc._id, PROG)), antesPdfModulo,
+    'el PDF del módulo del curso anterior cambia al borrar en el nuevo');
+  assert.equal(JSON.stringify(await nodosDe(u.jefa, doc._id)), antesArbol);
+  assert.deepStrictEqual(diferencias(antesFilas, await foto(repo, doc._id)), [], 'el borrado ha destruido filas del curso anterior');
+  assert.deepStrictEqual(await instantanea(repo, doc._id), antes);
+  const viejo = await (await leer(u.jefa, doc._id, 'atencion-a-la-diversidad', null)).json();
+  assert.equal(viejo.valores.texto[0].text, 'Medidas de nivel II y III.');
+  assert.ok(impreso(await definicionDe(u.ana, doc._id, PROG), 'Metodología de Programación.'));
 });
 
 // ---------------------------------------------------------------- ejecución

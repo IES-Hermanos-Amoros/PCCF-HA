@@ -1,5 +1,6 @@
 // La ESTRUCTURA del documento: renombrar un apartado, añadir uno, moverlo entre sus hermanos y
-// retirarlo (más restaurar lo retirado, que es la otra mitad de retirar).
+// retirarlo (más restaurar lo retirado, que es la otra mitad de retirar), y borrar de verdad lo que
+// ya estaba retirado.
 //
 //   GET    /api/documentos/[id]/estructura                              la estructura y lo retirado
 //   POST   /api/documentos/[id]/estructura/apartado                     añadir
@@ -10,6 +11,10 @@
 //   POST   /api/documentos/[id]/estructura/apartado/campo?seccion=      añadir un campo a un apartado
 //   POST   /api/documentos/[id]/estructura/apartado/campo/retirar?seccion=&campo=    quitar un campo (no borra)
 //   POST   /api/documentos/[id]/estructura/apartado/campo/restaurar?seccion=&campo=  devolverlo
+//   DELETE /api/documentos/[id]/estructura/apartado?seccion=                BORRAR un apartado retirado y todo lo escrito en él
+//   DELETE /api/documentos/[id]/estructura/apartado/campo?seccion=&campo=   BORRAR un campo retirado y lo escrito en él
+//
+// Los dos DELETE son los únicos cambios que destruyen contenido. Se explican más abajo, en «BORRAR».
 //
 // Es la mitad de servidor del E6 (docs/plan.md §5), y su criterio de aceptación tiene dos mitades:
 //
@@ -75,6 +80,7 @@
 const C = require('../../../core/permisos');
 const Plantilla = require('../../../core/plantilla');
 const Campos = require('../../../core/campos');
+const Arbol = require('../../../core/arbol');
 const {
   conErrores, abrirDocumento, leerJson, fallo, malaPeticion, noEncontrado, SIN_PERMISO,
 } = require('./comun');
@@ -88,7 +94,7 @@ const {
 // cambia es qué se le pide a core/plantilla.js.
 //
 // `pedir(cuerpo, url)` devuelve la petición de cambio para `Plantilla.aplicar`, o { fallo }.
-function cambio(tipo, pedir, { estado = 200 } = {}) {
+function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
   return conErrores(async (peticion, parametros) => {
     const abierto = await abrirDocumento(peticion, parametros);
     if (abierto.fallo) return abierto.fallo;
@@ -98,7 +104,7 @@ function cambio(tipo, pedir, { estado = 200 } = {}) {
       return SIN_PERMISO('Solo la jefatura de tu departamento cambia la estructura del documento. Quien escribe un apartado no decide qué apartados hay, y la jefatura de estudios no edita nada.');
     }
 
-    const { fallo: falloCuerpo, cuerpo } = await leerJson(peticion);
+    const { fallo: falloCuerpo, cuerpo } = await leerCuerpo(peticion, cuerpoOpcional);
     if (falloCuerpo) return falloCuerpo;
 
     const actual = Number(documento.plantillaVersion) || 1;
@@ -142,6 +148,19 @@ function cambio(tipo, pedir, { estado = 200 } = {}) {
       return fallo(400, 'peticion', `${hecho.motivo} No se ha cambiado nada.`, { motivo: hecho.motivo });
     }
 
+    // Lo que el borrado va a destruir se cuenta ANTES de escribir y se apunta en el cambio: el
+    // registro de la plantilla es lo único que queda de ello (ver «BORRAR»).
+    const destruye = tipo === 'borrar' || tipo === 'borrar_campo';
+    let contenido = null;
+    if (destruye) {
+      const filas = await repo.apartados.listar(documento._id);
+      contenido = tipo === 'borrar'
+        ? { apartados: hecho.cambio.apartados, ...contenidoDeApartados(filas, hecho.cambio.secciones) }
+        : contenidoDeCampo(filas, hecho.cambio.seccion, hecho.cambio.campo);
+      hecho.cambio.filas = contenido.filas;
+      hecho.cambio.conContenido = contenido.conContenido;
+    }
+
     const version = Plantilla.siguienteVersion(actual);
     const apuntado = Plantilla.registrar(hecho.plantilla, {
       ...hecho.cambio,
@@ -152,8 +171,26 @@ function cambio(tipo, pedir, { estado = 200 } = {}) {
 
     // La plantilla y su versión en la misma escritura: una plantilla cambiada con la versión de
     // antes no se distinguiría de la de antes, y la versión es lo único que permitirá migrar.
-    const conflicto = await guardarPlantilla(repo, documento, { plantilla: apuntado, plantillaVersion: version });
+    const escritura = { plantilla: apuntado, plantillaVersion: version };
+    if (tipo === 'borrar') {
+      // Un reparto guardado para un apartado que ya no existe se quedaría esperando: si más tarde
+      // se crea otro con el mismo título, nacería con la persona asignada del que se borró.
+      const asignaciones = sinAsignaciones(documento.asignaciones, hecho.cambio.secciones);
+      if (asignaciones) escritura.asignaciones = asignaciones;
+    }
+    const conflicto = await guardarPlantilla(repo, documento, escritura);
     if (conflicto) return conflicto;
+
+    // El contenido se destruye DESPUÉS de la plantilla y no antes: la escritura de la plantilla es la
+    // condicionada, la que decide si el cambio es válido, y destruir antes dejaría un apartado vacío
+    // en pie si esa escritura perdiera la carrera. Con el apartado ya fuera de la plantilla nadie
+    // puede escribir en él, así que lo que se destruye es lo que se contó.
+    let filasBorradas = 0;
+    if (tipo === 'borrar') {
+      filasBorradas = await repo.apartados.borrar(documento._id, hecho.cambio.secciones);
+    } else if (tipo === 'borrar_campo') {
+      filasBorradas = await repo.apartados.quitarClave(documento._id, hecho.cambio.seccion, hecho.cambio.campo);
+    }
 
     // Cuántas unidades repiten este apartado. Se cuentan solo si hace falta: un apartado común no
     // tiene nada que ver con las unidades y pedirlas sería una lectura por gusto.
@@ -173,7 +210,10 @@ function cambio(tipo, pedir, { estado = 200 } = {}) {
         unidades,
         // Cuántos apartados toca el cambio: el de la petición y su subárbol. En «retirar» es de lo
         // que hay que avisar antes de pulsar, y el contenido de todos ellos se conserva.
-        apartadosAfectados: esDeCampo ? 1 : Plantilla.rama(apuntado, hecho.cambio.seccion).length,
+        apartadosAfectados: esDeCampo ? 1
+          : (tipo === 'borrar' ? hecho.cambio.apartados : Plantilla.rama(apuntado, hecho.cambio.seccion).length),
+        // Solo en los dos borrados: lo que había escrito y se ha destruido, y cuántas filas se han ido.
+        ...(destruye ? { contenido, filasBorradas } : {}),
         // Los campos que el cambio ha creado, tal como quedan en la plantilla, cada uno con el valor
         // con el que se abre mientras no tenga ninguno (core/campos.js → `valorInicial`). Un campo
         // recién creado no tiene valor guardado: es lo que el editor pone en pantalla.
@@ -185,6 +225,64 @@ function cambio(tipo, pedir, { estado = 200 } = {}) {
       { status: estado, headers: { 'Cache-Control': 'no-store' } },
     );
   });
+}
+
+// El cuerpo de un cambio. Los POST y PATCH lo exigen (un JSON que sea un objeto); el DELETE puede ir
+// sin cuerpo, porque un DELETE sin nada que decir es lo normal, y si lo trae tiene que ser el mismo
+// objeto (`esperaPlantillaVersion`).
+async function leerCuerpo(peticion, opcional) {
+  if (!opcional) return leerJson(peticion);
+  const crudo = await peticion.text();
+  if (!crudo.trim()) return { cuerpo: {} };
+  let cuerpo;
+  try {
+    cuerpo = JSON.parse(crudo);
+  } catch (e) {
+    return { fallo: malaPeticion('El cuerpo de la petición, si va, tiene que ser JSON.') };
+  }
+  if (!cuerpo || typeof cuerpo !== 'object' || Array.isArray(cuerpo)) {
+    return { fallo: malaPeticion('El cuerpo de la petición, si va, tiene que ser un objeto JSON.') };
+  }
+  return { cuerpo };
+}
+
+// ---------------------------------------------------------------- cuánto hay escrito
+//
+// Lo que se pierde al borrar, contado sobre las filas de `apartados`. «Con contenido» es lo mismo que
+// pinta la barra lateral como relleno (core/arbol.js → `algoEscrito`): una tabla sin filas o un
+// repetidor sin fichas tienen clave y no tienen nada, y borrarlos no pierde nada que se pueda leer.
+
+function recuento(filas, valorDe) {
+  const llenas = filas.filter((f) => Arbol.algoEscrito(valorDe(f)));
+  return {
+    filas: filas.length,
+    conContenido: llenas.length,
+    unidadesConContenido: new Set(llenas.filter((f) => f.unidadId !== null && f.unidadId !== undefined).map((f) => f.unidadId)).size,
+  };
+}
+
+// Las filas de unos apartados (el retirado y su subárbol), de todas las unidades.
+function contenidoDeApartados(filas, secciones) {
+  const ids = new Set(secciones);
+  return recuento(filas.filter((f) => ids.has(f.seccion)), (f) => f.valores);
+}
+
+// Las filas de un apartado que tienen escrita la clave del campo: es lo que borrar el campo quita.
+function contenidoDeCampo(filas, seccion, campo) {
+  const tienen = filas.filter((f) => f.seccion === seccion && f.valores
+    && Object.prototype.hasOwnProperty.call(f.valores, campo));
+  return recuento(tienen, (f) => f.valores[campo]);
+}
+
+// Las asignaciones del documento sin las de los apartados que se borran; null si no había ninguna.
+function sinAsignaciones(asignaciones, secciones) {
+  if (!asignaciones || typeof asignaciones !== 'object') return null;
+  const quedan = { ...asignaciones };
+  let quitadas = false;
+  for (const s of secciones) {
+    if (Object.prototype.hasOwnProperty.call(quedan, s)) { delete quedan[s]; quitadas = true; }
+  }
+  return quitadas ? quedan : null;
 }
 
 // La escritura de la plantilla, condicionada al `updatedAt` con que se leyó el documento. Si otra
@@ -249,6 +347,12 @@ const GET = conErrores(async (peticion, parametros) => {
   const unidades = await repo.unidades.listar(documento._id);
   const cambios = Array.isArray(plantillaCompleta && plantillaCompleta.cambios) ? plantillaCompleta.cambios : [];
 
+  // Cuánto hay escrito en cada cosa retirada, para que quien va a borrarla lo sepa antes de pulsar.
+  // Solo se leen las filas si hay algo retirado: es lo único que lo necesita.
+  const retirados = Plantilla.retirados(plantillaCompleta);
+  const camposRetirados = Plantilla.camposRetirados(plantillaCompleta);
+  const filas = retirados.length || camposRetirados.length ? await repo.apartados.listar(documento._id) : [];
+
   return Response.json(
     {
       documentoId: documento._id,
@@ -256,9 +360,17 @@ const GET = conErrores(async (peticion, parametros) => {
       puedeCambiar: C.puedeCambiarEstructura(usuario, documento),
       unidades: unidades.length,
       apartados: Plantilla.estructura(plantillaCompleta),
-      retirados: Plantilla.retirados(plantillaCompleta),
-      // Los campos retirados de los apartados, para la lista desde la que se restauran.
-      camposRetirados: Plantilla.camposRetirados(plantillaCompleta),
+      // Cada retirado lleva `contenido`: lo que se destruiría si se borrara (`apartados` con su
+      // subárbol, `filas`, `conContenido` y `unidadesConContenido`).
+      retirados: retirados.map((x) => ({
+        ...x,
+        contenido: { apartados: x.conHijos + 1, ...contenidoDeApartados(filas, Plantilla.rama(plantillaCompleta, x.seccion)) },
+      })),
+      // Los campos retirados de los apartados, para la lista desde la que se restauran o se borran.
+      camposRetirados: camposRetirados.map((x) => ({
+        ...x,
+        contenido: contenidoDeCampo(filas, x.seccion, x.campo),
+      })),
       // LO QUE EL EDITOR NECESITA PARA PINTAR EL ALTA DE UN CAMPO sin adivinar nada: qué tipos se
       // pueden crear, con su nombre en castellano, sus parámetros (con límites y valor por defecto)
       // y la forma del valor que se guarda. Lo decide core/campos.js y no esta ruta, para que el
@@ -381,4 +493,36 @@ const RETIRAR_CAMPO = cambio('retirar_campo', (cuerpo, url) => campoDeLaUrl(url)
 // DEVOLVERLO, con todo lo que tenía escrito.
 const RESTAURAR_CAMPO = cambio('restaurar_campo', (cuerpo, url) => campoDeLaUrl(url));
 
-module.exports = { GET, ANADIR, RENOMBRAR, MOVER, RETIRAR, RESTAURAR, ANADIR_CAMPO, RETIRAR_CAMPO, RESTAURAR_CAMPO };
+// ---------------------------------------------------------------- BORRAR
+//
+// La otra salida de lo retirado, y la única irreversible de la aplicación. Retirar no es un DELETE
+// porque no borra; esto sí lo es, y es el DELETE que faltaba.
+//
+// SOLO SE BORRA LO QUE YA ESTÁ RETIRADO. Para destruir algo hay que haberlo retirado antes: dos actos
+// deliberados y separados en el tiempo, y la lista de retirados de la portada es el único sitio donde
+// se ve. Borrar algo que no lo está es un 400 que dice que primero hay que retirarlo, y no cambia nada.
+//
+// BORRAR DE VERDAD ES DESTRUIR EL CONTENIDO, no solo sacarlo de la plantilla:
+//
+//   · un APARTADO se va con su subárbol, y su contenido son filas de `apartados`, una por unidad
+//     (once en una sección de módulo). Se destruyen las de todos los apartados del subárbol
+//     (`repo.apartados.borrar`), y también el reparto guardado para ellos (`asignaciones`).
+//   · un CAMPO no tiene fila propia: es una clave de `valores` en cada fila de su apartado. Se quita
+//     de todas (`repo.apartados.quitarClave`). Un `escribir` normal no puede: la ruta de /apartado
+//     funde lo que llega con lo guardado, y un campo ausente se conserva. Si el contenido viejo
+//     sobreviviera, un campo creado más tarde con el mismo id lo resucitaría.
+//
+// QUEDA CONSTANCIA: el cambio se apunta en `plantilla.cambios` con los ids que se fueron (`secciones`),
+// y `filas` y `conContenido`, lo que se destruyó. Es lo único que queda: el historial es la única
+// prueba de que algo existió. La respuesta trae además `contenido` y `filasBorradas`.
+//
+// El permiso es el de siempre (`puedeCambiarEstructura`). El cuerpo es opcional, y si va solo
+// `esperaPlantillaVersion`.
+
+const BORRAR = cambio('borrar', (cuerpo, url) => seccionDeLaUrl(url), { cuerpoOpcional: true });
+
+const BORRAR_CAMPO = cambio('borrar_campo', (cuerpo, url) => campoDeLaUrl(url), { cuerpoOpcional: true });
+
+module.exports = {
+  GET, ANADIR, RENOMBRAR, MOVER, RETIRAR, RESTAURAR, BORRAR, ANADIR_CAMPO, RETIRAR_CAMPO, RESTAURAR_CAMPO, BORRAR_CAMPO,
+};

@@ -31,9 +31,17 @@
 //
 // Un apartado retirado se queda en la plantilla con `retirado: true`: deja de pintarse, de
 // imprimirse y de poder escribirse, pero su contenido sigue en `apartados` y el apartado se
-// puede restaurar con todo lo que tenía dentro. Borrar la sección del árbol sería la única
-// operación irreversible de las cuatro, y quien retira un apartado por error no puede perder
-// lo que había escrito. Quien lee la plantilla para pintar o para imprimir usa `vigente()`,
+// puede restaurar con todo lo que tenía dentro. Quien retira un apartado por error no puede
+// perder lo que había escrito.
+//
+// BORRAR SOLO SE PUEDE LO QUE YA ESTÁ RETIRADO
+//
+// La salida destructiva existe (`borrar`, `borrarCampo`) para que la lista de retirados no crezca
+// para siempre, y es la única operación irreversible de la estructura. Por eso exige haber retirado
+// antes: son dos actos deliberados y separados en el tiempo. Esta transformación solo saca el
+// apartado (o el campo) de la plantilla; destruir lo que había escrito, que vive en `apartados`,
+// lo hace la ruta (app/_lib/rutas/estructura.js) en el mismo cambio, y el registro de cambios
+// es lo único que queda de ello. Quien lee la plantilla para pintar o para imprimir usa `vigente()`,
 // que la devuelve sin los retirados; quien los va a restaurar la lee tal cual.
 //
 // LOS CAMPOS SIGUEN LAS MISMAS DOS REGLAS
@@ -324,7 +332,10 @@
 
   // ---------------------------------------------------------------- los cambios
 
-  const TIPOS = ['anadir', 'renombrar', 'mover', 'retirar', 'restaurar', 'anadir_campo', 'retirar_campo', 'restaurar_campo'];
+  const TIPOS = [
+    'anadir', 'renombrar', 'mover', 'retirar', 'restaurar', 'borrar',
+    'anadir_campo', 'retirar_campo', 'restaurar_campo', 'borrar_campo',
+  ];
 
   // Cuántos campos puede tener un apartado, y cuántos se le pueden pedir al crearlo. Un
   // apartado con decenas de campos no es una programación, es un formulario, y el árbol y el
@@ -543,6 +554,35 @@
     };
   }
 
+  // BORRAR: saca de la plantilla un apartado YA RETIRADO, con todo su subárbol. No toca el contenido
+  // guardado: la respuesta dice qué ids se van (`secciones`, el apartado y todos sus descendientes)
+  // para que quien llama destruya las filas de cada uno. Un apartado que no está retirado se rechaza
+  // con el motivo; uno que solo está escondido por un antepasado retirado también, porque lo que se
+  // retira y se borra es el antepasado.
+  function borrar(plantilla, { seccion } = {}) {
+    const copia = clonar(plantilla);
+    const h = buscar(copia, seccion);
+    if (!h) return no(`Este documento no tiene ningún apartado «${seccion}».`);
+    if (!h.retirado) {
+      return no(h.retiradoPorEncima
+        ? `«${h.seccion.titulo}» está dentro de «${h.retiradoPorEncima.titulo}», que está retirado: se borra ese, con todo lo que tiene dentro.`
+        : `«${h.seccion.titulo}» no está retirado: para borrarlo primero hay que retirarlo del documento.`);
+    }
+
+    const secciones = rama(copia, seccion);
+    h.hermanos.splice(h.indice, 1);
+    return {
+      plantilla: copia,
+      cambio: {
+        tipo: 'borrado', seccion: h.seccion.id, titulo: h.seccion.titulo,
+        padre: h.padre ? h.padre.id : null, deUnidades: h.deUnidades,
+        conHijos: secciones.length - 1,
+        apartados: secciones.length,
+        secciones,
+      },
+    };
+  }
+
   // RESTAURAR: lo devuelve a su sitio, con todo lo que tenía dentro.
   function restaurar(plantilla, { seccion } = {}) {
     const copia = clonar(plantilla);
@@ -660,7 +700,35 @@
     };
   }
 
-  // Una sola puerta para los ocho cambios, para que la ruta y el navegador no puedan tener
+  // BORRAR UN CAMPO: saca de su apartado un campo YA RETIRADO. Igual que `borrar`, no toca lo
+  // escrito: la clave `valores[campo]` de cada fila del apartado la quita quien llama. Se puede
+  // borrar un campo retirado aunque su apartado esté retirado, porque lo que protege es haber
+  // retirado el campo.
+  function borrarCampo(plantilla, { seccion, campo } = {}) {
+    const copia = clonar(plantilla);
+    const h = buscar(copia, seccion);
+    if (!h) return no(`Este documento no tiene ningún apartado «${seccion}».`);
+    const estorbo = sinCamposPropios(h);
+    if (estorbo) return estorbo;
+
+    const c = buscarCampo(h, campo);
+    if (!c) return no(`«${h.seccion.titulo}» no tiene ningún campo «${campo}».`);
+    if (!retirado(c)) {
+      return no(`El campo «${c.etiqueta || c.id}» de «${h.seccion.titulo}» no está retirado: para borrarlo primero hay que retirarlo.`);
+    }
+
+    h.seccion.campos = camposDe(h.seccion).filter((x) => x !== c);
+    return {
+      plantilla: copia,
+      cambio: {
+        tipo: 'campo_borrado', seccion: h.seccion.id, titulo: h.seccion.titulo,
+        campo: c.id, etiqueta: c.etiqueta || c.id, tipoCampo: c.tipo,
+        padre: h.padre ? h.padre.id : null, deUnidades: h.deUnidades,
+      },
+    };
+  }
+
+  // Una sola puerta para los diez cambios, para que la ruta y el navegador no puedan tener
   // ideas distintas sobre lo que se puede hacer. Devuelve { plantilla, cambio } o { motivo }.
   function aplicar(plantilla, peticion) {
     const p = peticion || {};
@@ -670,9 +738,11 @@
       case 'mover': return mover(plantilla, p);
       case 'retirar': return retirar(plantilla, p);
       case 'restaurar': return restaurar(plantilla, p);
+      case 'borrar': return borrar(plantilla, p);
       case 'anadir_campo': return anadirCampo(plantilla, p);
       case 'retirar_campo': return retirarCampo(plantilla, p);
       case 'restaurar_campo': return restaurarCampo(plantilla, p);
+      case 'borrar_campo': return borrarCampo(plantilla, p);
       default: return no(`«${p.tipo}» no es un cambio de estructura: ${TIPOS.join(', ')}.`);
     }
   }
@@ -703,7 +773,7 @@
   const api = {
     slug, idLocal, limpiarTitulo, LARGO_TITULO, CAMPO_NUEVO, TIPOS, MAX_CAMPOS, MAX_CAMPOS_AL_CREAR,
     buscar, rama, contar, vigente, retirados, camposRetirados, estructura,
-    renombrar, anadir, mover, retirar, restaurar, anadirCampo, retirarCampo, restaurarCampo, aplicar,
+    renombrar, anadir, mover, retirar, restaurar, borrar, anadirCampo, retirarCampo, restaurarCampo, borrarCampo, aplicar,
     siguienteVersion, registrar,
   };
 
