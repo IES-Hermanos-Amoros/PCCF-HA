@@ -190,7 +190,7 @@ function pintarCampo(campo, valor, ctx) {
     // Una SA creada o editada en la aplicación no tiene tabla importada: se
     // monta a partir de sus campos, con la maquetación del documento.
     case 'ficha_situacion_aprendizaje': return [tablaGenerica(
-      valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor) ? filasDeFicha(valor) : null),
+      valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor, ctx.estructuraFicha) ? filasDeFicha(valor, ctx.estructuraFicha) : null),
       { cabecera: false, fontSize: 8.5 },
     )];
     // La cabecera la decide `Est.cabeceraDeTabla`, la misma regla que usan el Word y el editor.
@@ -235,7 +235,10 @@ function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo
   // en lugar de imprimir un tomo entero medido con una regla que nadie ha elegido. Si no se mirara
   // aquí, el primer apartado de ponderaciones lanzaría a mitad del documento.
   Val.comprobarConvenio(convenioCe);
-  const ctx = { avisos: [], convenioCe };
+  // La estructura de la tabla de la ficha es de la plantilla, no de cada ficha: viaja en el contexto
+  // porque `pintarCampo` está a varias llamadas de aquí. Sin ella (`undefined`) las funciones de
+  // core/sa.js usan la de siempre, y el documento sale byte a byte como antes.
+  const ctx = { avisos: [], convenioCe, estructuraFicha: plantilla.estructuraFicha };
   const cuerpo = [];
   plantilla.secciones.forEach((sec, i) => {
     const numero = String(i + 1);
