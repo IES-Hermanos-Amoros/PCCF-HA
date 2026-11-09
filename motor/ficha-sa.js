@@ -4,8 +4,10 @@
 // solo la puerta que usa el motor: reexporta con la misma API que tenía antes,
 // para que render-generico, exportar-docx, importar-docx y los scripts no cambien.
 //
-//   fichaDeFilas(filas)  tabla importada -> modelo con campos con nombre
-//   filasDeFicha(ficha)  modelo          -> tabla, la que imprime el PDF
+//   fichaDeFilas(filas, cabecera, campos)  tabla importada -> modelo con campos con nombre
+//   filasDeFicha(ficha, campos)            modelo          -> tabla, la que imprime el PDF
+//
+// `campos` es la estructura de la ficha y es siempre opcional: sin ella se usa la de omisión.
 //
 // Lo que hay que saber de la conversión (las dos maquetaciones del Word, el
 // formato de las etiquetas, la cabecera que manda) está en el comentario de
@@ -17,6 +19,7 @@ const C = require('../core/sa');
 
 module.exports = {
   CAMPOS: C.CAMPOS,
+  CAMPOS_POR_OMISION: C.CAMPOS_POR_OMISION,
   CABECERA_ACTIVIDADES: C.CABECERA_ACTIVIDADES,
   COLUMNAS: C.COLUMNAS,
   fichaDeFilas: C.fichaDeFilas,

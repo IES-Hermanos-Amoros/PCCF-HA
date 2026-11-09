@@ -62,7 +62,7 @@
   // así sigue valiendo como <script> suelto; de que no se quede corta cuando el contrato de la
   // celda crezca responde una prueba de test/api.js, que compara las dos listas y dice qué clave
   // falta.
-  const NUNCA_ESCRITO = new Set(['type', 'colspan', 'rowspan', 'bold', 'fondo', 'alineacion', 'tamano']);
+  const NUNCA_ESCRITO = new Set(['type', 'colspan', 'rowspan', 'bold', 'fondo', 'alineacion', 'tamano', 'campo']);
 
   function algoEscrito(valor) {
     if (valor === null || valor === undefined) return false;
