@@ -25,14 +25,15 @@
 // `campo.tipo` se sigue usando para dos cosas en las que la forma no basta: la
 // etiqueta que se pone encima y saber que una sección es repetidora.
 //
-// LAS TABLAS DEL WORD SE VEN Y NO SE EDITAN
+// AQUÍ LAS TABLAS DEL WORD SOLO SE VEN
 //
-// La ficha del módulo, la de resultados de aprendizaje y criterios, los
-// contenidos básicos y las fichas de situación de aprendizaje vienen del Word
-// como tablas con `colspan` y `rowspan`, y se pintan tal como vienen. Es lo
-// mismo que hace el prototipo y por el mismo motivo: cada una necesita su propio
-// editor, y mientras no exista al menos se leen, en lugar de desaparecer del
-// apartado.
+// Esta es la vista de lectura: la ficha del módulo, la de resultados de
+// aprendizaje y criterios, los contenidos básicos y las fichas de situación de
+// aprendizaje vienen del Word como tablas con `colspan` y `rowspan` y se pintan
+// tal como vienen. Donde se puede escribir, el editor de tablas las abre
+// (ApartadoEditable.js); lo que ningún editor sabe abrir se sigue pintando aquí,
+// en lugar de desaparecer del apartado, que es el fallo peor: un apartado en
+// blanco se confunde con un apartado vacío.
 
 'use client';
 

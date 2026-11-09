@@ -20,6 +20,7 @@ const mammoth = require('mammoth');
 const { exportarDocx, escribirDocx } = require('../motor/exportar-docx');
 const { importarDocx } = require('../motor/importar-docx');
 const F = require('../motor/ficha-sa');
+const RaCe = require('../core/ra-ce');
 
 let fallos = 0;
 const pendientes = [];
@@ -182,6 +183,10 @@ prueba('la tabla de RA/CE se vuelve a clasificar y recupera sus criterios', () =
   assert.ok(buscarCampo(leido.plantilla.secciones, 'auto.tabla_ra_ce'), 'no se reconoce como auto.tabla_ra_ce');
   const v = leido.datos.instancias[0].valores['modulos/resultados-de-aprendizaje'].ra_ce;
   assert.deepStrictEqual(v.ra, RA_CE.ra);
+  // Y lo que el importador guarda en `ra` sale del ÚNICO lector del proyecto, el mismo que usa el
+  // editor después de cada cambio en la rejilla (core/ra-ce.js). Con dos lectores, abrir una tabla
+  // importada y guardarla sin tocar nada le cambiaría los resultados de aprendizaje.
+  assert.deepStrictEqual(v.ra, RaCe.raDeFilas(v.filas));
 });
 
 prueba('las ponderaciones se vuelven a clasificar y recuperan RA, CE y porcentajes', () => {

@@ -12,6 +12,10 @@ const JSZip = require('jszip');
 const { parse } = require('node-html-parser');
 const { extraerCompartidos } = require('./compartidos');
 const { fichaDeFilas } = require('./ficha-sa');
+// El lector de la tabla de RA y CE es el MISMO que usa el editor del navegador después de cada
+// cambio en la rejilla (core/ra-ce.js). Con una copia aquí, abrir una tabla importada y guardarla
+// sin tocar nada le cambiaría los resultados de aprendizaje.
+const { raDeFilas } = require('../core/ra-ce');
 
 // ---------------------------------------------------------------- utilidades de texto
 const decode = (t) => String(t || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
@@ -140,25 +144,8 @@ function clasificarTabla(t) {
 const claveTabla = (cls) => `${cls.tipo}|${cls.id}`;
 
 // ---------------------------------------------------------------- extracción estructurada de tablas conocidas
-const lineas = (t) => String(t || '').split('\n').map((x) => x.trim()).filter(Boolean);
 const numPct = (t) => { const m = String(t || '').replace(',', '.').match(/-?\d+(?:\.\d+)?/); return m ? Number(m[0]) : null; };
 
-function parseRaCe(t) {
-  const ra = [];
-  for (const r of t.rows.slice(1)) {
-    if (r.length < 2) continue;
-    const m = r[0].text.match(/^(\d+)[.)]?\s*(.*)$/s);
-    const ce = [];
-    // un criterio puede empezar en la misma línea que el anterior: se separa también por "x) "
-    for (const l of lineas(r[1].text).flatMap((x) => x.split(/\s+(?=[a-zñ]\)\s)/))) {
-      const mm = l.match(/^(?:RA\d+[.\s]*)?([a-zñ])[).]\s*(.*)$/i);
-      if (mm) ce.push({ letra: mm[1].toLowerCase(), texto: mm[2].trim() });
-      else if (ce.length) ce[ce.length - 1].texto += ' ' + l;
-    }
-    ra.push({ num: m ? Number(m[1]) : ra.length + 1, texto: (m ? m[2] : r[0].text).trim(), ce });
-  }
-  return { ra };
-}
 function parsePonderacion(t) {
   const m = t.rows[0][0].text.match(/\.(\d+)\)/);
   const out = { ra: m ? Number(m[1]) : null, texto: (t.rows[1] && t.rows[1][0].text) || '', ponderacion: t.rows[1] ? numPct(t.rows[1][1] && t.rows[1][1].text) : null, ce: [] };
@@ -186,7 +173,7 @@ function parseClaveValor(t) {
 function valorTabla(cls, t) {
   const base = { filas: t.rows };
   switch (cls.tipo) {
-    case 'auto.tabla_ra_ce': return { ...base, ...parseRaCe(t) };
+    case 'auto.tabla_ra_ce': return { ...base, ra: raDeFilas(t.rows) };
     case 'ponderacion_ra_ce': return { ...base, ...parsePonderacion(t) };
     case 'ficha_situacion_aprendizaje': return { ...base, ...parseFichaSA(t) };
     case 'auto.ficha_modulo': case 'tabla_clave_valor': return { ...base, ...parseClaveValor(t) };

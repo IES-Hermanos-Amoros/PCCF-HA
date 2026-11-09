@@ -11,6 +11,9 @@
 //   tabla              { filas: [[celda, …], …], anchos? }   celda { text, colspan?, rowspan?,
 //                      bold?, fondo?, alineacion?, tamano? }
 //   tabla_clave_valor  { pares: [{ etiqueta, valor }] }
+//   auto.tabla_ra_ce   la rejilla de siempre, y al lado los RESULTADOS DE APRENDIZAJE leídos de
+//                      ella, que son los que se imprimen: se releen después de cada operación
+//                      (ver `aplicar` y core/ra-ce.js)
 //
 // LAS CREADAS EN LA APLICACIÓN Y LAS IMPORTADAS DEL WORD SE EDITAN IGUAL (`esEditable`). Son el
 // mismo tipo de campo y el mismo valor; lo que las distingue es `campo.inicial`, la forma con la
@@ -154,11 +157,13 @@
     if (typeof require === 'function') {
       if (nombre === 'estructurados') return require('./estructurados.js');
       if (nombre === 'campos') return require('./campos.js');
+      if (nombre === 'raCe') return require('./ra-ce.js');
     }
     throw new Error('core/tablas-edicion.js necesita core/' + nombre + '.js');
   }
   const Estructurados = () => deCore('estructurados');
   const Campos = () => deCore('campos');
+  const RaCe = () => deCore('raCe');
 
   const esObjeto = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
 
@@ -689,7 +694,18 @@
   // `contexto.columnas` es el ancho con el que abrir una fila en una tabla que se ha quedado sin
   // ninguna. `contexto.campo` es el campo de la tabla, que hace falta para saber si su cabecera se
   // puede quitar. Devuelve el mismo objeto si la operación no se puede hacer o no cambia nada.
+  //
+  // Y LA TABLA DE RA Y CE SALE DE AQUÍ CON SUS RESULTADOS DE APRENDIZAJE RELEÍDOS. Es un valor que
+  // guarda dos cosas, la rejilla y los RA leídos de ella, y lo que se imprime son los RA
+  // (`queSeImprime` de core/estructurados.js): una operación que cambiara la rejilla y dejara `ra`
+  // como estaba se vería en la pantalla y no en el papel. Se releen con el ÚNICO lector del
+  // proyecto, `core/ra-ce.js`, el mismo que usa el importador de Word.
   function aplicar(valor, op, args = {}, contexto = {}) {
+    const siguiente = sobreLaTabla(valor, op, args, contexto);
+    return siguiente === valor ? valor : RaCe().conRaLeido(siguiente, contexto.campo);
+  }
+
+  function sobreLaTabla(valor, op, args, contexto) {
     if (motivoDeNo(valor, op, args, contexto.campo) !== null) return valor;
     const E = Estructurados();
 

@@ -87,7 +87,7 @@
 // aplicación vino a quitar. Quien decide qué tipo pasa es `core/estructurados.js` y no esta ruta,
 // para que el editor del navegador y la API no puedan tener ideas distintas.
 //
-// DOS COSAS QUE LA RUTA HACE AL GUARDAR, Y QUE NO SON VALIDAR
+// TRES COSAS QUE LA RUTA HACE AL GUARDAR, Y QUE NO SON VALIDAR
 //
 //   · RENUMERA LAS FICHAS de un repetidor por su posición, que es la numeración que imprime el
 //     documento, y suelta la tabla importada de las que cambian de número. La numeración se arregla
@@ -98,15 +98,23 @@
 //     esa tabla importada saca el exportador a Word el código del módulo («Resultado de aprendizaje
 //     (0614.1)»), que el modelo no guarda. Así el cliente no tiene que devolverla ni puede
 //     estropearla, y el Word exportado no pierde el código.
+//   · RELEE LOS RESULTADOS DE APRENDIZAJE de la tabla de RA y CE a partir de su rejilla. De ese
+//     campo se imprime `ra`, no `filas` (`queSeImprime` de core/estructurados.js), y de `ra` salen
+//     además los RA que declara el módulo: el selector de situaciones de aprendizaje y las
+//     comprobaciones. Si se guardara la rejilla con la lista de antes, el cambio se vería en la
+//     pantalla y no en el documento, y los RA que el módulo declara serían los viejos. Releyéndola
+//     aquí, lo que se guarda sale siempre del lector, venga del editor o de un `curl`.
 //
-// Las dos operaciones están en `core/estructurados.js` —`renumerarItems` y `conservarFilas`— porque
-// son reglas del modelo y la interfaz tiene que poder enseñar lo mismo que se va a guardar.
+// Las tres operaciones están en `core/` —`renumerarItems` y `conservarFilas` de
+// core/estructurados.js, `conRaLeido` de core/ra-ce.js— porque son reglas del modelo y la interfaz
+// tiene que poder enseñar lo mismo que se va a guardar.
 
 'use strict';
 
 const C = require('../../../core/permisos');
 const Estructurados = require('../../../core/estructurados');
 const CamposCore = require('../../../core/campos');
+const RaCe = require('../../../core/ra-ce');
 const { listasDeTexto } = require('../../../motor/compartidos');
 const {
   conErrores, abrirDocumento, puedeEditarApartado, buscarSeccion, leerJson, raDelModulo,
@@ -446,8 +454,9 @@ function revisarValores(valores, { seccion, info, contexto, guardados = {} }) {
 }
 
 // Lo que se escribe a partir de lo que se ha mandado, cuando ya ha pasado la puerta: la numeración
-// de las fichas al día y las tablas importadas de las ponderaciones de vuelta en su sitio. Ver la
-// cabecera, «dos cosas que la ruta hace al guardar».
+// de las fichas al día, las tablas importadas de las ponderaciones de vuelta en su sitio y los RA
+// de la tabla de RA y CE releídos de su rejilla. Ver la cabecera, «tres cosas que la ruta hace al
+// guardar».
 function alGuardar(valores, { info, guardados }) {
   if (info.seccion.repetidor) {
     const ficha = (info.campos || []).find((c) => c.tipo === Estructurados.TIPO_FICHA);
@@ -455,9 +464,15 @@ function alGuardar(valores, { info, guardados }) {
   }
   const salida = { ...valores };
   for (const campo of (info.campos || [])) {
-    if (campo.tipo !== Estructurados.TIPO_PONDERACION) continue;
     if (salida[campo.id] === undefined) continue;
-    salida[campo.id] = Estructurados.conservarFilas(salida[campo.id], guardados[campo.id]);
+    if (campo.tipo === Estructurados.TIPO_PONDERACION) {
+      salida[campo.id] = Estructurados.conservarFilas(salida[campo.id], guardados[campo.id]);
+    } else if (campo.tipo === RaCe.TIPO) {
+      // Un campo `multiple` guarda una lista de tablas y cada una lleva sus propios RA.
+      salida[campo.id] = Array.isArray(salida[campo.id])
+        ? salida[campo.id].map((t) => RaCe.conRaLeido(t, campo))
+        : RaCe.conRaLeido(salida[campo.id], campo);
+    }
   }
   return salida;
 }

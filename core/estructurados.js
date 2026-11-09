@@ -13,6 +13,9 @@
 //                                rowspan?, bold?, fondo?, alineacion?, tamano? }
 //   tabla_clave_valor            { pares: [{ etiqueta, valor }] }   ·  son las tablas que se crean en la
 //                                aplicación (core/campos.js); también guardan las importadas
+//   auto.tabla_ra_ce             { filas, ra: [{ num, texto, ce: [{ letra, texto }] }] }  ·  se edita la
+//                                rejilla y de ella se releen los RA (core/ra-ce.js), que son los que
+//                                se imprimen y los que el módulo declara
 //
 // Y NADA MÁS. `pintarPonderaciones` hace `p.ce.map(...)` y `pct(p.ponderacion)`, así que
 // un peso que sea la cadena '15 %' imprime «15 %15 %» y un `ce` que no sea una lista
@@ -103,14 +106,13 @@
   // motor/importar-docx.js), así que el apartado de un repetidor no es `{ campo: valor }`.
   const CAMPO_ITEMS = 'items';
 
-  // Los tipos que ESTA PUERTA sabe comprobar y que por tanto se pueden guardar. Los demás
-  // —la tabla de RA y CE, la ficha del módulo— tienen cada uno su forma y su editor y
-  // llegarán cuando les toque: hasta entonces se rechazan, porque un campo que entra sin
-  // puerta es un documento que deja de salir.
+  // Los tipos que ESTA PUERTA sabe comprobar y que por tanto se pueden guardar. Lo que no tiene
+  // puerta se rechaza, porque un campo que entra sin ella es un documento que deja de salir.
+
   // Los tipos que guardan una rejilla `{ filas, anchos? }` y que el generador imprime por su rama
   // genérica, igual que una `tabla`. `auto.ficha_modulo` guarda además `pares` (ver `queSeImprime`).
-  // `auto.tabla_ra_ce` NO está: se imprime desde `ra`, y de `ra` salen los RA del módulo para el
-  // selector de situaciones y las validaciones, así que editar sus `filas` no se vería en ningún sitio.
+  // `auto.tabla_ra_ce` NO está: se imprime desde `ra`, no desde `filas`, así que tiene su propia
+  // puerta (`motivoDeTablaRaCe`) aunque se edite con el mismo editor de rejilla.
   const TIPOS_REJILLA = ['auto.competencias_objetivos', 'auto.contenidos', 'dual_ra_ce', 'auto.ficha_modulo'];
 
   // Los tipos que además pueden llevar `pares`, la tabla de clave y valor.
@@ -118,7 +120,7 @@
 
   // LA LISTA DE LOS TIPOS QUE TIENEN EDITOR DE TABLAS (core/tablas-edicion.js, `esEditable`).
   // Una sola, para que el editor, la puerta y la lista de valores iniciales no discutan.
-  const TIPOS_EDITABLES = [TIPO_TABLA, TIPO_CLAVE_VALOR].concat(TIPOS_REJILLA);
+  const TIPOS_EDITABLES = [TIPO_TABLA, TIPO_CLAVE_VALOR, TIPO_TABLA_RA_CE].concat(TIPOS_REJILLA);
 
   const TIPOS = [TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_PONDERACION, TIPO_FICHA].concat(TIPOS_EDITABLES);
 
@@ -563,6 +565,56 @@
     return null;
   }
 
+  // LA TABLA DE RESULTADOS DE APRENDIZAJE Y CRITERIOS DE EVALUACIÓN: la rejilla del documento y,
+  // al lado, los RA leídos de ella (`raDeFilas` de core/ra-ce.js). Se guardan las dos porque cada
+  // una la usa alguien: la rejilla es lo que se edita y lo que conserva la maquetación del Word, y
+  // `ra` es lo que se IMPRIME (ver `queSeImprime`) y la lista de resultados de aprendizaje que
+  // DECLARA el módulo —de ahí salen el selector de situaciones de aprendizaje y las comprobaciones.
+  //
+  // QUE LAS DOS NO DISCREPEN NO ES COSA DE ESTA PUERTA. `ra` se vuelve a leer de la rejilla en cada
+  // operación del editor (core/tablas-edicion.js) y otra vez al guardar (`alGuardar` de
+  // app/_lib/rutas/apartado.js), así que lo que se escribe siempre sale del lector. Aquí se
+  // comprueba la FORMA, que es lo que esta capa puede decir: una puerta dice por qué no, no corrige.
+  //
+  // `ra` puede no venir: es una tabla cuya rejilla no declara ningún resultado de aprendizaje, y
+  // entonces se imprime la rejilla tal cual. Lo que no vale es que venga con otra forma.
+  function motivoDeTablaRaCe(valor, donde, guardada) {
+    if (!esObjeto(valor)) {
+      return `${donde} no es una tabla de resultados de aprendizaje { filas: [[celda, …], …], ra: [{ num, texto, ce }] }.`;
+    }
+    const { ra, ...rejilla } = valor;
+    const m = motivoDeRejilla(rejilla, donde, { guardada });
+    if (m) return m;
+    if (ra === undefined) return null;
+    if (!Array.isArray(ra)) return `«ra» de ${donde} no es una lista de resultados de aprendizaje.`;
+    for (let i = 0; i < ra.length; i += 1) {
+      const r = ra[i];
+      const suyo = `el resultado de aprendizaje ${i + 1} de ${donde}`;
+      if (!esObjeto(r)) return `${suyo} no es un objeto { num, texto, ce }.`;
+      const sobra = sobran(r, ['num', 'texto', 'ce']);
+      if (sobra.length) return `${suyo} lleva ${comillas(sobra)}, que no existe en un resultado de aprendizaje.`;
+      // Sin número no se puede comparar con nada: `raDeTablas` de app/_lib/rutas/comun.js solo
+      // cuenta los RA que lo tienen, así que uno sin él no existiría para las comprobaciones.
+      if (!Number.isInteger(r.num)) return `${suyo} no dice de qué resultado de aprendizaje es: «num» tiene que ser su número.`;
+      const t = motivoDeTexto(r.texto, `el texto de ${suyo}`);
+      if (t) return t;
+      if (!Array.isArray(r.ce)) return `«ce» de ${suyo} no es una lista de criterios de evaluación.`;
+      for (let j = 0; j < r.ce.length; j += 1) {
+        const ce = r.ce[j];
+        const deCe = `el criterio ${j + 1} de ${suyo}`;
+        if (!esObjeto(ce)) return `${deCe} no es un objeto { letra, texto }.`;
+        const sobraCe = sobran(ce, ['letra', 'texto']);
+        if (sobraCe.length) return `${deCe} lleva ${comillas(sobraCe)}, que no existe en un criterio de evaluación.`;
+        if (typeof ce.letra !== 'string' || !LETRA.test(ce.letra)) {
+          return `${deCe} no tiene «letra», o no es una letra con la que el documento nombre un criterio.`;
+        }
+        const tc = motivoDeTexto(ce.texto, `el texto de ${deCe}`);
+        if (tc) return tc;
+      }
+    }
+    return null;
+  }
+
   // La ficha del módulo: una rejilla que además puede traer los `pares` que dejó el importador.
   // Se comprueba cada mitad con su regla; los `pares` solos (una ficha escrita sin rejilla) valen.
   function motivoDeFichaModulo(valor, donde, guardada) {
@@ -931,6 +983,8 @@
         return motivoDeTablas(valor, campo, contexto.guardado, (v, donde, guardada) => motivoDeRejilla(v, donde, { guardada }));
       case TIPO_CLAVE_VALOR:
         return motivoDeTablas(valor, campo, contexto.guardado, (v, donde) => motivoDeClaveValor(v, donde));
+      case TIPO_TABLA_RA_CE:
+        return motivoDeTablas(valor, campo, contexto.guardado, motivoDeTablaRaCe);
       default:
         break;
     }
@@ -953,12 +1007,12 @@
   // ---------------------------------------------------------------- exportado
 
   const api = {
-    TIPOS, TIPOS_EDITABLES, TIPOS_REJILLA, TIPOS_CON_PARES, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_TABLA, TIPO_CLAVE_VALOR,
+    TIPOS, TIPOS_EDITABLES, TIPOS_REJILLA, TIPOS_CON_PARES, TIPO_PONDERACION, TIPO_FICHA, TIPO_TEXTO_LARGO, TIPO_TEXTO, TIPO_TABLA, TIPO_CLAVE_VALOR, TIPO_TABLA_RA_CE,
     CAMPO_ITEMS, MAX_FILAS, MAX_COLUMNAS, MAX_PARES, MAX_TABLAS, CLAVES_CELDA,
     FONDOS_CELDA, ALINEACIONES_CELDA, TAMANOS_CELDA,
     ALINEACION_CELDA_OMISION, TAMANO_CELDA_OMISION,
     seGuarda, queSeImprime, fondoDeCelda, alineacionDeCelda, tamanoDeCelda, cabeceraDeTabla, cabeceraFijaDelCampo,
-    motivoDeFilas, motivoDeRejilla, motivoDeForma, columnasDeRejilla, motivoDeClaveValor,
+    motivoDeFilas, motivoDeRejilla, motivoDeForma, columnasDeRejilla, motivoDeClaveValor, motivoDeTablaRaCe,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,
     motivoItems, renumerarItems,

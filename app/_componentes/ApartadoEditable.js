@@ -15,7 +15,8 @@
 //   ficha_situacion_aprendizaje      las fichas: ver, cambiar, crear, mover     E4
 //   derivado.resumen_situaciones     la tabla resumen SA × RA, CALCULADA        E4
 //   tabla y clave y valor, creadas aquí o importadas (no las listas)            EditorTablas.js
-//   lo demás (ficha del módulo, RA y CE, contenidos, listas de tablas)          sin editor
+//   la tabla de RA y CE: se edita su rejilla y de ella se releen los RA         EditorTablas.js
+//   lo demás (listas de tablas, tablas que el editor no sabe abrir)             sin editor
 //
 // Lo que no tiene editor se sigue viendo en lectura, con el mismo `Valores.js`
 // de siempre y un aviso de que su editor no está. Esto es deliberado: un
