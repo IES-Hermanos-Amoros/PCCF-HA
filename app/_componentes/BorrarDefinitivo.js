@@ -22,6 +22,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
+import Plantilla from '../../core/plantilla';
 import {
   cambiarEstructura, cuantoHayEscritoEnApartado, cuantoHayEscritoEnCampo, textoDeFalloAlBorrar,
   todasLasUnidades,
@@ -66,7 +67,10 @@ export function BorrarApartado({
   const enTodas = retirado.deUnidades && cuantasUnidades > 1
     ? todasLasUnidades(cuantasUnidades, comoSeLlaman)
     : null;
-  const coincide = escrito.trim() === titulo;
+  // Lo que cuesta es el acto de escribirlo, no acertar con las tildes: `mismoTitulo` es de
+  // core/plantilla.js y perdona acentos, mayúsculas, puntuación y espacios de sobra. Hay títulos
+  // reales de 124 caracteres; exigirlos exactos empujaría a copiar y pegar.
+  const coincide = Plantilla.mismoTitulo(escrito, titulo);
 
   const cerrar = () => { setAbierto(false); setEscrito(''); setError(null); };
 
@@ -109,7 +113,8 @@ export function BorrarApartado({
       </p>
       <p>
         <label htmlFor={id}>
-          Para borrarlo, escribe su título: <strong>{titulo}</strong>
+          Para borrarlo, escribe su título: <strong>{titulo}</strong>{' '}
+          <span className="suave">(no hacen falta las tildes ni las mayúsculas)</span>
         </label>
         {' '}
         <input

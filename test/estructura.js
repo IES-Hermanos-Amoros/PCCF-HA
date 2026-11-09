@@ -1148,6 +1148,30 @@ prueba('borrar un apartado retirado destruye su contenido, y restaurarlo ya no l
   assert.equal(abierto.puedeEditar, false, 'la persona asignada al apartado borrado conserva el permiso');
 });
 
+prueba('la confirmación de un borrado acepta el título sin tildes, y no se cumple sola', async () => {
+  // La confirmación del borrado definitivo es teclear el título (BorrarDefinitivo.js). Lo que tiene
+  // que costar es el ACTO de escribirlo, no acertar con las tildes: hay títulos reales de 124
+  // caracteres y la mayoría llevan acentos, así que exigirlos exactos empujaría a copiar y pegar,
+  // que es lo que anula la deliberación.
+  const T = 'Atención a la diversidad';
+  assert.equal(Plantilla.mismoTitulo('Atención a la diversidad', T), true);
+  assert.equal(Plantilla.mismoTitulo('atencion a la diversidad', T), true, 'exige las tildes');
+  assert.equal(Plantilla.mismoTitulo('  ATENCION   a la Diversidad ', T), true, 'exige mayúsculas o espacios exactos');
+
+  // Pero sigue siendo el título, no cualquier cosa.
+  assert.equal(Plantilla.mismoTitulo('otra cosa', T), false);
+  assert.equal(Plantilla.mismoTitulo('Atención', T), false, 'media palabra vale por el título');
+  assert.equal(Plantilla.mismoTitulo('', T), false, 'el cuadro vacío confirma el borrado');
+  assert.equal(Plantilla.mismoTitulo('   ', T), false);
+
+  // Y NO hereda el recorte de `slug`: un título largo hay que escribirlo entero, no sus 50
+  // primeros caracteres. Ese recorte está para generar identificadores, no para confirmar nada.
+  const largo = 'Criterios generales sobre la organización, comunicación y desarrollo del proceso de evaluación del aprendizaje';
+  assert.equal(Plantilla.slug(largo).length, 50, 'slug ha dejado de recortar: revisa mismoTitulo');
+  assert.equal(Plantilla.mismoTitulo(largo.slice(0, 60), largo), false, 'media confirmación vale por entera');
+  assert.equal(Plantilla.mismoTitulo(largo, largo), true);
+});
+
 prueba('borrar un apartado se lleva sus comentarios, y borrar un campo no toca ninguno', async () => {
   // Un hilo de comentarios habla de un apartado y se lista por `seccion` + `unidadId`. Si el
   // apartado se destruye y el hilo se queda, nadie puede volver a leerlo ni a borrarlo: la sección

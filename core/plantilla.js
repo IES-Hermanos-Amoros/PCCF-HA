@@ -99,6 +99,27 @@
     .replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
   const slug = (t) => norm(t).replace(/ /g, '-').slice(0, 50) || 'seccion';
 
+  // ¿ES ESTE EL TÍTULO? Para confirmar escribiéndolo, no para buscar.
+  //
+  // Lo usa el borrado definitivo de un apartado (app/_componentes/BorrarDefinitivo.js): la
+  // confirmación es teclear el título, porque un clic de más no puede bastar para lo único que no
+  // se deshace. Lo que tiene que costar es el ACTO de escribirlo, no acertar con las tildes: hay
+  // títulos reales de 124 caracteres y la mayoría llevan acentos, así que exigirlos exactos
+  // empujaría a copiar y pegar, que es precisamente lo que anula la deliberación.
+  //
+  // Por eso compara con `norm`, la misma normalización que usa `slug`: sin tildes, sin mayúsculas,
+  // sin la puntuación ni el número de delante, y con los espacios de sobra juntados. Y NO con
+  // `slug`, que además recorta a 50 caracteres: tomar prestado ese recorte haría que teclear la
+  // mitad de un título largo valiera por el título entero, y esa regla no estaría escrita en
+  // ningún sitio, sino heredada de una función que está para generar identificadores.
+  //
+  // Un título vacío no coincide con nada, ni consigo mismo: si no hay título que escribir, la
+  // confirmación no se puede dar por cumplida sola.
+  const mismoTitulo = (escrito, titulo) => {
+    const a = norm(escrito);
+    return a !== '' && a === norm(titulo);
+  };
+
   // El último tramo de un id: 'modulos/metodologia' -> 'metodologia'. Los ids son rutas con
   // '/', igual que los que produce el importador, y lo que tiene que ser único es el tramo
   // entre hermanos: con el prefijo del padre, la ruta entera lo es sola.
@@ -771,7 +792,7 @@
   // ---------------------------------------------------------------------- exportado
 
   const api = {
-    slug, idLocal, limpiarTitulo, LARGO_TITULO, CAMPO_NUEVO, TIPOS, MAX_CAMPOS, MAX_CAMPOS_AL_CREAR,
+    slug, idLocal, limpiarTitulo, mismoTitulo, LARGO_TITULO, CAMPO_NUEVO, TIPOS, MAX_CAMPOS, MAX_CAMPOS_AL_CREAR,
     buscar, rama, contar, vigente, retirados, camposRetirados, estructura,
     renombrar, anadir, mover, retirar, restaurar, borrar, anadirCampo, retirarCampo, restaurarCampo, borrarCampo, aplicar,
     siguienteVersion, registrar,
