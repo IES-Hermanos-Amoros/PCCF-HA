@@ -803,7 +803,7 @@ prueba('una clave y valor importada se abre por su tabla de Word, que es la que 
   const campo = { ...campoCreado({ tipo: 'tabla_clave_valor' }) };
   const importado = { pares: [{ etiqueta: 'a', valor: 'b' }], filas: [[c('a', { bold: true }), c('b')]] };
   const v = Edicion.valorDe(campo, importado);
-  assert.equal(v, importado, 'no se le quita nada');
+  assert.deepEqual(v, { filas: importado.filas }, 'se abre por las filas y los pares viejos se van');
   assert.equal(Edicion.esRejilla(v), true);
   assert.equal(Edicion.esClaveValor(v), false);
   assert.equal(Est.motivoDeCampo(campo, v), null);
@@ -813,6 +813,14 @@ prueba('una clave y valor importada se abre por su tabla de Word, que es la que 
   assert.equal(Edicion.esClaveValor({ pares: [{ etiqueta: 'a', valor: 'b' }], filas: [] }), true);
   assert.equal(Edicion.esRejilla({ filas: [] }), true);
   assert.equal(Edicion.esRejilla({ filas: [], pares: [] }), false);
+
+  // VACIAR LA TABLA NO RESUCITA EL TEXTO VIEJO. Si los pares se quedaran al lado de las filas, al
+  // borrar la ultima fila `queSeImprime` volveria a elegirlos y el PDF imprimiria lo que alguien
+  // acaba de borrar. Por eso se van al abrir el editor y no al guardar.
+  const vaciada = Edicion.aplicar(v, 'quitar-fila', { fila: 0 }, { campo });
+  assert.deepEqual(vaciada, { filas: [] }, 'al vaciarla no quedan pares que reaparezcan');
+  assert.equal(Est.queSeImprime(campo, vaciada), 'ninguno');
+  assert.equal(Est.motivoDeCampo(campo, vaciada), null, 'una rejilla vacia se guarda');
 });
 
 prueba('al azar: ninguna sucesión de operaciones saca un valor que la puerta rechace', () => {

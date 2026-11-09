@@ -275,7 +275,15 @@
   function valorDe(campo, guardado) {
     const C = Campos();
     const v = esObjeto(guardado) ? guardado : C.valorInicial(campo);
-    return Estructurados().queSeImprime(null, v) === 'filas' ? v : C.sinFilas(v);
+    if (Estructurados().queSeImprime(null, v) !== 'filas') return C.sinFilas(v);
+    // Y SI MANDAN LAS FILAS, LOS PARES SE VAN. Un valor importado del Word trae las dos cosas; en
+    // cuanto se imprime la rejilla, los pares son el texto de antes y no se pintan en ninguna
+    // parte. Dejarlos puestos tiene una consecuencia fea: al vaciar la tabla, `queSeImprime`
+    // volveria a elegirlos y en el PDF reaparecería lo que alguien acaba de borrar.
+    if (!Array.isArray(v.pares)) return v;
+    const sinPares = { ...v };
+    delete sinPares.pares;
+    return sinPares;
   }
 
   // ---------------------------------------------------------------- lo que no se puede
