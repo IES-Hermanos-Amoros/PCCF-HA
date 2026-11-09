@@ -138,19 +138,39 @@
   // obligaría a adivinarlas, y entonces la confirmación no se podría cumplir a propósito.
   //
   // Un título de una sola palabra más larga que el tope se pide entero: es lo único que hay.
+  // Y NO TERMINA EN UNA PALABRA VACÍA. «Criterios generales sobre la» se lee como cortado a mitad de
+  // frase, porque lo está, y lo que se le pide a alguien que confirme un borrado irreversible no
+  // puede parecer un error de la pantalla. Se quitan del final los artículos, las preposiciones y
+  // las conjunciones hasta dar con una palabra que signifique algo: «Criterios generales».
+  //
+  // Es una lista y no un mínimo de letras porque por letras se perderían las siglas, que aquí son
+  // justo lo que lleva el sentido: «PFI», «RA», «CE», «SA», «F.E.».
+  const PALABRAS_VACIAS = [
+    'a', 'al', 'ante', 'con', 'contra', 'de', 'del', 'desde', 'durante', 'e', 'el', 'en', 'entre',
+    'hacia', 'hasta', 'la', 'las', 'lo', 'los', 'mediante', 'o', 'para', 'por', 'segun', 'sin',
+    'so', 'sobre', 'su', 'sus', 'tras', 'u', 'un', 'una', 'unas', 'unos', 'y',
+  ];
+  const esVacia = (palabra) => PALABRAS_VACIAS.indexOf(sinAcentos(palabra).toLowerCase().replace(/[^a-zñ]/g, '')) >= 0;
+
   const LARGO_CONFIRMACION = 40;
 
   function loQueHayQueEscribir(titulo) {
     const t = String(titulo === undefined || titulo === null ? '' : titulo).replace(/\s+/g, ' ').trim();
     if (t.length <= LARGO_CONFIRMACION) return t;
     const palabras = t.split(' ');
+    let cuantas = 1;
     let pedido = palabras[0];
     for (let i = 1; i < palabras.length; i += 1) {
       const mas = pedido + ' ' + palabras[i];
       if (mas.length > LARGO_CONFIRMACION) break;
       pedido = mas;
+      cuantas = i + 1;
     }
-    return pedido;
+    // Se le quitan las vacías del final, pero nunca la única palabra que queda: un cuadro que no
+    // pide nada no se puede cumplir.
+    const dentro = palabras.slice(0, cuantas);
+    while (dentro.length > 1 && esVacia(dentro[dentro.length - 1])) dentro.pop();
+    return dentro.join(' ');
   }
 
   // ¿VALE LO ESCRITO para confirmar el borrado de este apartado? Vale la cadena que se pide, y vale

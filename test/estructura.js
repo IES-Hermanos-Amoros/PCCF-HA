@@ -1219,7 +1219,10 @@ prueba('de un título largo se pide teclear sus primeras palabras, y la cadena e
   const largo = 'Criterios generales sobre la organización, comunicación y desarrollo del proceso de evaluación del aprendizaje';
   assert.ok(largo.length > Plantilla.LARGO_CONFIRMACION, 'la prueba no vale si el título es corto');
   const pedido = Plantilla.loQueHayQueEscribir(largo);
-  assert.equal(pedido, 'Criterios generales sobre la');
+  // Y NO termina en palabra vacía: «Criterios generales sobre la» se lee como cortado a mitad de
+  // frase, y lo que se le pide a alguien para confirmar algo irreversible no puede parecer un
+  // error de la pantalla. Caben «sobre la», pero se quitan.
+  assert.equal(pedido, 'Criterios generales');
   assert.ok(pedido.length <= Plantilla.LARGO_CONFIRMACION, `se piden ${pedido.length} caracteres`);
   // Palabras enteras: media palabra no se sabe escribir sin mirarla letra por letra.
   assert.ok(largo.startsWith(pedido), 'lo que se pide no es el principio del título');
@@ -1228,14 +1231,13 @@ prueba('de un título largo se pide teclear sus primeras palabras, y la cadena e
 
   // Lo que se pide confirma, con las tildes y sin ellas.
   assert.equal(Plantilla.confirmaTitulo(pedido, largo), true);
-  assert.equal(Plantilla.confirmaTitulo('criterios generales sobre la', largo), true, 'exige las tildes');
-  assert.equal(Plantilla.confirmaTitulo('  CRITERIOS   Generales sobre la ', largo), true);
+  assert.equal(Plantilla.confirmaTitulo('criterios generales', largo), true, 'exige las tildes');
+  assert.equal(Plantilla.confirmaTitulo('  CRITERIOS   Generales ', largo), true);
   // Y el título completo también: está escrito en el aviso de lo que se va a perder, y quien lo
   // escriba todo ha hecho más de lo que se le pedía.
   assert.equal(Plantilla.confirmaTitulo(largo, largo), true);
 
   // Pero sigue costando el acto: menos de lo que se pide no vale, ni el cuadro vacío.
-  assert.equal(Plantilla.confirmaTitulo('Criterios generales', largo), false);
   assert.equal(Plantilla.confirmaTitulo('Criterios', largo), false);
   assert.equal(Plantilla.confirmaTitulo('', largo), false);
   assert.equal(Plantilla.confirmaTitulo('otra cosa', largo), false);
@@ -1248,6 +1250,22 @@ prueba('de un título largo se pide teclear sus primeras palabras, y la cadena e
   assert.equal(Plantilla.mismoTitulo(Plantilla.loQueHayQueEscribir(corto), corto), true, 'es el título entero');
   assert.equal(Plantilla.mismoTitulo(pedido, largo), false, 'son solo las primeras palabras');
   assert.equal(Plantilla.confirmaTitulo('Atención', corto), false, 'media palabra vale por un título corto');
+
+  // Las vacías se quitan del final, no de dentro, y nunca se quita la única que queda. Y no se
+  // quitan por ser cortas, sino por ser vacías: las siglas de estos títulos («PFI», «F.E.») son
+  // justo lo que lleva el sentido y tienen dos o tres letras.
+  const casos = [
+    ['Adaptación: Mecanismos para adaptar los PFI a las especificidades del sector productivo', 'Adaptación: Mecanismos para adaptar'],
+    ['Planificación: Diseño de los Planes Formativos Individuales (PFI) para abordar la Formación', 'Planificación: Diseño de los Planes'],
+    ['Identificación de los resultados de aprendizaje abordados en el centro educativo', 'Identificación de los resultados'],
+  ];
+  for (const [titulo, espera] of casos) {
+    const q = Plantilla.loQueHayQueEscribir(titulo);
+    assert.equal(q, espera, `de «${titulo.slice(0, 40)}…» se pide «${q}»`);
+    assert.ok(!/ (de|del|la|las|los|el|y|o|a|al|en|con|por|para|sobre|un|una|su|sus|lo)$/i.test(q),
+      `lo que se pide termina en una palabra vacía: «${q}»`);
+    assert.equal(Plantilla.confirmaTitulo(q, titulo), true);
+  }
 
   // Un título de una sola palabra más larga que el tope se pide entero: es lo único que hay.
   const palabrota = 'Contextualizacionsocioeconomicaycultural del centro';
