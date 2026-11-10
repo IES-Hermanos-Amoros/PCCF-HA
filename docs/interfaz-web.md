@@ -259,7 +259,8 @@ plantilla.modelos['modelo-xxx'] = {
   nombre,    // lo que se enseña: «Ficha de actividad»
   tipo,      // 'tabla' | 'tabla_clave_valor'
   sentido,   // 'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
-  partes: [ { id, etiqueta, ancho?, retirado? } ],
+  columnas,  // de cuántas columnas es la tabla cuando las partes van a lo alto (por omisión 2)
+  partes: [ { id, etiqueta, ancho?, grupo?, solo_si_hay?, retirado? } ],
   version
 }
 ```
@@ -298,6 +299,37 @@ pantalla acabaría pintando una tabla distinta de la que sale impresa, que es la
 |---|---|---|
 | `'filas'` | una fila | **una casilla**. Es literalmente `ficha[id]` de `core/sa.js` |
 | `'columnas'` | una columna | **la lista de sus casillas** hacia abajo |
+
+### Cómo se colocan las partes que van a lo alto
+
+No es «una fila por parte». Es **la maquetación de la ficha de situación de aprendizaje**, que es la
+única que existe en los documentos del departamento y la que lleva 306 fichas funcionando:
+
+- las partes se **empaquetan** en filas de `columnas`, cada una ocupando las que diga su `ancho`;
+- se **abre fila** cuando la siguiente no cabe o cuando cambia de `grupo`;
+- cada fila de partes imprime **dos filas de tabla**: los rótulos encima y los contenidos debajo;
+- un `grupo` escribe además su nombre **una sola vez**, en una fila que ocupa la tabla entera;
+- y una parte `solo_si_hay` no imprime su fila cuando no tiene nada escrito (a lo alto se decide por
+  fila de partes, como en la ficha; a lo ancho, por parte, porque cada parte *es* una columna).
+
+`ancho` **significa dos cosas según el sentido**, y no hay manera de evitarlo sin dos nombres: a lo
+ancho es el **peso** relativo de la columna (un número positivo, puede ser decimal, lo reparte cada
+motor sobre el ancho de la hoja); a lo alto es **cuántas** de las `columnas` ocupa la parte en su
+fila (un entero, que acaba siendo su `colspan`). La puerta lo comprueba distinto en cada caso.
+
+Y la estructura propia de una tabla divergida guarda también `columnas`, por lo mismo que guarda
+`sentido`: para que un cambio del modelo no pueda reempaquetarle las filas después. Si no lo dice,
+son dos, y **no** las que diga el modelo del que se desengachó.
+
+> **La maquetación está escrita dos veces, aquí y en `filasDeFicha` de `core/sa.js`, a propósito y
+> temporalmente.** Es la única excepción a «una regla en un solo sitio» de toda esta pieza, y existe
+> para no tocar `core/sa.js`, que gobierna 306 fichas reales del departamento y hoy no corre ningún
+> riesgo: mover su maquetación al modelo genérico por limpieza, antes de que nada más la use, sería
+> el peor cambio posible. **La duplicación la quita la pieza que absorba la ficha, no antes.**
+> Mientras exista, lo que la mantiene honesta es `test/modelos-tabla.js`: construye un modelo desde
+> las propias `CAMPOS_POR_OMISION` de `core/sa.js` y compara **celda por celda** contra
+> `filasDeFicha`, con los dos casos de `solo_si_hay` y con la cabecera del grupo escrita una vez. Si
+> las dos se separan, esa prueba falla.
 
 Por id y no por posición, y los motivos son tres:
 
@@ -348,8 +380,11 @@ y todavía vacío sería indistinguible de no tener modelo, y quien lo enganchó
   ni pantalla desde la que hacerlo. `version` existe en el modelo pero todavía no lo lee nadie:
   empezará a significar algo con las operaciones.
 - La ficha de situación de aprendizaje sigue con su mecánica aparte (`core/sa.js`,
-  `core/ficha-estructura.js`): se absorbe al final, a propósito y medida aparte. Ahora es el mismo
-  modelo de datos, así que absorberla es quitar código, no traducirlo.
+  `core/ficha-estructura.js`): se absorbe al final, a propósito y medida aparte. Ahora el modelo
+  genérico **sí la puede expresar** —mismo modelo de datos y misma maquetación, comprobada celda por
+  celda contra `filasDeFicha`—, así que absorberla es quitar código y no traducirlo. Lo que le queda
+  de propio son las tres filas de su encabezado (el número, el título, las sesiones, la evaluación y
+  el RA), que no son partes sino datos de la ficha, y sus sinónimos de lectura.
 
 ---
 
