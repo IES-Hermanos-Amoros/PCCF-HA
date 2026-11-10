@@ -940,6 +940,79 @@ prueba('LA MAQUETACION A LO ALTO DA LO MISMO QUE `filasDeFicha`, celda por celda
   assert.ok(fila, 'ninguna fila lleva tres partes: no se ha empaquetado');
 });
 
+prueba('LA UNICA CELDA EN LA QUE LAS DOS MAQUETACIONES DIFIEREN, medida', () => {
+  // `filasDeFicha` de core/sa.js tiene el nombre del grupo CABLEADO: escribe su cabecera solo cuando
+  // el grupo es, literalmente, 'actividades'. La regla la escribe para cualquier grupo, que es lo que
+  // `grupo` promete y lo que un modelo generico tiene que hacer.
+  //
+  // No es teorico: `anadir_campo_ficha` de core/plantilla.js acepta hoy cualquier texto como grupo y
+  // llega tal cual desde la ruta de la estructura de la ficha, asi que la jefatura puede dejar en un
+  // documento real una fila con `grupo: 'Mis actividades'`. Hoy esa fila se agrupa —abre fila, como
+  // las de 'actividades'— pero no se rotula.
+  //
+  // ASI QUE LA EQUIVALENCIA DE LA PRUEBA DE ARRIBA ES CIERTA PARA EL GRUPO CABLEADO, que es el de las
+  // 306 fichas reales, Y AQUI SE MIDE LO QUE PASA CON CUALQUIER OTRO: una fila de diferencia, la del
+  // rotulo del grupo, y ni una celda mas. El cableado lo tiene que quitar la pieza que absorba la
+  // ficha; mientras no lo haga, esta prueba dice exactamente lo que va a cambiar y donde.
+  const campos = [
+    { id: 'ce', etiqueta: 'CE', ancho: 4 },
+    { id: 'uno', etiqueta: 'Uno', ancho: 2, grupo: 'Mis actividades' },
+    { id: 'dos', etiqueta: 'Dos', ancho: 2, grupo: 'Mis actividades' },
+    { id: 'fin', etiqueta: 'Fin', ancho: 4 },
+  ];
+  const ficha = { ce: ['c'], uno: ['1'], dos: ['2'], fin: ['f'] };
+  const m = {
+    id: 'm-propio', nombre: 'Con un grupo propio', tipo: 'tabla', sentido: 'filas', columnas: 4,
+    partes: campos.map((x) => ({ ...x })),
+  };
+  assert.strictEqual(MT.motivoDeModelo(m), null);
+  const casillas = {};
+  for (const campo of campos) casillas[campo.id] = { text: Sa.deLineas(ficha[campo.id]) };
+
+  const mias = MT.tablaVigente({ id: 'f', tipo: 'tabla', modelo: m.id }, { casillas }, mapaDe(m), false).filas;
+  const suyas = Sa.filasDeFicha(ficha, campos).slice(3);
+
+  // UNA fila de diferencia, y es la del rotulo del grupo.
+  assert.strictEqual(mias.length, suyas.length + 1);
+  const rotulos = mias.filter((f) => f.length === 1 && f[0].text === 'Mis actividades');
+  assert.strictEqual(rotulos.length, 1);
+  assert.strictEqual(rotulos[0][0].colspan, 4);
+  // Y quitandola, las dos son identicas celda por celda: el AGRUPADO es el mismo —«Uno» y «Dos»
+  // comparten fila y «Fin» abre la suya en las dos—, lo unico que falta en la ficha es el rotulo.
+  assert.deepStrictEqual(
+    celdasComparables(mias.filter((f) => !(f.length === 1 && f[0].text === 'Mis actividades'))),
+    celdasComparables(suyas),
+  );
+});
+
+prueba('un «ancho» que no sea entero se cuenta igual en las dos maquetaciones', () => {
+  // La puerta no lo deja guardar, asi que solo se llega con una plantilla escrita a mano. Pero
+  // mientras las dos maquetaciones existan a la vez, lo que importa es que no puedan discrepar: que
+  // un ancho raro salga raro en las dos es un defecto, que salga distinto en cada una es un documento
+  // que cambia al absorber la ficha.
+  const campos = [{ id: 'a', etiqueta: 'A', ancho: 2.5 }, { id: 'b', etiqueta: 'B', ancho: 1 }];
+  const m = { id: 'm-raro', nombre: 'Raro', tipo: 'tabla', sentido: 'filas', columnas: 4, partes: campos.map((x) => ({ ...x })) };
+  assert.ok(MT.motivoDeModelo(m), 'la puerta tiene que seguir rechazando un ancho que no sea entero');
+  const casillas = { a: { text: '1' }, b: { text: '2' } };
+  assert.deepStrictEqual(
+    celdasComparables(MT.tablaVigente({ id: 'f', tipo: 'tabla', modelo: m.id }, { casillas }, mapaDe(m), false).filas),
+    celdasComparables(Sa.filasDeFicha({ a: ['1'], b: ['2'] }, campos).slice(3)),
+  );
+});
+
+prueba('una parte que no es una parte no tira la generacion del documento', () => {
+  // La puerta no deja guardar un modelo con un `null` dentro, pero el camino de LECTURA no comprueba
+  // el modelo, y pedirle el id a un `null` reventaba la maquetacion: el tomo entero que deja de
+  // salir. Es el mismo cuidado que con las partes todas retiradas.
+  for (const sentido of ['filas', 'columnas']) {
+    const m = { id: 'm-roto', nombre: 'Roto', tipo: 'tabla', sentido, partes: [null, { id: 'a', etiqueta: 'A' }] };
+    assert.ok(MT.motivoDeModelos(mapaDe(m)), 'la puerta tiene que seguir rechazandolo');
+    const casillas = { a: sentido === 'filas' ? c('1') : [c('1')] };
+    const t = MT.tablaVigente({ id: 'f', tipo: 'tabla', modelo: m.id }, { casillas }, mapaDe(m), false);
+    assert.deepStrictEqual(textosDeFilas(t.filas), [['A'], ['1']], sentido);
+  }
+});
+
 prueba('la ficha maquetada por la regla sale igual en el PDF y en el Word', async () => {
   const m = modeloDeLaFicha();
   const campo = { id: 'f', tipo: 'tabla', etiqueta: 'Ficha', modelo: m.id };

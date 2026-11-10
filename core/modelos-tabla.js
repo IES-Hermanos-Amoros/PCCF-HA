@@ -230,8 +230,13 @@
 
   // Las partes que se imprimen y se pintan: todas menos las retiradas, en su orden. La retirada se
   // queda en el modelo y su casilla sigue guardada bajo su id (ver «RETIRAR UNA PARTE NO BORRA»).
+  //
+  // Y SE CAE LO QUE NO ES UNA PARTE. La puerta no deja guardar un modelo con un `null` dentro, así
+  // que esto solo pasa con una plantilla escrita a mano; pero el camino de lectura no comprueba el
+  // modelo, y una parte que no es un objeto reventaba la maquetación al pedirle su id, que es el
+  // tomo entero que deja de salir. Es el mismo cuidado que con las partes todas retiradas.
   const partesVigentes = (partes) => (Array.isArray(partes) ? partes : [])
-    .filter((parte) => !(esObjeto(parte) && parte.retirado));
+    .filter((parte) => esObjeto(parte) && !parte.retirado);
 
   // LA REGLA, Y EL ÚNICO SITIO DONDE ESTÁ ESCRITA. Qué estructura sigue esta tabla:
   //
@@ -308,9 +313,16 @@
     return columnaDe(casillas, parte).some(conTexto);
   }
 
-  // Cuántas de las columnas de la tabla ocupa una parte que va a lo alto. Como en la ficha: lo que
-  // diga su `ancho` y al menos una.
-  const ocupa = (parte) => (esObjeto(parte) && esEntero(parte.ancho, 2) ? parte.ancho : 1);
+  // Cuántas de las columnas de la tabla ocupa una parte que va a lo alto: lo que diga su `ancho` y al
+  // menos una. La cuenta es LITERALMENTE la de la ficha (`const ancho = (v) => (v > 1 ? v : 1)` de
+  // core/sa.js) y no «el ancho si es un entero», que es lo razonable, porque mientras las dos
+  // maquetaciones existan a la vez lo que importa es que no puedan discrepar: que un `ancho` raro
+  // salga raro en las dos es un defecto, que salga distinto en cada una es un documento que cambia
+  // al absorber la ficha. Que no sea un entero lo rechaza la puerta.
+  const ocupa = (parte) => {
+    const a = esObjeto(parte) ? parte.ancho : undefined;
+    return typeof a === 'number' && a > 1 ? a : 1;
+  };
 
   // LAS PARTES, EMPAQUETADAS EN FILAS DE `columnas`. Se abre fila cuando la siguiente no cabe o
   // cuando cambia de grupo, que es lo que hace que un grupo empiece siempre en una fila nueva.
