@@ -9,10 +9,10 @@
 //                                  fundamental }], filas? }   ·  `multiple`: una lista de esas
 //   ficha_situacion_aprendizaje  el modelo de core/sa.js        ·  `multiple`: una lista de esas
 //   el repetidor que las agrupa  { items: [ { titulo, ficha: [ficha], texto? } ] }
-//   tabla                        { filas: [[celda, …], …], anchos? }, celda { text, colspan?,
-//                                rowspan?, bold?, fondo?, alineacion?, tamano? }
-//   tabla_clave_valor            { pares: [{ etiqueta, valor }] }   ·  son las tablas que se crean en la
-//                                aplicación (core/campos.js); también guardan las importadas
+//   tabla                        { filas: [[celda, …], …], anchos?, estructura? }, celda { text,
+//                                colspan?, rowspan?, bold?, fondo?, alineacion?, tamano? }
+//   tabla_clave_valor            { pares: [{ etiqueta, valor }], estructura? }   ·  son las tablas que se
+//                                crean en la aplicación (core/campos.js); también guardan las importadas
 //   auto.tabla_ra_ce             { filas, ra: [{ num, texto, ce: [{ letra, texto }] }] }  ·  se edita la
 //                                rejilla y de ella se releen los RA (core/ra-ce.js), que son los que
 //                                se imprimen y los que el módulo declara
@@ -65,6 +65,13 @@
 // En las ponderaciones `filas` se trata al revés: no se deja escribir, pero no se pierde.
 // Ver `motivoDePonderacion` y `conservarFilas`.
 //
+// Y LO MISMO CON LA FORMA DE UNA TABLA, que es la otra decisión delicada: una tabla genérica puede
+// seguir la forma de un GRUPO de tablas (`plantilla.modelos`, core/modelos-tabla.js) en lugar de que
+// su forma sean sus celdas. Cuál sigue cada tabla lo decide `estructuraDeTabla`, el único sitio
+// donde está escrita esa regla y la misma que leen el PDF, el Word y el editor; aquí solo se
+// comprueba que lo que se guarda cuadre con ella. Un campo sin `modelo` y un valor sin `estructura`
+// pasan por esta puerta exactamente como antes de que los modelos existieran.
+//
 // Vale como <script> en el mockup, como `require` en las pruebas y en las rutas, y como
 // `import` desde Next. Cuelga de `global.Core.estructurados`, igual que los demás.
 
@@ -84,11 +91,13 @@
     if (typeof require === 'function') {
       if (nombre === 'sa') return require('./sa.js');
       if (nombre === 'bloques') return require('./bloques.js');
+      if (nombre === 'modelosTabla') return require('./modelos-tabla.js');
     }
     throw new Error('core/estructurados.js necesita core/' + nombre + '.js');
   }
   const Sa = () => deCore('sa');
   const Bloques = () => deCore('bloques');
+  const MT = () => deCore('modelosTabla');
 
   // ---------------------------------------------------------------- los tipos de campo
 
@@ -629,6 +638,41 @@
     return motivoDeRejilla(resto, donde, { guardada });
   }
 
+  // ===================================================================== CON MODELO
+  //
+  // LOS DOS TIPOS A LOS QUE SE LES PUEDE PONER MODELO (`tabla` y `tabla_clave_valor`) admiten una
+  // clave más: `estructura`, la forma con la que ESTA tabla ha divergido de la de su grupo. Los
+  // demás tipos no la admiten, por lo mismo que una celda no admite claves de regalo: una clave que
+  // se guarda y no significa nada acaba leyéndola alguien.
+  //
+  // Se comprueban tres cosas y en este orden, que es de lo más cercano a lo más lejano: la forma de
+  // la estructura propia, la de la tabla, y que la tabla CUADRE con la estructura que sigue —la
+  // suya, la del modelo, o ninguna—. Quién decide cuál sigue es `estructuraDeTabla` de
+  // core/modelos-tabla.js, el único sitio donde está escrita esa regla, y es la misma que usan el
+  // PDF, el Word y el editor: una tabla que se guarda es una tabla que se puede imprimir.
+  //
+  // `modelos` es `plantilla.modelos`, que llega por el contexto desde la ruta. Sin él ninguna tabla
+  // sigue modelo y estas dos puertas son, paso por paso, las de siempre.
+  function motivoDeTablaConModelo(campo, valor, donde, guardada, modelos) {
+    if (!esObjeto(valor)) return `${donde} no es una tabla { filas: [[celda, …], …] }.`;
+    const { estructura, ...rejilla } = valor;
+    const e = MT().motivoDeEstructura(estructura, donde, { tipo: campo.tipo });
+    if (e) return e;
+    const m = motivoDeRejilla(rejilla, donde, { guardada });
+    if (m) return m;
+    return MT().motivoDeContenido(campo, valor, modelos, donde);
+  }
+
+  function motivoDeClaveValorConModelo(campo, valor, donde, modelos) {
+    if (!esObjeto(valor)) return `${donde} no es una tabla de clave y valor { pares: [{ etiqueta, valor }] }.`;
+    const { estructura, ...resto } = valor;
+    const e = MT().motivoDeEstructura(estructura, donde, { tipo: campo.tipo });
+    if (e) return e;
+    const m = motivoDeClaveValor(resto, donde);
+    if (m) return m;
+    return MT().motivoDeContenido(campo, valor, modelos, donde);
+  }
+
   // Los dos tipos son `multiple` o no según el campo: el importador guarda una lista cuando
   // la sección trae varias tablas y la tabla suelta cuando trae una, y en la PD real hay
   // campos de clave y valor de las dos clases. `pintarCampo` imprime una lista tabla a tabla,
@@ -987,9 +1031,9 @@
       case TIPO_FICHA:
         return motivoFichas(valor, { multiple: !!campo.multiple }, contexto.estructuraFicha);
       case TIPO_TABLA:
-        return motivoDeTablas(valor, campo, contexto.guardado, (v, donde, guardada) => motivoDeRejilla(v, donde, { guardada }));
+        return motivoDeTablas(valor, campo, contexto.guardado, (v, donde, guardada) => motivoDeTablaConModelo(campo, v, donde, guardada, contexto.modelos));
       case TIPO_CLAVE_VALOR:
-        return motivoDeTablas(valor, campo, contexto.guardado, (v, donde) => motivoDeClaveValor(v, donde));
+        return motivoDeTablas(valor, campo, contexto.guardado, (v, donde) => motivoDeClaveValorConModelo(campo, v, donde, contexto.modelos));
       case TIPO_TABLA_RA_CE:
         return motivoDeTablas(valor, campo, contexto.guardado, motivoDeTablaRaCe);
       default:
@@ -1020,6 +1064,7 @@
     ALINEACION_CELDA_OMISION, TAMANO_CELDA_OMISION,
     seGuarda, queSeImprime, fondoDeCelda, alineacionDeCelda, tamanoDeCelda, cabeceraDeTabla, cabeceraFijaDelCampo,
     motivoDeFilas, motivoDeRejilla, motivoDeForma, columnasDeRejilla, motivoDeClaveValor, motivoDeTablaRaCe,
+    motivoDeTablaConModelo, motivoDeClaveValorConModelo,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,
     motivoItems, renumerarItems,
