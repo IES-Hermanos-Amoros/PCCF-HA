@@ -17,13 +17,19 @@ const prueba = (nombre, fn) => {
 };
 
 const c = (text, bold, colspan) => ({ text, bold: !!bold, colspan: colspan || 1, rowspan: 1 });
+const letras = (n) => String(n).replace(/[0-9]/g, (d) => "abcdefghij"[d]);
+const relleno = (i, j) => `dato ${letras(i)} ${letras(j)} con bastante texto para que la cabecera destaque por corta`;
 // una tabla con la cabecera dada (en negrita) y `n` filas de datos de las mismas columnas
 const conCabecera = (cab, n, anchos) => ({
-  rows: [cab.map((t) => c(t, true)), ...Array.from({ length: n }, (_x, i) => cab.map((_t, j) => c(`dato ${i}.${j} con bastante texto para no ser corto del todo`)))],
+  rows: [cab.map((t) => c(t, true)), ...Array.from({ length: n }, (_x, i) => cab.map((_t, j) => c(relleno(i, j))))],
   anchos,
 });
-// una tabla de clave y valor: sin cabecera, primera columna en negrita
-const clave = (pares, anchos) => ({ rows: pares.map(([k, v]) => [c(k, true), c(v + ' ' + 'x'.repeat(60))]), anchos });
+// una tabla sin cabecera: la primera fila es un dato como los demás; `primeraBold` pone en negrita la primera columna
+let semilla = 100; // cada tabla con sus propios textos: dos primeras filas iguales serían una cabecera repetida
+const sinCabecera = (columnas, n, primeraBold, anchos) => ({
+  rows: Array.from({ length: n }, (_x, i) => { semilla += 1; return Array.from({ length: columnas }, (_t, j) => c(relleno(semilla, j), primeraBold && j === 0)); }),
+  anchos,
+});
 
 prueba('se publica en Core.tablasForma y en module.exports', () => {
   assert.equal(typeof TF.proponer, 'function');
@@ -51,64 +57,102 @@ prueba('misma cabecera: se juntan aunque cambien las filas, los acentos, las may
   assert.deepEqual(r.sueltas, [2]);
 });
 
+prueba('una cabecera larga sigue siendo cabecera: no hay largo máximo (42 caracteres)', () => {
+  const larga = 'Criterios de evaluación (Decreto 107/2022)';
+  assert.equal(larga.length, 42);
+  const mk = (n) => ({ rows: [[c('Competencias específicas', true), c(larga, false)], ...Array.from({ length: n }, (_x, i) => [c('Una competencia con su descripción completa ' + i), c('Un criterio con su descripción más larga todavía, de varias frases cada uno ' + i)])] });
+  const r = TF.proponer([mk(3), mk(6), mk(10)]);
+  assert.equal(r.grupos.length, 1);
+  assert.equal(r.grupos[0].nivel, TF.NIVEL_CABECERA);
+  assert.deepEqual(r.grupos[0].indices, [0, 1, 2]);
+});
+
+prueba('una primera fila repetida en otra tabla es cabecera aunque no se distinga del cuerpo', () => {
+  const plana = (t) => ({ rows: [[c(t), c('Otra')], [c('x'), c('y')], [c('z'), c('w')]] });
+  const r = TF.proponer([plana('Instrumento'), plana('Instrumento'), plana('Raro')]);
+  assert.equal(r.grupos.length, 1);
+  assert.equal(r.grupos[0].nivel, TF.NIVEL_CABECERA);
+});
+
+prueba('misma cabecera por parecido: una celda abreviada y columnas de más al final', () => {
+  const r = TF.proponer([
+    conCabecera(['Situaciones definidas', 'Criterios', 'Temporaliz.'], 4),
+    conCabecera(['Situaciones definidas', 'Criterios', 'Temporalización'], 8),
+    conCabecera(['Situaciones definidas', 'Criterios', 'Temporalización', 'Peso'], 5),
+  ]);
+  assert.equal(r.grupos.length, 1);
+  assert.deepEqual(r.grupos[0].indices, [0, 1, 2]);
+});
+
+prueba('el parecido no es encadenado ni tan flojo: cabeceras distintas, o una de una celda frente a una de dos, no casan', () => {
+  const r = TF.proponer([
+    conCabecera(['Resultado de aprendizaje', 'Ponderación'], 4),
+    conCabecera(['Resultado de aprendizaje'], 4),
+    conCabecera(['Competencias', 'Objetivos'], 2),
+    conCabecera(['Compras', 'Objetos'], 2),
+  ]);
+  assert.equal(r.grupos.length, 0);
+  assert.equal(r.sueltas.length, 4);
+});
+
 prueba('misma cabecera: no hace falta que coincidan las columnas de la rejilla (celdas fusionadas)', () => {
-  const a = { rows: [[c('Instrumentos', true), c('Criterios', true, 2)], [c('x'), c('y'), c('z')]] };
-  const b = { rows: [[c('Instrumentos', true), c('Criterios', true)], [c('x'), c('y')]] };
+  const a = { rows: [[c('Instrumentos', true), c('Criterios', true, 2)], [c('un instrumento largo'), c('un criterio largo'), c('z')]] };
+  const b = { rows: [[c('Instrumentos', true), c('Criterios', true)], [c('un instrumento largo'), c('un criterio largo')]] };
   const r = TF.proponer([a, b]);
   assert.equal(r.grupos.length, 1);
   assert.equal(r.grupos[0].nivel, TF.NIVEL_CABECERA);
 });
 
-prueba('cabeceras distintas con la misma forma se juntan por forma y lo dice el motivo', () => {
-  const r = TF.proponer([
-    conCabecera(['Alfa', 'Beta', 'Gamma'], 2),
-    conCabecera(['Uno', 'Dos', 'Tres'], 5),
-  ]);
+prueba('matriz partida: misma primera celda, mismas filas y cabeceras de una letra', () => {
+  const m = (letras) => ({ rows: [[c('Código del módulo'), ...letras.map((l) => c(l))], ...Array.from({ length: 5 }, (_x, i) => [c('MOD' + i), ...letras.map(() => c('X'))])] });
+  const r = TF.proponer([m(['a', 'b', 'c', 'd']), m(['p', 'q', 'r', 's']), m(['a', 'b'])]);
+  assert.equal(r.grupos.length, 1);
+  assert.equal(r.grupos[0].nivel, TF.NIVEL_MATRIZ);
+  assert.deepEqual(r.grupos[0].indices, [0, 1, 2]);
+});
+
+prueba('la forma junta tablas sin cabecera con la misma rejilla y no mira la negrita de la primera fila', () => {
+  const a = sinCabecera(4, 5, false);
+  const b = sinCabecera(4, 9, false);
+  b.rows[0] = b.rows[0].map((x) => ({ ...x, bold: true })); // la negrita de la primera fila va y viene
+  const r = TF.proponer([a, b]);
   assert.equal(r.grupos.length, 1);
   assert.equal(r.grupos[0].nivel, TF.NIVEL_FORMA);
   assert.match(r.grupos[0].motivo, /misma forma/);
-  assert.match(r.grupos[0].motivo, /no coincide/);
 });
 
-prueba('la forma distingue columnas, negrita de la primera fila y de la primera columna', () => {
-  const sinNegrita = { rows: [[c('Siete'), c('Ocho')], [c('x'), c('y')]] };
+prueba('la forma distingue columnas y negrita de la primera columna', () => {
   const r = TF.proponer([
-    conCabecera(['Alfa', 'Beta'], 3),
-    conCabecera(['Uno', 'Dos'], 3),
-    conCabecera(['Uno', 'Dos', 'Tres'], 3),
-    conCabecera(['Cuatro', 'Cinco', 'Seis'], 3),
-    clave([['Uno', 'a'], ['Dos', 'b'], ['Tres', 'c']]),
-    clave([['Cuatro', 'a'], ['Cinco', 'b'], ['Seis', 'c']]),
-    sinNegrita,
+    sinCabecera(3, 4, false), sinCabecera(3, 6, false),
+    sinCabecera(4, 4, false), sinCabecera(4, 6, false),
+    sinCabecera(3, 4, true), sinCabecera(3, 6, true),
+    sinCabecera(5, 4, false),
   ]);
-  const juntas = r.grupos.map((g) => g.indices.join(',')).sort();
-  assert.deepEqual(juntas, ['0,1', '2,3', '4,5']);
+  assert.deepEqual(r.grupos.map((g) => g.indices.join(',')).sort(), ['0,1', '2,3', '4,5']);
   assert.deepEqual(r.sueltas, [6]);
 });
 
-prueba('una tabla de clave y valor no se agrupa por su primera fila, que es un dato', () => {
-  const r = TF.proponer([
-    clave([['Módulo', 'DAW'], ['Curso', '1'], ['Horas', '5']]),
-    clave([['Módulo', 'SMR'], ['Curso', '2'], ['Horas', '6']]),
-  ]);
-  assert.equal(r.grupos.length, 1);
-  assert.equal(r.grupos[0].nivel, TF.NIVEL_FORMA);
+prueba('dos tablas con cabecera propia y distinta no se juntan por tener la misma geometría', () => {
+  const r = TF.proponer([conCabecera(['Alfa', 'Beta'], 3), conCabecera(['Uno', 'Dos'], 3)]);
+  assert.equal(r.grupos.length, 0);
+  assert.equal(r.sueltas.length, 2);
 });
 
-prueba('los anchos separan rejillas iguales con proporciones distintas, y toleran el redondeo', () => {
+prueba('los anchos separan rejillas iguales con proporciones distintas y toleran una décima que baila', () => {
   const r = TF.proponer([
-    conCabecera(['Alfa', 'Beta'], 3, [2000, 8000]),
-    conCabecera(['Uno', 'Dos'], 3, [2010, 7990]),
-    conCabecera(['Tres', 'Cuatro'], 3, [5000, 5000]),
+    sinCabecera(2, 4, false, [2000, 8000]),
+    sinCabecera(2, 4, false, [2150, 7850]),
+    sinCabecera(2, 4, false, [5000, 5000]),
+    sinCabecera(2, 4, false, [3000, 7000]),
   ]);
   assert.equal(r.grupos.length, 1);
   assert.deepEqual(r.grupos[0].indices, [0, 1]);
   assert.match(r.grupos[0].firma, /anchos 20\/80/);
-  assert.deepEqual(r.sueltas, [2]);
+  assert.deepEqual(r.sueltas, [2, 3]);
 });
 
 prueba('las filas no cuentan por defecto y sí con bandasFilas', () => {
-  const t = [conCabecera(['Alfa', 'Beta'], 1), conCabecera(['Uno', 'Dos'], 20)];
+  const t = [sinCabecera(3, 1, false), sinCabecera(3, 20, false)];
   assert.equal(TF.proponer(t).grupos.length, 1);
   assert.equal(TF.proponer(t, { bandasFilas: true }).grupos.length, 0);
 });
@@ -116,7 +160,7 @@ prueba('las filas no cuentan por defecto y sí con bandasFilas', () => {
 prueba('toda tabla queda en un grupo o suelta, una sola vez, y los grupos vienen de mayor a menor', () => {
   const tablas = [
     conCabecera(['A', 'B'], 2), conCabecera(['A', 'B'], 3), conCabecera(['A', 'B'], 4),
-    conCabecera(['X', 'Y', 'Z'], 2), conCabecera(['P', 'Q', 'R'], 2),
+    conCabecera(['X', 'Y', 'Z'], 2), conCabecera(['X', 'Y', 'Z'], 3),
     conCabecera(['solo', 'una', 'mas', 'de', 'cinco'], 2),
   ];
   const r = TF.proponer(tablas);
@@ -134,8 +178,8 @@ prueba('cada grupo trae motivo, firma y un ejemplo legibles para una persona', (
   assert.ok(g.firma && g.ejemplo === 'Alfa | Beta');
 });
 
-prueba('una tabla con la primera fila vacía no revienta ni se agrupa por cabecera', () => {
-  const r = TF.proponer([{ rows: [[c('', true)]] }, { rows: [[c('', true)]] }, { rows: [] }]);
+prueba('tablas vacías o con la primera fila vacía no revientan', () => {
+  const r = TF.proponer([{ rows: [[c('', true)]] }, { rows: [[c('', true)]] }, { rows: [] }, {}]);
   assert.ok(r.grupos.every((g) => g.nivel === TF.NIVEL_FORMA));
 });
 
