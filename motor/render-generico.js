@@ -163,9 +163,9 @@ function pintarClaveValor(campo, v, modelos) {
     const t = MT.tablaVigente(campo, v, modelos, Est.cabeceraDeTabla(campo, v));
     return tablaGenerica(t.filas, { cabecera: t.cabecera, anchos: t.anchos });
   }
-  if (que !== 'pares') return tablaGenerica(v && v.filas);
+  if (que !== 'pares' && que !== 'casillas') return tablaGenerica(v && v.filas);
   const { pares } = MT.paresVigentes(campo, v, modelos);
-  if (!pares.length) return tablaGenerica(v && v.filas);
+  if (!pares || !pares.length) return tablaGenerica(v && v.filas);
   return { table: { widths: [150, '*'], body: pares.map((p) => [label(p.etiqueta), { text: p.valor || '' }]) }, layout, margin: [0, 0, 0, 10] };
 }
 function resumenSituaciones(items) {

@@ -21,42 +21,76 @@
 //
 // Un campo apunta a su modelo con `campo.modelo`; sin esa clave, el campo no usa modelo. Y una
 // tabla concreta que ha DIVERGIDO del modelo guarda su forma junto a su contenido, en
-// `valor.estructura = { partes: [...] }`.
+// `valor.estructura = { partes: [...], sentido }`.
+//
+// LA ESTRUCTURA PROPIA GUARDA TAMBIÉN EL SENTIDO, y no solo las partes. Si el sentido lo siguiera
+// diciendo el modelo del que la tabla se desengachó, el departamento podría girarle la tabla
+// noventa grados a algo que ya había divergido —el contenido de las columnas leído como filas—, que
+// es exactamente «cambiar el documento por la espalda», lo único que divergir existe para evitar.
 //
 // EL ID DE UN MODELO Y EL DE UNA PARTE NO SON SU NOMBRE, por lo mismo que el de un apartado y el de
-// un campo (core/plantilla.js): los campos apuntan al modelo por su id, así que un id que siguiera
-// al nombre dejaría huérfanos los campos en cuanto alguien renombrara el modelo. `nombre` y
-// `etiqueta` son solo lo que se enseña.
+// un campo (core/plantilla.js): los campos apuntan al modelo por su id y el contenido de cada tabla
+// se guarda por el id de su parte, así que un id que siguiera al nombre dejaría huérfano lo escrito
+// en cuanto alguien renombrara una columna. `nombre` y `etiqueta` son solo lo que se enseña.
 //
 // ==================================================================== LA REGLA
 //
-// UNA TABLA SIGUE SU PROPIA ESTRUCTURA MIENTRAS LA TENGA, Y LA DEL MODELO CUANDO NO LA TENGA. Si no
-// tiene ninguna de las dos, su forma se deduce de las celdas guardadas, que es lo que pasa hoy con
-// todo lo que hay escrito en los documentos del departamento.
+// Son dos preguntas, y las dos tienen la misma forma y la misma respuesta de siempre.
 //
-// Es la misma regla que ya gobierna la ficha de situación de aprendizaje —«una ficha se imprime
-// desde `filas` mientras las tenga y desde el modelo en cuanto deja de tenerlas», en la cabecera de
-// `completarDesdeFilas` de core/sa.js— y por el mismo motivo: lo que alguien tiene delante manda
-// sobre lo que diga el grupo, porque si no, el primer cambio del departamento al modelo reescribiría
-// por la espalda tablas que nadie ha tocado, y nadie relacionaría lo que cambió con lo que hizo.
+// 1. QUÉ ESTRUCTURA SIGUE UNA TABLA. Sigue SU PROPIA estructura mientras la tenga, y la del MODELO
+//    cuando no la tenga. Si no tiene ninguna de las dos, su forma se deduce de las celdas
+//    guardadas, que es lo que pasa hoy con todo lo que hay escrito en los documentos.
 //
-// TENERLA ES TENER PARTES. Una estructura con `partes: []` no es una estructura: es la lista vacía.
-// Se cae al escalón siguiente igual que `filas: []` se cae en `queSeImprime` de
-// core/estructurados.js, para que un modelo a medio hacer no deje una tabla sin forma ninguna.
+// 2. DE DÓNDE SALE SU CONTENIDO. Sale de su REJILLA (`filas`) mientras la tenga, y de sus CASILLAS
+//    —el contenido por id de parte— en cuanto deja de tenerla.
 //
-// Y ESTÁ ESCRITA UNA SOLA VEZ, en `estructuraDeTabla`. La llaman los tres consumidores: el PDF
-// (motor/render-generico.js), el Word (motor/exportar-docx.js) y el editor con la puerta de guardado
-// (core/tablas-edicion.js y core/estructurados.js). Escrita en cada uno, la pantalla acabaría
-// pintando una tabla distinta de la que sale impresa, que es la avería que esta pieza existe para
-// evitar.
+// La segunda no es una regla nueva: es, literalmente, la de la ficha de situación de aprendizaje,
+// «una ficha se imprime desde `filas` mientras las tenga y desde el modelo en cuanto deja de
+// tenerlas» (la cabecera de `completarDesdeFilas` en core/sa.js), y es la misma que ya decide entre
+// `filas` y `pares` en `queSeImprime` de core/estructurados.js. El motivo es el de siempre: lo que
+// alguien tiene delante manda sobre lo que diga el grupo, porque si no, el primer cambio del
+// departamento al modelo reescribiría por la espalda tablas que nadie ha tocado, y nadie
+// relacionaría lo que cambió con lo que hizo.
+//
+// Lo que se sigue de las dos juntas es que PONERLE UN MODELO A UNA TABLA YA ESCRITA NO LE HACE NADA:
+// conserva su rejilla, y mientras la conserve se imprime y se edita exactamente como hoy. Adoptar el
+// modelo —soltarle la fila de rótulos que lleva entre las celdas y emparejarla con las partes— es
+// una pieza aparte, y hasta que exista el modelo solo gobierna las tablas que nacen con él.
+//
+// TENERLA ES TENER PARTES. Una estructura con `partes: []` no es una estructura: es la lista vacía, y
+// se cae al escalón siguiente igual que `filas: []`. Pero ENGANCHAR un modelo sin partes NO es un
+// no-op que se calla: un modelo recién creado y todavía vacío sería indistinguible de no tener
+// modelo, y quien lo enganchó no se enteraría de nada, así que la puerta lo dice (`motivoDeContenido`).
+//
+// Y LA REGLA ESTÁ ESCRITA UNA SOLA VEZ, en `estructuraDeTabla`. La llaman los tres consumidores: el
+// PDF (motor/render-generico.js), el Word (motor/exportar-docx.js) y el editor con la puerta de
+// guardado (core/tablas-edicion.js y core/estructurados.js). Escrita en cada uno, la pantalla
+// acabaría pintando una tabla distinta de la que sale impresa, que es la avería que esta pieza
+// existe para evitar.
+//
+// ==================================================================== EL CONTENIDO VA POR ID
+//
+// `valor.casillas` es un mapa del id de la parte a lo que esa parte guarda:
+//
+//   sentido 'filas'      una CASILLA: la parte es una fila y lo que guarda es su contenido. Es
+//                        literalmente `ficha[id]` de core/sa.js
+//   sentido 'columnas'   la LISTA de sus casillas hacia abajo: la parte es una columna
+//
+// POR ID Y NO POR POSICIÓN, que es la decisión de la que cuelga todo lo demás:
+//
+//   · Añadir, mover o retirar una parte toca CERO tablas guardadas, que es justo lo que el
+//     departamento pidió: que el cambio vaya al grupo. Con el contenido posicional, añadir una
+//     columna obligaría a reescribir todas las filas de todas las tablas del grupo.
+//   · No hay estados intermedios imposibles. Con el contenido posicional, una tabla de rótulos a lo
+//     alto solo podía tener cero filas o todas, y no se podía llenar de una en una.
+//   · Y la ficha de situación de aprendizaje se absorbe de verdad y no por parecido: ya guarda por
+//     id, así que es el mismo modelo de datos y no uno que se le dé la mano.
 //
 // RETIRAR UNA PARTE NO BORRA SU CONTENIDO, igual que retirar un apartado o un campo
-// (core/plantilla.js): la parte se queda en el modelo con `retirado: true`, deja de imprimirse y de
-// pintarse, y el hueco que ocupaba SIGUE en el contenido de cada tabla. Por eso el contenido se
-// empareja con TODAS las partes y no solo con las vigentes: si se emparejara con las vigentes,
-// retirar la segunda de cuatro columnas correría las otras dos un sitio a la izquierda y cada tabla
-// del grupo quedaría con su texto bajo otro rótulo sin que nada lo dijera. Restaurar la parte
-// devuelve la columna con lo que tenía escrito.
+// (core/plantilla.js): la parte se queda en el modelo con `retirado: true` y deja de imprimirse y de
+// pintarse, pero su casilla sigue en `valor.casillas` bajo su id. Restaurar la parte devuelve la
+// columna con todo lo que tenía escrito. Por id no hay nada que correr: es el id el que empareja, no
+// el sitio, así que retirar la segunda de cuatro columnas no mueve a las otras dos.
 //
 // SIN MODELO Y SIN ESTRUCTURA PROPIA, NADA CAMBIA. `tablaVigente` devuelve entonces las MISMAS
 // `filas`, los MISMOS `anchos` y la MISMA cabecera que recibe, sin copiar nada, así que los dos
@@ -72,15 +106,18 @@
 
   // ESTE FICHERO NO DEPENDE DE NADIE, a propósito: la puerta (core/estructurados.js) y el editor
   // (core/tablas-edicion.js) le preguntan por la regla, y la regla no necesita a ninguno de los dos.
-  // Por eso los dos tipos de campo a los que se les puede poner modelo y los dos topes están
-  // escritos aquí en lugar de importados: son `TIPO_TABLA`, `TIPO_CLAVE_VALOR`, `MAX_COLUMNAS` y
-  // `MAX_FILAS` de core/estructurados.js. Es lo mismo que hace `slug` de core/plantilla.js con el
-  // del importador, y test/modelos-tabla.js comprueba que las copias no se separan.
+  // Por eso los dos tipos de campo a los que se les puede poner modelo y los topes están escritos
+  // aquí en lugar de importados: son `TIPO_TABLA`, `TIPO_CLAVE_VALOR`, `MAX_COLUMNAS` y `MAX_FILAS`
+  // de core/estructurados.js. Es lo mismo que hace `slug` de core/plantilla.js con el del importador,
+  // y test/modelos-tabla.js comprueba que las copias no se separan.
   const TIPO_TABLA = 'tabla';
   const TIPO_CLAVE_VALOR = 'tabla_clave_valor';
   const TIPOS = [TIPO_TABLA, TIPO_CLAVE_VALOR];
   const MAX_PARTES_ANCHO = 12;
   const MAX_PARTES_ALTO = 200;
+  // Cuántas casillas puede guardar una parte que es una columna, que son las filas de contenido de
+  // la tabla: el `MAX_FILAS` de la puerta.
+  const MAX_CASILLAS_POR_PARTE = 200;
 
   // A LO ANCHO O A LO ALTO. Es lo único que distingue una tabla de columnas con los rótulos arriba
   // de una de filas con los rótulos a la izquierda, y las dos maquetaciones están en los documentos
@@ -96,6 +133,10 @@
   // Lo mismo que `LARGO_ETIQUETA` de core/campos.js, y por lo mismo: un rótulo es un rótulo.
   const LARGO_NOMBRE = 100;
 
+  // La clave bajo la que una tabla guarda su contenido por id de parte. Dicha una vez: la leen esta
+  // regla y la puerta, que es quien comprueba la forma de cada casilla.
+  const CLAVE_CASILLAS = 'casillas';
+
   const esObjeto = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
   const esCadena = (x) => typeof x === 'string' && !!x.trim();
   const sobran = (objeto, permitidas) => Object.keys(objeto).filter((k) => permitidas.indexOf(k) < 0);
@@ -104,6 +145,7 @@
 
   const CLAVES_MODELO = ['id', 'nombre', 'tipo', 'sentido', 'partes', 'version'];
   const CLAVES_PARTE = ['id', 'etiqueta', 'ancho', 'retirado'];
+  const CLAVES_ESTRUCTURA = ['partes', 'sentido'];
 
   // ---------------------------------------------------------------- leer la plantilla
 
@@ -133,25 +175,26 @@
   const conPartes = (x) => (esObjeto(x) && Array.isArray(x.partes) && x.partes.length ? x.partes : null);
 
   // El sentido por omisión de cada tipo: una rejilla lleva sus rótulos arriba y una tabla de clave y
-  // valor, a la izquierda. Es lo que vale cuando una tabla divergida ya no encuentra el modelo del
-  // que salió, porque `valor.estructura` guarda las partes y no el sentido.
+  // valor, a la izquierda. Es el respaldo de una estructura antigua que no dijera el suyo.
   const sentidoPorOmision = (tipo) => (tipo === TIPO_CLAVE_VALOR ? SENTIDO_FILAS : SENTIDO_COLUMNAS);
-  const sentidoDe = (modelo, tipo) => (esObjeto(modelo) && SENTIDOS.indexOf(modelo.sentido) >= 0
-    ? modelo.sentido : sentidoPorOmision(tipo));
+  const declarado = (x) => (esObjeto(x) && SENTIDOS.indexOf(x.sentido) >= 0 ? x.sentido : null);
 
-  // EL SENTIDO QUE ESTÁ EN VIGOR para las tablas de un campo. Es siempre el del MODELO al que el
-  // campo apunta, también cuando la tabla ha divergido: `valor.estructura` guarda las partes y no el
-  // sentido. Hace falta aparte de `estructuraDeTabla` porque la puerta comprueba la forma de una
-  // estructura propia antes de saber si llega a estar en vigor, y una parte se mide distinto según el
-  // sentido —el `ancho` solo existe a lo ancho, y el tope de partes no es el mismo—.
-  const sentidoVigente = (campo, modelos) => sentidoDe(modeloDeCampo(campo, modelos),
-    esObjeto(campo) ? campo.tipo : undefined);
+  // EL SENTIDO QUE ESTÁ EN VIGOR para una tabla. Lo dice la estructura que la tabla sigue: la SUYA
+  // si ha divergido —por eso la guarda, ver la cabecera— y la del modelo si no. Hace falta aparte de
+  // `estructuraDeTabla` porque la puerta mide la forma de una estructura propia antes de saber si
+  // llega a estar en vigor, y una parte se mide distinto según el sentido: el `ancho` solo existe a
+  // lo ancho y el tope de partes no es el mismo.
+  function sentidoVigente(campo, valor, modelos) {
+    const tipo = esObjeto(campo) ? campo.tipo : undefined;
+    const propia = esObjeto(valor) ? valor.estructura : null;
+    if (conPartes(propia)) return declarado(propia) || sentidoPorOmision(tipo);
+    return declarado(modeloDeCampo(campo, modelos)) || sentidoPorOmision(tipo);
+  }
 
-  // Las partes que se imprimen, cada una con el HUECO que ocupa en el contenido, que es su posición
-  // entre TODAS las partes y no entre las vigentes (ver «RETIRAR UNA PARTE NO BORRA SU CONTENIDO»).
+  // Las partes que se imprimen y se pintan: todas menos las retiradas, en su orden. La retirada se
+  // queda en el modelo y su casilla sigue guardada bajo su id (ver «RETIRAR UNA PARTE NO BORRA»).
   const partesVigentes = (partes) => (Array.isArray(partes) ? partes : [])
-    .map((parte, hueco) => ({ parte, hueco }))
-    .filter(({ parte }) => !(esObjeto(parte) && parte.retirado));
+    .filter((parte) => !(esObjeto(parte) && parte.retirado));
 
   // LA REGLA, Y EL ÚNICO SITIO DONDE ESTÁ ESCRITA. Qué estructura sigue esta tabla:
   //
@@ -161,7 +204,7 @@
   //   { origen: 'modelo' }    la del modelo al que apunta su campo
   //
   // `modelos` es `plantilla.modelos`, que puede no venir. `partes` son todas, con las retiradas
-  // dentro, y `vigentes` las que se imprimen con su hueco en el contenido.
+  // dentro —el contenido de una retirada sigue guardado—, y `vigentes` las que se imprimen.
   function estructuraDeTabla(campo, valor, modelos) {
     if (!esObjeto(campo) || TIPOS.indexOf(campo.tipo) < 0) return null;
     const modelo = modeloDeCampo(campo, modelos);
@@ -174,7 +217,7 @@
       // en null: la estructura es suya y no hay a quién volver.
       modelo: modelo ? modelo.id || campo.modelo : null,
       tipo: campo.tipo,
-      sentido: sentidoVigente(campo, modelos),
+      sentido: sentidoVigente(campo, valor, modelos),
       partes,
       vigentes: partesVigentes(partes),
     };
@@ -186,11 +229,24 @@
   const etiquetaDe = (parte) => (esObjeto(parte) ? String(parte.etiqueta == null ? '' : parte.etiqueta) : '');
   const filasDe = (valor) => (esObjeto(valor) && Array.isArray(valor.filas) ? valor.filas : []);
 
+  // El contenido por id de parte, o `{}`.
+  const casillasDe = (valor) => (esObjeto(valor) && esObjeto(valor[CLAVE_CASILLAS]) ? valor[CLAVE_CASILLAS] : {});
+
+  // ¿HA ADOPTADO YA ESTA TABLA SU ESTRUCTURA? La ha adoptado cuando su contenido va por id de parte y
+  // ya no tiene rejilla. Es la segunda mitad de la regla: una tabla se imprime desde `filas` mientras
+  // las tenga, igual que una ficha (`completarDesdeFilas` de core/sa.js), así que ponerle un modelo a
+  // una tabla ya escrita no le hace nada hasta que alguien la adopte, que es una pieza aparte.
+  const adoptada = (valor) => esObjeto(valor) && esObjeto(valor[CLAVE_CASILLAS]) && !filasDe(valor).length;
+
+  // Lo que guarda una parte: una casilla si es una fila, su lista de casillas si es una columna.
+  const casillaDe = (casillas, parte) => (esObjeto(casillas[parte.id]) ? casillas[parte.id] : null);
+  const columnaDe = (casillas, parte) => (Array.isArray(casillas[parte.id]) ? casillas[parte.id] : []);
+
   // Los anchos que pide la estructura: una proporción por parte vigente, y solo si TODAS la dicen. A
   // medias no valen —`motivoDeAnchos` de core/estructurados.js exige una por columna— y una lista
   // incompleta la descartaría cada motor por su cuenta, repartiendo según el texto y sin avisar.
   function anchosDeEstructura(vigentes) {
-    const todos = vigentes.map(({ parte }) => (esObjeto(parte) ? parte.ancho : undefined));
+    const todos = vigentes.map((parte) => (esObjeto(parte) ? parte.ancho : undefined));
     const vale = (a) => typeof a === 'number' && Number.isFinite(a) && a > 0;
     return todos.length && todos.every(vale) ? todos : undefined;
   }
@@ -201,22 +257,23 @@
   // `cabeceraSinEstructura` es lo que decide `cabeceraDeTabla` de core/estructurados.js, que es
   // quien sabe de `campo.columnas` y de la negrita de la primera fila. Se pasa HECHA, y no se
   // calcula aquí, por dos razones: para que esta regla no dependa de la puerta, y para que el camino
-  // sin estructura sea literalmente el de siempre —las mismas filas, los mismos anchos y la misma
-  // cabecera que recibe, sin copiar nada—. Esa es la puerta de aceptación de esta pieza.
+  // de la tabla que no sigue estructura —o que no la ha adoptado— sea literalmente el de siempre:
+  // las mismas filas, los mismos anchos y la misma cabecera que recibe, sin copiar nada. Esa es la
+  // puerta de aceptación de esta pieza.
   //
-  // Con estructura, el contenido guardado son las CELDAS, sin los rótulos: los rótulos los pone la
-  // estructura. Con `sentido: 'columnas'` cada fila guardada es una fila de contenido y la cabecera
-  // se monta con las etiquetas; con `sentido: 'filas'` cada fila guardada es el contenido de UNA
-  // parte y su etiqueta se le pone delante.
+  // Con la estructura adoptada, el contenido guardado NO lleva los rótulos: los pone la estructura, y
+  // es lo que hace que el modelo valga para algo —renombrar una columna en la plantilla la renombra
+  // en las once tablas a la vez—. Con `sentido: 'columnas'` se monta la fila de rótulos y debajo
+  // tantas filas como casillas tenga la columna más larga; con `sentido: 'filas'` cada parte es una
+  // fila de dos columnas, su rótulo y su casilla.
   //
-  // Y los anchos los pone la estructura, no el valor: el ancho de una columna es parte de la forma, y
-  // la forma la dice el modelo. Un `valor.anchos` guardado se queda donde está sin imprimirse, igual
-  // que los `pares` que acompañan a unas `filas` (core/estructurados.js).
+  // Y los anchos los pone la estructura, no el valor: el ancho de una columna es parte de la forma y
+  // la forma la dice el modelo.
   function tablaVigente(campo, valor, modelos, cabeceraSinEstructura) {
     const estructura = estructuraDeTabla(campo, valor, modelos);
-    if (!estructura) {
+    if (!estructura || !adoptada(valor)) {
       return {
-        estructura: null,
+        estructura: estructura || null,
         filas: esObjeto(valor) ? valor.filas : undefined,
         anchos: esObjeto(valor) ? valor.anchos : undefined,
         cabecera: cabeceraSinEstructura,
@@ -229,28 +286,31 @@
     // omite sin decir nada. Es «(tabla vacía)» en los dos, igual que `{ filas: [] }`, y es verdad:
     // no queda ninguna parte que enseñar. Lo escrito sigue guardado y vuelve al restaurar una parte.
     if (!vigentes.length) return { estructura, filas: [], anchos: undefined, cabecera: false };
-    const contenido = filasDe(valor);
+    const casillas = casillasDe(valor);
     const anchos = anchosDeEstructura(vigentes);
     if (sentido === SENTIDO_FILAS) {
       return {
         estructura,
-        // Una parte sin su fila de contenido sale con el rótulo y nada detrás, que es la tabla recién
-        // estrenada: el rótulo ya dice qué va ahí.
-        filas: vigentes.map(({ parte, hueco }) => [celda(etiquetaDe(parte), { bold: true })]
-          .concat(Array.isArray(contenido[hueco]) ? contenido[hueco] : [])),
+        // La parte sin nada escrito sale con su rótulo y la casilla en blanco, que es la fila a medio
+        // rellenar: el estado normal mientras se escribe.
+        filas: vigentes.map((parte) => [celda(etiquetaDe(parte), { bold: true }),
+          casillaDe(casillas, parte) || celda('')]),
         anchos,
         cabecera: false,
       };
     }
+    const alto = vigentes.reduce((n, parte) => Math.max(n, columnaDe(casillas, parte).length), 0);
     return {
       estructura,
-      filas: [vigentes.map(({ parte }) => celda(etiquetaDe(parte), { bold: true }))].concat(
-        contenido.map((fila) => vigentes.map(({ hueco }) => (
-          esObjeto(Array.isArray(fila) ? fila[hueco] : undefined) ? fila[hueco] : celda('')))),
+      filas: [vigentes.map((parte) => celda(etiquetaDe(parte), { bold: true }))].concat(
+        Array.from({ length: alto }, (_, i) => vigentes.map((parte) => {
+          const x = columnaDe(casillas, parte)[i];
+          return esObjeto(x) ? x : celda('');
+        })),
       ),
       anchos,
-      // La fila de las etiquetas es la cabecera que se repite al cambiar de página: es lo que es, y
-      // no depende de que alguien le haya puesto la negrita.
+      // La fila de los rótulos es la cabecera que se repite al cambiar de página: es lo que es, y no
+      // depende de que alguien le haya puesto la negrita.
       cabecera: true,
     };
   }
@@ -260,18 +320,21 @@
   // `pares`— lo decide `queSeImprime` de core/estructurados.js y no esta regla: quien llama ya ha
   // preguntado, y así no hay dos reglas discutiendo sobre la misma tabla.
   //
-  // El par que no tiene nada escrito sale con su rótulo y el contenido en blanco, igual que una fila
-  // a medio rellenar, que es el estado normal mientras se escribe.
+  // Sus partes son siempre sus filas (`motivoDeModelo` no admite otra cosa), así que cada una guarda
+  // UNA casilla: el par es su rótulo y esa casilla. El par sin nada escrito sale con su rótulo y el
+  // contenido en blanco, igual que una fila a medio rellenar.
   function paresVigentes(campo, valor, modelos) {
     const estructura = estructuraDeTabla(campo, valor, modelos);
-    const guardados = esObjeto(valor) && Array.isArray(valor.pares) ? valor.pares : [];
-    if (!estructura) return { estructura: null, pares: esObjeto(valor) ? valor.pares : undefined };
+    if (!estructura || !adoptada(valor)) {
+      return { estructura: estructura || null, pares: esObjeto(valor) ? valor.pares : undefined };
+    }
+    const casillas = casillasDe(valor);
     return {
       estructura,
-      pares: estructura.vigentes.map(({ parte, hueco }) => ({
-        etiqueta: etiquetaDe(parte),
-        valor: esObjeto(guardados[hueco]) ? String(guardados[hueco].valor == null ? '' : guardados[hueco].valor) : '',
-      })),
+      pares: estructura.vigentes.map((parte) => {
+        const x = casillaDe(casillas, parte);
+        return { etiqueta: etiquetaDe(parte), valor: x ? String(x.text == null ? '' : x.text) : '' };
+      }),
     };
   }
 
@@ -299,8 +362,29 @@
     return null;
   }
 
+  // La lista de partes de un modelo o de una estructura propia, medida con el sentido que les toca.
+  function motivoDeListaDePartes(partes, donde, sentido) {
+    if (!Array.isArray(partes)) return `las partes de ${donde} no son una lista.`;
+    const tope = sentido === SENTIDO_FILAS ? MAX_PARTES_ALTO : MAX_PARTES_ANCHO;
+    if (partes.length > tope) {
+      return sentido === SENTIDO_FILAS
+        ? `${donde} tiene ${plural(partes.length, 'parte', 'partes')}: el máximo son ${tope}.`
+        : `${donde} tiene ${plural(partes.length, 'parte', 'partes')}: el máximo son ${tope}, porque con más no caben en el ancho de la hoja.`;
+    }
+    const ids = new Set();
+    for (let i = 0; i < partes.length; i += 1) {
+      const m = motivoDeParte(partes[i], `la parte ${i + 1} de ${donde}`, { sentido, ids });
+      if (m) return m;
+      ids.add(partes[i].id);
+    }
+    return null;
+  }
+
   // POR QUÉ UN MODELO NO VALE. Es la forma que la plantilla puede guardar; qué se puede CAMBIAR de
   // un modelo es otra cosa y todavía no existe.
+  //
+  // UN MODELO SIN PARTES SÍ SE GUARDA: es como nace uno, y las partes se le añaden después. Lo que no
+  // se puede es ENGANCHARLO a un campo mientras esté vacío, y eso lo dice `motivoDeContenido`.
   function motivoDeModelo(modelo, donde = 'el modelo', { id } = {}) {
     if (!esObjeto(modelo)) return `${donde} no es un modelo { id, nombre, tipo, sentido, partes }.`;
     const extra = sobran(modelo, CLAVES_MODELO);
@@ -320,19 +404,8 @@
     if (modelo.tipo === TIPO_CLAVE_VALOR && modelo.sentido !== SENTIDO_FILAS) {
       return `${donde} es de clave y valor y dice que sus partes van en «${modelo.sentido}»: en una tabla de clave y valor cada parte es una fila.`;
     }
-    if (!Array.isArray(modelo.partes)) return `las partes de ${donde} no son una lista.`;
-    const tope = modelo.sentido === SENTIDO_FILAS ? MAX_PARTES_ALTO : MAX_PARTES_ANCHO;
-    if (modelo.partes.length > tope) {
-      return modelo.sentido === SENTIDO_FILAS
-        ? `${donde} tiene ${plural(modelo.partes.length, 'parte', 'partes')}: el máximo son ${tope}.`
-        : `${donde} tiene ${plural(modelo.partes.length, 'parte', 'partes')}: el máximo son ${tope}, porque con más no caben en el ancho de la hoja.`;
-    }
-    const ids = new Set();
-    for (let i = 0; i < modelo.partes.length; i += 1) {
-      const m = motivoDeParte(modelo.partes[i], `la parte ${i + 1} de ${donde}`, { sentido: modelo.sentido, ids });
-      if (m) return m;
-      ids.add(modelo.partes[i].id);
-    }
+    const p = motivoDeListaDePartes(modelo.partes, donde, modelo.sentido);
+    if (p) return p;
     if (modelo.version !== undefined && !(Number.isInteger(modelo.version) && modelo.version >= 1)) {
       return `la versión de ${donde} no es un número entero de 1 en adelante.`;
     }
@@ -353,96 +426,114 @@
     return null;
   }
 
-  // POR QUÉ LA ESTRUCTURA QUE UNA TABLA GUARDA PARA SÍ NO VALE. Son las mismas partes de un modelo,
-  // sin nombre ni tipo ni sentido: eso es del modelo del que divergió, no de la tabla.
-  // `sentido` es el que está EN VIGOR para este campo (`sentidoVigente`), no el de omisión del tipo:
-  // una parte se mide distinto a lo ancho que a lo alto —el `ancho` solo existe a lo ancho y el tope
-  // de partes no es el mismo—, así que medirla con el sentido equivocado aceptaría unos anchos que
-  // luego reparten las columnas que no son, y rechazaría por «el máximo son 12» una estructura de
-  // veinte filas que cabe de sobra.
-  function motivoDeEstructura(estructura, donde, { tipo, sentido: pedido } = {}) {
+  // POR QUÉ LA ESTRUCTURA QUE UNA TABLA GUARDA PARA SÍ NO VALE. Son las partes de un modelo y el
+  // sentido en el que van; no lleva nombre ni tipo, que son del modelo del que divergió.
+  //
+  // EL SENTIDO SE EXIGE. Es lo que impide que el modelo del que la tabla se desengachó pueda girarla
+  // noventa grados después (ver la cabecera del fichero), y una estructura que no lo dijera dejaría
+  // ese agujero abierto. `sentido` de las opciones es solo el respaldo con el que se mide una que no
+  // lo traiga, para poder decir algo sensato de un valor a medio escribir.
+  //
+  // Y LA ESTRUCTURA VACÍA NO VALE: `partes: []` no es una forma que seguir, y guardarla sería dejar
+  // la tabla con una estructura propia que no hace nada y que nadie ve.
+  function motivoDeEstructura(estructura, donde, { tipo, sentido: respaldo } = {}) {
     if (estructura === undefined) return null;
-    if (!esObjeto(estructura)) return `la estructura de ${donde} no es un objeto { partes: [...] }.`;
-    const extra = sobran(estructura, ['partes']);
-    if (extra.length) return `la estructura de ${donde} lleva ${comillas(extra)}, que no existe en la estructura de una tabla: solo «partes».`;
+    if (!esObjeto(estructura)) return `la estructura de ${donde} no es un objeto { partes, sentido }.`;
+    const extra = sobran(estructura, CLAVES_ESTRUCTURA);
+    if (extra.length) return `la estructura de ${donde} lleva ${comillas(extra)}, que no existe en la estructura de una tabla: solo ${comillas(CLAVES_ESTRUCTURA)}.`;
     if (!Array.isArray(estructura.partes)) return `las partes de la estructura de ${donde} no son una lista.`;
-    const sentido = SENTIDOS.indexOf(pedido) >= 0 ? pedido : sentidoPorOmision(tipo);
-    const tope = sentido === SENTIDO_FILAS ? MAX_PARTES_ALTO : MAX_PARTES_ANCHO;
-    if (estructura.partes.length > tope) {
-      return `la estructura de ${donde} tiene ${plural(estructura.partes.length, 'parte', 'partes')}: el máximo son ${tope}.`;
+    if (!estructura.partes.length) {
+      return `la estructura de ${donde} no tiene ninguna parte: una tabla con estructura propia es una que ha divergido de su modelo, y sin partes no hay forma que seguir.`;
     }
-    const ids = new Set();
-    for (let i = 0; i < estructura.partes.length; i += 1) {
-      const m = motivoDeParte(estructura.partes[i], `la parte ${i + 1} de la estructura de ${donde}`, { sentido, ids });
-      if (m) return m;
-      ids.add(estructura.partes[i].id);
+    if (estructura.sentido === undefined) {
+      return `la estructura de ${donde} no dice en qué sentido van sus partes: lo guarda ella y no su modelo, para que un cambio del modelo no pueda girarle la tabla después.`;
     }
-    return null;
+    if (SENTIDOS.indexOf(estructura.sentido) < 0) {
+      return `la estructura de ${donde} va en «${estructura.sentido}», y los sentidos son ${comillas(SENTIDOS)}.`;
+    }
+    if (tipo === TIPO_CLAVE_VALOR && estructura.sentido !== SENTIDO_FILAS) {
+      return `la estructura de ${donde} es de clave y valor y va en «${estructura.sentido}»: en una tabla de clave y valor cada parte es una fila.`;
+    }
+    const sentido = declarado(estructura) || (SENTIDOS.indexOf(respaldo) >= 0 ? respaldo : sentidoPorOmision(tipo));
+    return motivoDeListaDePartes(estructura.partes, `la estructura de ${donde}`, sentido);
   }
 
   // ---------------------------------------------------------------- la tabla contra su estructura
 
-  // Una celda combinada no cabe en una tabla con estructura: la casilla de la fila i y la parte j es
-  // UNA, y un `colspan` la haría ser de dos partes a la vez, con lo que el texto quedaría bajo un
-  // rótulo que no es el suyo en cuanto alguien retirara o moviera una parte.
-  const combinada = (c) => esObjeto(c) && ((c.colspan || 1) > 1 || (c.rowspan || 1) > 1);
-
   // POR QUÉ EL CONTENIDO DE UNA TABLA NO CUADRA CON LA ESTRUCTURA QUE SIGUE, o null si cuadra (y
-  // también si no sigue ninguna, que es el caso de todo lo que hay escrito hoy).
-  //
-  // El contenido se empareja con TODAS las partes, retiradas incluidas, porque retirar no borra: el
-  // hueco de la parte retirada sigue ahí y vuelve con ella. Y una tabla SIN CONTENIDO cuadra con
-  // cualquier estructura: es la tabla que existe y a la que no se le ha escrito nada, igual que
-  // `{ filas: [] }` en core/estructurados.js.
+  // también si no sigue ninguna, que es el caso de todo lo que hay escrito hoy). Lo que se comprueba
+  // es el EMPAREJAMIENTO: que las casillas estén bajo el id de una parte que existe y que lo que
+  // guarde cada parte tenga la forma que le toca por el sentido. La forma de cada casilla por dentro
+  // —el texto, la negrita, el fondo— la comprueba la puerta, que es quien sabe de celdas.
   function motivoDeContenido(campo, valor, modelos, donde = 'la tabla') {
-    const e = estructuraDeTabla(campo, valor, modelos);
-    if (!e) return null;
-    const cuantas = e.partes.length;
-    const comoSe = e.sentido === SENTIDO_FILAS ? 'filas' : 'columnas';
-    const filas = filasDe(valor);
+    const estructura = estructuraDeTabla(campo, valor, modelos);
 
-    // La tabla de clave y valor que se imprime por sus `pares` —la que no tiene rejilla, porque cuál
-    // de las dos se imprime lo dice `queSeImprime` de core/estructurados.js— empareja un par con cada
-    // parte. La que sí la tiene se comprueba como cualquier rejilla, más abajo.
-    if (e.tipo === TIPO_CLAVE_VALOR && !filas.length) {
-      const pares = esObjeto(valor) && Array.isArray(valor.pares) ? valor.pares : [];
-      if (pares.length && pares.length !== cuantas) {
-        return `${donde} tiene ${plural(pares.length, 'fila', 'filas')} y su estructura dice que tiene ${cuantas}: el contenido de una tabla con estructura va parte por parte, y las retiradas también cuentan.`;
+    // ENGANCHAR UN MODELO SIN PARTES NO ES UN NO-OP QUE SE CALLA. Un modelo recién creado y todavía
+    // vacío es indistinguible de no tener modelo: la tabla se seguiría guardando y pintando como
+    // antes y quien lo enganchó no se enteraría de que no ha pasado nada.
+    if (!estructura) {
+      const m = modeloDeCampo(campo, modelos);
+      if (m && !conPartes(m)) {
+        return `este campo sigue el modelo «${m.id}», que todavía no tiene ninguna parte: hasta que el modelo diga qué partes tiene, no hay forma que seguir y ${donde} no se puede guardar con él.`;
+      }
+      // Y una tabla sin estructura no guarda contenido por id: no habría parte a la que pertenezca.
+      if (esObjeto(valor) && valor[CLAVE_CASILLAS] !== undefined) {
+        return `${donde} lleva «${CLAVE_CASILLAS}» y no sigue ninguna estructura: el contenido por parte necesita un modelo o una estructura propia que diga qué partes hay.`;
       }
       return null;
     }
 
-    if (!filas.length) return null;
-
-    if (e.sentido === SENTIDO_FILAS) {
-      if (filas.length !== cuantas) {
-        return `${donde} tiene ${plural(filas.length, 'fila', 'filas')} y su estructura dice que tiene ${cuantas}: el contenido de una tabla con estructura va parte por parte, y las ${comoSe} retiradas también cuentan.`;
+    if (esObjeto(valor) && valor[CLAVE_CASILLAS] !== undefined && !esObjeto(valor[CLAVE_CASILLAS])) {
+      return `«${CLAVE_CASILLAS}» de ${donde} no es un objeto { idDeParte: contenido }.`;
+    }
+    if (!adoptada(valor)) {
+      // No ha adoptado su estructura: conserva su rejilla o sus pares y se comprueba como siempre. Lo
+      // que no vale es tener el contenido en los dos sitios, porque entonces uno de los dos se
+      // guardaría sin imprimirse y acabaría leyéndolo alguien.
+      if (esObjeto(valor) && esObjeto(valor[CLAVE_CASILLAS])) {
+        return `${donde} tiene su contenido en dos sitios a la vez, «${CLAVE_CASILLAS}» y ${filasDe(valor).length ? '«filas»' : '«pares»'}: al adoptar la estructura, el contenido pasa de uno al otro y el de antes se va.`;
       }
-    } else {
-      for (let i = 0; i < filas.length; i += 1) {
-        const fila = Array.isArray(filas[i]) ? filas[i] : [];
-        if (fila.length !== cuantas) {
-          return `la fila ${i + 1} de ${donde} tiene ${plural(fila.length, 'celda', 'celdas')} y su estructura dice que tiene ${cuantas} ${comoSe}: el contenido de una tabla con estructura va parte por parte, y las retiradas también cuentan.`;
-        }
-      }
+      return null;
     }
 
-    for (let i = 0; i < filas.length; i += 1) {
-      const fila = Array.isArray(filas[i]) ? filas[i] : [];
-      for (let j = 0; j < fila.length; j += 1) {
-        if (combinada(fila[j])) {
-          return `la celda ${j + 1} de la fila ${i + 1} de ${donde} está combinada, y ${donde} sigue una estructura: cada casilla es de una parte y de una sola.`;
-        }
+    const casillas = valor[CLAVE_CASILLAS];
+    const porId = new Map(estructura.partes.filter((p) => esObjeto(p)).map((p) => [p.id, p]));
+    const porColumnas = estructura.sentido === SENTIDO_COLUMNAS;
+    let alto = null;
+
+    for (const id of Object.keys(casillas)) {
+      // Una casilla bajo un id que no es de ninguna parte es contenido que nadie puede ver. Las
+      // RETIRADAS sí valen: la parte sigue en la estructura y su contenido vuelve al restaurarla.
+      if (!porId.has(id)) {
+        return `${donde} guarda contenido en «${id}», que no es ninguna de sus partes: el contenido de una tabla con estructura va bajo el id de su parte.`;
+      }
+      const suyo = `el contenido de «${etiquetaDe(porId.get(id)) || id}» en ${donde}`;
+      const x = casillas[id];
+      if (!porColumnas) {
+        if (!esObjeto(x)) return `${suyo} no es una casilla: con los rótulos a la izquierda, cada parte es una fila y guarda una sola casilla.`;
+        continue;
+      }
+      if (!Array.isArray(x)) return `${suyo} no es una lista de casillas: con los rótulos arriba, cada parte es una columna y guarda las casillas de su columna.`;
+      if (x.length > MAX_CASILLAS_POR_PARTE) {
+        return `${suyo} tiene ${plural(x.length, 'casilla', 'casillas')}: el máximo son ${MAX_CASILLAS_POR_PARTE}, que son las filas que puede tener una tabla.`;
+      }
+      // TODAS LAS COLUMNAS MIDEN LO MISMO. Una fila de la tabla es la casilla i de cada columna, así
+      // que si una columna tuviera una casilla menos, su texto y el de las demás dejarían de estar en
+      // la misma fila a partir de ahí, y eso no se ve. Una parte que no aparece es una columna sin
+      // nada escrito, que sí vale: es la parte recién añadida al modelo.
+      if (alto === null) alto = x.length;
+      else if (x.length !== alto) {
+        return `${suyo} tiene ${plural(x.length, 'casilla', 'casillas')} y otra de sus columnas tiene ${alto}: una fila de la tabla es una casilla de cada columna, así que todas las que tengan contenido miden lo mismo.`;
       }
     }
     return null;
   }
 
   const api = {
-    TIPOS, TIPO_TABLA, TIPO_CLAVE_VALOR,
+    TIPOS, TIPO_TABLA, TIPO_CLAVE_VALOR, CLAVE_CASILLAS,
     SENTIDOS, SENTIDO_COLUMNAS, SENTIDO_FILAS, sentidoPorOmision, sentidoVigente,
-    MAX_PARTES_ANCHO, MAX_PARTES_ALTO, MAX_MODELOS, LARGO_NOMBRE,
-    modelosDe, buscar, modeloDeCampo, partesVigentes,
+    MAX_PARTES_ANCHO, MAX_PARTES_ALTO, MAX_CASILLAS_POR_PARTE, MAX_MODELOS, LARGO_NOMBRE,
+    modelosDe, buscar, modeloDeCampo, partesVigentes, casillasDe, adoptada,
     estructuraDeTabla, tablaVigente, paresVigentes,
     motivoDeModelo, motivoDeModelos, motivoDeParte, motivoDeEstructura, motivoDeContenido,
   };

@@ -144,12 +144,19 @@
 // sigue cada tabla lo dice `estructuraDeTabla`, el único sitio donde está escrita esa regla y la
 // misma que leen el PDF y el Word, así que el editor pinta lo que se imprime y no una tabla parecida.
 //
-// Con estructura, los rótulos de las partes NO están entre las celdas guardadas: los pone la
-// estructura al pintar (`paraPintar`), y lo guardado es solo el contenido. Por eso una tabla con
-// estructura no tiene cabecera propia (`tieneCabecera`) y por eso `motivoDeNo` se niega a lo que
-// cambiaría su forma —añadirle o quitarle partes, combinar celdas, repartir los anchos a mano o
-// tocar su cabecera—: eso lo dice el modelo del grupo y no esta tabla. Escribir y dar estilo se
-// puede siempre, como en cualquier otra.
+// MIENTRAS NO LA ADOPTE, NADA CAMBIA. Una tabla conserva su rejilla hasta que alguien le adopte el
+// modelo, y mientras la conserve se pinta y se edita EXACTAMENTE como hoy: ponerle un modelo a una
+// tabla ya escrita no le quita ni un botón. Quien decide si la ha adoptado es `adoptada` de
+// core/modelos-tabla.js, no este fichero.
+//
+// Y UNA VEZ ADOPTADA, SU CONTENIDO YA NO ES UNA REJILLA: va por id de parte (`valor.casillas`), y los
+// rótulos los pone la estructura al pintar. Esa tabla se PINTA bien —`paraPintar` se lo pregunta a la
+// misma regla que los dos motores, así que la pantalla enseña lo que se imprime— pero todavía no se
+// EDITA desde aquí: todas las operaciones de este fichero están escritas sobre una rejilla y con
+// índices de fila y columna que vienen de la pantalla, y los de una tabla adoptada no son los de su
+// contenido. Media correspondencia es cómo se le da formato a la celda equivocada, así que `motivoDeNo`
+// se niega y lo dice. Escribir en el contenido por parte va con la pieza que adopta el modelo de una
+// tabla ya escrita, que es la que lo crea.
 //
 // UNA TABLA SIN FILAS SE GUARDA
 //
@@ -199,6 +206,9 @@
     if (guardado === undefined || guardado === null) return true;
     if (!esObjeto(guardado)) return false;
     if (Array.isArray(guardado.filas)) return true;
+    // Una tabla que ya ha adoptado su modelo se abre para que SE VEA, aunque todavía no se pueda
+    // cambiar desde aquí: esconderla sería peor que enseñarla con los botones apagados y el motivo.
+    if (MT().adoptada(guardado)) return true;
     return E.TIPOS_CON_PARES.indexOf(campo.tipo) >= 0 && Array.isArray(guardado.pares);
   }
 
@@ -298,13 +308,14 @@
   // entera de `cabeceraDeTabla`; sin él, la negrita de la primera fila. Una tabla sin filas no tiene
   // cabecera.
   //
-  // Y una tabla que sigue una estructura no tiene cabecera PROPIA: los rótulos de sus partes no están
-  // entre sus celdas —los pone la estructura al pintarla— así que su primera fila guardada es
-  // contenido como cualquier otra, y tratarla como cabecera la sombrearía en la pantalla y no en el
-  // papel. `modelos` es `plantilla.modelos`; sin él ninguna tabla sigue estructura.
-  const tieneCabecera = (valor, campo, modelos) => (MT().estructuraDeTabla(campo, valor, modelos)
-    ? false
-    : Estructurados().cabeceraDeTabla(campo, valor));
+  // Y una tabla que ya ha ADOPTADO su estructura no tiene cabecera propia: los rótulos de sus partes
+  // no están entre sus celdas, los pone la estructura al pintarla. La que no la ha adoptado conserva
+  // su rejilla con su fila de rótulos dentro, así que su cabecera la sigue decidiendo la regla de
+  // siempre. `modelos` es `plantilla.modelos`; sin él ninguna tabla sigue estructura.
+  const tieneCabecera = (valor, campo, modelos) => (
+    MT().estructuraDeTabla(campo, valor, modelos) && MT().adoptada(valor)
+      ? false
+      : Estructurados().cabeceraDeTabla(campo, valor));
 
   // Una celda como las del importador: las cuatro claves y ninguna más.
   const celdaNueva = (text, bold) => ({ text: text || '', colspan: 1, rowspan: 1, bold: !!bold });
@@ -556,44 +567,29 @@
     separar: 'separar sus celdas',
   };
 
-  // LO QUE UNA TABLA CON ESTRUCTURA NO DECIDE POR SU CUENTA, porque es su FORMA y la forma la dice su
-  // estructura: cuántas partes tiene, cómo se reparten el ancho y qué rótulo lleva cada una. Escribir
-  // en ella y darle estilo se puede siempre, igual que en una importada con un defecto de maquetación.
+  // POR QUÉ UNA TABLA QUE YA HA ADOPTADO SU MODELO NO SE CAMBIA DESDE AQUÍ, o null si no lo ha
+  // adoptado, que es el caso de todo lo que hay escrito hoy y el de cualquier tabla a la que le
+  // pongan un modelo sin adoptárselo.
   //
-  // Qué operación cambia el NÚMERO de partes depende del sentido: con los rótulos arriba las partes
-  // son las columnas, así que a esa tabla se le pueden seguir añadiendo filas de contenido; con los
-  // rótulos a la izquierda son las filas, y entonces lo que se puede añadir son columnas.
+  // Son las dos mitades del motivo, y conviene que se lean las dos: la FORMA no es suya —cuántas
+  // partes tiene, cómo se llaman y cómo se reparten el ancho lo dice el modelo del grupo— y su
+  // CONTENIDO no es una rejilla, sino una casilla por parte, así que ninguna de las operaciones de
+  // este fichero le sirve: todas están escritas sobre una rejilla.
   //
-  // Y hace falta que se nieguen de verdad: `aplicar` promete devolver un valor que pasa la puerta, y
-  // la puerta rechaza una tabla cuyo contenido no cuadra con su estructura (`motivoDeContenido` de
-  // core/modelos-tabla.js). Sin esta negativa, el botón daría un 400 en lugar de explicarse.
-  const OPERACIONES_DE_ESTRUCTURA = {
-    combinar: 'combinar sus celdas',
-    separar: 'separar sus celdas',
-    cabecera: 'poner ni quitar su fila de cabecera',
-    ancho: 'repartir sus columnas a mano',
-    'anchos-automaticos': 'repartir sus columnas a mano',
-  };
-  const OPERACIONES_DE_PARTES = {
-    columnas: { 'anadir-columna': 'añadirle columnas', 'quitar-columna': 'quitarle columnas' },
-    filas: { 'anadir-fila': 'añadirle filas', 'quitar-fila': 'quitarle filas' },
-  };
-
-  // Por qué esta operación no se puede en una tabla que sigue una estructura, o null si se puede (y
-  // null siempre que no siga ninguna, que es el caso de todo lo que hay escrito hoy).
-  function motivoDeEstructuraFija(valor, op, campo, modelos, claveValor) {
+  // Y hace falta que se nieguen de verdad, no solo que el botón esté apagado: `aplicar` promete
+  // devolver un valor que pasa la puerta, y la puerta rechaza una tabla cuyo contenido no cuadra con
+  // su estructura (`motivoDeContenido` de core/modelos-tabla.js). Sin esta negativa, pulsar daría un
+  // 400 en lugar de explicarse.
+  function motivoDeEstructuraFija(valor, op, campo, modelos) {
     const e = MT().estructuraDeTabla(campo, valor, modelos);
-    if (!e) return null;
-    // En una tabla de clave y valor, combinar celdas, la cabecera y los anchos ya se niegan por lo que
-    // es una tabla de clave y valor, y ese motivo es el que hay que leer.
-    const que = (claveValor ? null : OPERACIONES_DE_ESTRUCTURA[op]) || (OPERACIONES_DE_PARTES[e.sentido] || {})[op];
-    if (!que) return null;
+    if (!e || !MT().adoptada(valor)) return null;
     const suya = e.origen === 'propia'
       ? 'tiene una estructura propia, que es la que dice'
       : 'sigue el modelo de un grupo de tablas, y es el modelo el que dice';
     const partes = e.sentido === MT().SENTIDO_FILAS ? 'filas' : 'columnas';
-    return 'Esta tabla ' + suya + ' qué ' + partes + ' tiene y cómo se llama cada una. '
-      + 'Se puede escribir en ella y darle estilo (negrita, fondo, alineación, tamaño de letra), pero no ' + que + '.';
+    return 'Esta tabla ' + suya + ' qué ' + partes + ' tiene y cómo se llama cada una, y guarda su '
+      + 'contenido por partes y no en una rejilla, así que todavía no se puede cambiar desde aquí. '
+      + 'Se ve tal como se va a imprimir.';
   }
 
   const MOTIVO_CLAVE_VALOR_CELDAS = 'Una tabla de clave y valor tiene un formato fijo (concepto en negrita, contenido normal): no se combinan celdas ni se cambia su negrita.';
@@ -604,14 +600,14 @@
   // misma función para apagar el botón y para que `aplicar` se niegue: no pueden discrepar.
   function motivoDeNo(valor, op, args = {}, campo, modelos) {
     const E = Estructurados();
+    // Lo primero, antes incluso de mirar si esto es una rejilla: una tabla que ya ha adoptado su
+    // modelo no lo es, y «Esto no es una tabla» no sería ni verdad ni útil.
+    const fija = motivoDeEstructuraFija(valor, op, campo, modelos);
+    if (fija) return fija;
+
     const claveValor = esClaveValor(valor);
     if (!claveValor && !esRejilla(valor)) return 'Esto no es una tabla.';
     const n = filasDe(valor);
-
-    // Lo primero es la FORMA que esta tabla no decide: antes que un defecto de maquetación del Word,
-    // porque la estructura manda sobre lo que las celdas digan.
-    const fija = motivoDeEstructuraFija(valor, op, campo, modelos, claveValor);
-    if (fija) return fija;
 
     // Las operaciones de forma razonan sobre la cuadrícula, y la tabla de partida tiene que pasar la
     // puerta entera: una importada con un defecto de maquetación solo se guarda mientras su forma no
@@ -876,15 +872,7 @@
     let pesos = anchosDe(valor) || undefined;
 
     if (op === 'anadir-fila') {
-      // UNA FILA DE UNA TABLA CON ESTRUCTURA NACE CON UNA CELDA POR PARTE, y las retiradas cuentan:
-      // su hueco sigue en el contenido. Manda sobre el ancho de la tabla y sobre el que recuerda el
-      // editor porque en una tabla que se ha quedado sin filas los dos dirían otra cosa —`g.ncols`
-      // es 0— y la fila no cuadraría con la estructura: la puerta la rechazaría y `aplicar` promete
-      // que eso no pasa.
-      const conEstructura = MT().estructuraDeTabla(contexto.campo, valor, contexto.modelos);
-      const porPartes = conEstructura && conEstructura.sentido === MT().SENTIDO_COLUMNAS
-        ? conEstructura.partes.length : 0;
-      const ancho = porPartes || g.ncols || Math.min(Math.max(parseInt(contexto.columnas, 10) || 1, 1), E.MAX_COLUMNAS);
+      const ancho = g.ncols || Math.min(Math.max(parseInt(contexto.columnas, 10) || 1, 1), E.MAX_COLUMNAS);
       const k = args.despuesDe == null ? n : args.despuesDe + 1;
       const atravesadas = new Set();
       celdas = copia(g);
@@ -984,6 +972,16 @@
   // columnas y con una fila de más o de menos que el PDF. Sin estructura devuelven el mismo valor que
   // reciben, así que lo de siempre se pinta como siempre.
   function paraPintar(valor, campo, modelos) {
+    // La que ya ha adoptado su modelo no es ni una rejilla ni unos pares: su contenido va por parte y
+    // los rótulos los pone la estructura, así que se la pide entera a la regla.
+    if (MT().adoptada(valor) && MT().estructuraDeTabla(campo, valor, modelos)) {
+      if (MT().estructuraDeTabla(campo, valor, modelos).tipo === Estructurados().TIPO_CLAVE_VALOR) {
+        const { pares } = MT().paresVigentes(campo, valor, modelos);
+        return { cabecera: false, filas: (pares || []).map((p) => [{ text: p.etiqueta, bold: true }, { text: p.valor }]) };
+      }
+      const t = MT().tablaVigente(campo, valor, modelos, false);
+      return { cabecera: t.cabecera, filas: t.filas };
+    }
     if (esClaveValor(valor)) {
       const { pares } = MT().paresVigentes(campo, valor, modelos);
       return {

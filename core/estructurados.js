@@ -156,18 +156,27 @@
   // celdas combinadas. `pares` solo manda cuando no hay `filas` (una tabla de clave y valor creada
   // aquí, o una que el importador no supo leer como rejilla).
   //
-  //   'ra'      `auto.tabla_ra_ce` con `ra`: se monta la tabla de resultados y criterios
-  //   'filas'   la rejilla, con su estilo por celda y sus anchos
-  //   'pares'   la tabla de dos columnas de clave y valor
-  //   'ninguno' no hay nada que imprimir
-  //   'propio'  ponderaciones, fichas de situación y tabla resumen: cada una tiene su regla en los
-  //             motores y esta función no decide por ellas
+  //   'ra'       `auto.tabla_ra_ce` con `ra`: se monta la tabla de resultados y criterios
+  //   'filas'    la rejilla, con su estilo por celda y sus anchos
+  //   'casillas' el contenido por id de parte de una tabla que ha ADOPTADO el modelo de su grupo
+  //              (core/modelos-tabla.js): los rótulos no están ahí, los pone su estructura
+  //   'pares'    la tabla de dos columnas de clave y valor
+  //   'ninguno'  no hay nada que imprimir
+  //   'propio'   ponderaciones, fichas de situación y tabla resumen: cada una tiene su regla en los
+  //              motores y esta función no decide por ellas
+  //
+  // Y «filas» MANDA SOBRE «casillas» por lo mismo que manda sobre «pares»: es la fiel al documento.
+  // Una tabla conserva su rejilla hasta que alguien le adopte el modelo, y mientras la conserve es la
+  // rejilla la que se imprime, así que ponerle un modelo a una tabla ya escrita no le cambia el
+  // papel. Es la misma regla que la de la ficha de situación de aprendizaje, que se imprime desde
+  // `filas` mientras las tenga y desde el modelo en cuanto deja de tenerlas (core/sa.js).
   function queSeImprime(campo, valor) {
     const tipo = esObjeto(campo) ? campo.tipo : undefined;
     if (tipo === TIPO_PONDERACION || tipo === TIPO_FICHA || tipo === TIPO_RESUMEN) return 'propio';
     if (!esObjeto(valor)) return 'ninguno';
     if (tipo === TIPO_TABLA_RA_CE && Array.isArray(valor.ra) && valor.ra.length) return 'ra';
     if (Array.isArray(valor.filas) && valor.filas.length) return 'filas';
+    if (esObjeto(valor[MT().CLAVE_CASILLAS])) return 'casillas';
     if (Array.isArray(valor.pares)) return 'pares';
     return 'ninguno';
   }
@@ -312,6 +321,24 @@
     return Array.isArray(primera) && primera.every((c) => esObjeto(c) && !!c.bold);
   }
 
+  // LA FORMA DE UNA CELDA, en un solo sitio: la comprueban la rejilla (`motivoDeFilas`) y las
+  // casillas de una tabla con estructura (`motivoDeCasilla`), que son las mismas celdas sin las
+  // claves de combinar. `claves` es la lista de las que puede llevar; `suyo` es cómo nombrarla.
+  function motivoDeCelda(celda, suyo, claves) {
+    if (!esObjeto(celda)) return `${suyo} no es un objeto { text, colspan, rowspan, bold, fondo }.`;
+    const extra = sobran(celda, claves);
+    if (extra.length) return `${suyo} lleva ${comillas(extra)}, que no existe en una celda.`;
+    if (typeof celda.text !== 'string') return `${suyo} no tiene «text», o no es una cadena.`;
+    if (celda.colspan !== undefined && !esEntero(celda.colspan, 1)) return `${suyo} tiene un «colspan» que no es un número entero de 1 en adelante.`;
+    if (celda.rowspan !== undefined && !esEntero(celda.rowspan, 1)) return `${suyo} tiene un «rowspan» que no es un número entero de 1 en adelante.`;
+    if (celda.bold !== undefined && typeof celda.bold !== 'boolean') return `${suyo} tiene «bold» y no es true ni false.`;
+    if (celda.fondo !== undefined && !FONDOS_CELDA.includes(celda.fondo)) return `${suyo} tiene un «fondo» que no vale: los fondos son ${comillas(FONDOS_CELDA)}.`;
+    if (celda.alineacion !== undefined && !ALINEACIONES_CELDA.includes(celda.alineacion)) return `${suyo} tiene una «alineacion» que no vale: las alineaciones son ${comillas(ALINEACIONES_CELDA)}.`;
+    if (celda.campo !== undefined && (typeof celda.campo !== 'string' || !celda.campo.trim())) return `${suyo} tiene un «campo» que no es una cadena con el id de un campo.`;
+    if (celda.tamano !== undefined && !TAMANOS_CELDA.includes(celda.tamano)) return `${suyo} tiene un «tamano» que no vale: los tamaños son ${comillas(TAMANOS_CELDA)}.`;
+    return null;
+  }
+
   function motivoDeFilas(filas, donde) {
     if (!Array.isArray(filas)) return `${donde} no es una lista de filas.`;
     for (let i = 0; i < filas.length; i += 1) {
@@ -319,19 +346,8 @@
       if (!Array.isArray(fila)) return `la fila ${i + 1} de ${donde} no es una lista de celdas.`;
       if (!fila.length) return `la fila ${i + 1} de ${donde} no tiene ninguna celda.`;
       for (let j = 0; j < fila.length; j += 1) {
-        const celda = fila[j];
-        const suyo = `la celda ${j + 1} de la fila ${i + 1} de ${donde}`;
-        if (!esObjeto(celda)) return `${suyo} no es un objeto { text, colspan, rowspan, bold, fondo }.`;
-        const extra = sobran(celda, CLAVES_CELDA);
-        if (extra.length) return `${suyo} lleva ${comillas(extra)}, que no existe en una celda.`;
-        if (typeof celda.text !== 'string') return `${suyo} no tiene «text», o no es una cadena.`;
-        if (celda.colspan !== undefined && !esEntero(celda.colspan, 1)) return `${suyo} tiene un «colspan» que no es un número entero de 1 en adelante.`;
-        if (celda.rowspan !== undefined && !esEntero(celda.rowspan, 1)) return `${suyo} tiene un «rowspan» que no es un número entero de 1 en adelante.`;
-        if (celda.bold !== undefined && typeof celda.bold !== 'boolean') return `${suyo} tiene «bold» y no es true ni false.`;
-        if (celda.fondo !== undefined && !FONDOS_CELDA.includes(celda.fondo)) return `${suyo} tiene un «fondo» que no vale: los fondos son ${comillas(FONDOS_CELDA)}.`;
-        if (celda.alineacion !== undefined && !ALINEACIONES_CELDA.includes(celda.alineacion)) return `${suyo} tiene una «alineacion» que no vale: las alineaciones son ${comillas(ALINEACIONES_CELDA)}.`;
-        if (celda.campo !== undefined && (typeof celda.campo !== 'string' || !celda.campo.trim())) return `${suyo} tiene un «campo» que no es una cadena con el id de un campo.`;
-        if (celda.tamano !== undefined && !TAMANOS_CELDA.includes(celda.tamano)) return `${suyo} tiene un «tamano» que no vale: los tamaños son ${comillas(TAMANOS_CELDA)}.`;
+        const m = motivoDeCelda(fila[j], `la celda ${j + 1} de la fila ${i + 1} de ${donde}`, CLAVES_CELDA);
+        if (m) return m;
       }
     }
     return null;
@@ -638,6 +654,42 @@
     return motivoDeRejilla(resto, donde, { guardada });
   }
 
+  // LAS CLAVES QUE PUEDE LLEVAR UNA CASILLA de una tabla con estructura: las de cualquier celda menos
+  // «colspan» y «rowspan» —una tabla con estructura no tiene celdas combinadas: cada casilla es de una
+  // parte y de una sola, y un colspan la haría ser de dos a la vez— y menos «campo», que es el id de
+  // un campo de la ficha de situación de aprendizaje. El estilo por celda sí se conserva: adoptar un
+  // modelo no puede costarle a nadie la negrita, el fondo, la alineación ni el tamaño que eligió.
+  const CLAVES_CASILLA = CLAVES_CELDA.filter((k) => ['colspan', 'rowspan', 'campo'].indexOf(k) < 0);
+
+  // LA FORMA DEL CONTENIDO POR ID DE PARTE. El emparejamiento —que cada casilla esté bajo el id de
+  // una parte que existe y que lo que guarde cada parte sea lo que le toca por el sentido— lo
+  // comprueba `motivoDeContenido` de core/modelos-tabla.js, que es quien sabe de partes; aquí se
+  // comprueba lo que esta puerta sabe, que es la forma de cada casilla por dentro.
+  function motivoDeCasillas(valor, donde) {
+    const MT_ = MT();
+    if (!esObjeto(valor)) return null;
+    const casillas = valor[MT_.CLAVE_CASILLAS];
+    if (!esObjeto(casillas)) return null;
+    for (const id of Object.keys(casillas)) {
+      const x = casillas[id];
+      const una = (celda, cual) => {
+        const m = motivoDeCelda(celda, cual, CLAVES_CASILLA);
+        if (m) return m;
+        return motivoDeTextoDeCelda(celda.text, cual);
+      };
+      if (Array.isArray(x)) {
+        for (let i = 0; i < x.length; i += 1) {
+          const m = una(x[i], `la casilla ${i + 1} de «${id}» en ${donde}`);
+          if (m) return m;
+        }
+      } else if (esObjeto(x)) {
+        const m = una(x, `la casilla de «${id}» en ${donde}`);
+        if (m) return m;
+      }
+    }
+    return null;
+  }
+
   // ===================================================================== CON MODELO
   //
   // LOS DOS TIPOS A LOS QUE SE LES PUEDE PONER MODELO (`tabla` y `tabla_clave_valor`) admiten una
@@ -653,23 +705,40 @@
   //
   // `modelos` es `plantilla.modelos`, que llega por el contexto desde la ruta. Sin él ninguna tabla
   // sigue modelo y estas dos puertas son, paso por paso, las de siempre.
+  // Lo que las dos puertas tienen en común: la forma de la estructura propia y la de las casillas. La
+  // de la rejilla o la de los pares la pone cada una, porque son distintas.
+  function motivoDeLoSuyo(campo, valor, donde, modelos) {
+    const e = MT().motivoDeEstructura(valor.estructura, donde,
+      { tipo: campo.tipo, sentido: MT().sentidoVigente(campo, valor, modelos) });
+    if (e) return e;
+    return motivoDeCasillas(valor, donde);
+  }
+
   function motivoDeTablaConModelo(campo, valor, donde, guardada, modelos) {
     if (!esObjeto(valor)) return `${donde} no es una tabla { filas: [[celda, …], …] }.`;
-    const { estructura, ...rejilla } = valor;
-    const e = MT().motivoDeEstructura(estructura, donde, { tipo: campo.tipo, sentido: MT().sentidoVigente(campo, modelos) });
-    if (e) return e;
-    const m = motivoDeRejilla(rejilla, donde, { guardada });
-    if (m) return m;
+    const suyo = motivoDeLoSuyo(campo, valor, donde, modelos);
+    if (suyo) return suyo;
+    // La rejilla se comprueba como siempre, SIN las claves que son de la estructura: una tabla que ha
+    // adoptado su modelo ya no tiene rejilla, y una que no lo ha adoptado la tiene igual que ayer.
+    const { estructura, [MT().CLAVE_CASILLAS]: casillas, ...rejilla } = valor;
+    if (rejilla.filas !== undefined || casillas === undefined) {
+      const m = motivoDeRejilla(rejilla, donde, { guardada });
+      if (m) return m;
+    }
     return MT().motivoDeContenido(campo, valor, modelos, donde);
   }
 
   function motivoDeClaveValorConModelo(campo, valor, donde, modelos) {
     if (!esObjeto(valor)) return `${donde} no es una tabla de clave y valor { pares: [{ etiqueta, valor }] }.`;
-    const { estructura, ...resto } = valor;
-    const e = MT().motivoDeEstructura(estructura, donde, { tipo: campo.tipo, sentido: MT().sentidoVigente(campo, modelos) });
-    if (e) return e;
-    const m = motivoDeClaveValor(resto, donde);
-    if (m) return m;
+    const suyo = motivoDeLoSuyo(campo, valor, donde, modelos);
+    if (suyo) return suyo;
+    const { estructura, [MT().CLAVE_CASILLAS]: casillas, ...resto } = valor;
+    // Una tabla de clave y valor que ha adoptado su modelo guarda su contenido por parte, así que ya
+    // no tiene que traer `pares`; la que no lo ha adoptado se comprueba como siempre.
+    if (resto.pares !== undefined || resto.filas !== undefined || casillas === undefined) {
+      const m = motivoDeClaveValor(resto, donde);
+      if (m) return m;
+    }
     return MT().motivoDeContenido(campo, valor, modelos, donde);
   }
 
@@ -1064,7 +1133,7 @@
     ALINEACION_CELDA_OMISION, TAMANO_CELDA_OMISION,
     seGuarda, queSeImprime, fondoDeCelda, alineacionDeCelda, tamanoDeCelda, cabeceraDeTabla, cabeceraFijaDelCampo,
     motivoDeFilas, motivoDeRejilla, motivoDeForma, columnasDeRejilla, motivoDeClaveValor, motivoDeTablaRaCe,
-    motivoDeTablaConModelo, motivoDeClaveValorConModelo,
+    motivoDeTablaConModelo, motivoDeClaveValorConModelo, motivoDeCasillas, motivoDeCelda, CLAVES_CASILLA,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,
     motivoItems, renumerarItems,

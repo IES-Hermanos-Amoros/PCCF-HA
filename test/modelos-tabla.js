@@ -4,10 +4,11 @@
 //
 // Son dos cosas y las dos se vigilan aqui:
 //
-//   1. LA REGLA. Una tabla sigue su propia estructura mientras la tenga, la del modelo cuando no la
-//      tenga, y ninguna si no tiene ninguna de las dos (`estructuraDeTabla` de
-//      core/modelos-tabla.js). Con los casos que no son: un modelo que no esta en la plantilla, uno
-//      de otro tipo, `partes` vacio, una parte retirada.
+//   1. LA REGLA, que son dos preguntas. QUE ESTRUCTURA sigue una tabla: la suya mientras la tenga,
+//      la del modelo cuando no la tenga, ninguna si no tiene ninguna de las dos. Y DE DONDE SALE SU
+//      CONTENIDO: de su rejilla mientras la tenga, y de sus casillas —por id de parte— en cuanto
+//      deja de tenerla. Con los casos que no son: un modelo que no esta en la plantilla, uno de otro
+//      tipo, `partes` vacio, un modelo vacio enganchado, una parte retirada y otra restaurada.
 //
 //   2. LA PUERTA DE ACEPTACION: un campo SIN `modelo` y un valor SIN `estructura` imprimen
 //      EXACTAMENTE lo de antes. Todo lo que hay escrito en los documentos del departamento esta
@@ -16,7 +17,9 @@
 //      las ramas de tabla de los dos motores, generados con el motor de antes de que el modelo
 //      existiera, y aqui se comparan contra lo que sale hoy. El .docx entero se compara por su
 //      sha256, que se puede porque el zip lleva la fecha fija a proposito (motor/exportar-docx.js);
-//      del PDF se salta la portada, que lleva la fecha del dia.
+//      del PDF se salta la portada, que lleva la fecha del dia. ESE FICHERO NO SE REGENERA: cubre
+//      tablas sin modelo, que no usan ni estructura ni contenido por id, asi que tiene que seguir
+//      pasando sin tocar un byte.
 //
 // Y LOS TRES CONSUMIDORES TIENEN QUE DECIR LO MISMO. La regla la llaman el PDF, el Word y el editor
 // con la puerta de guardado, cada uno desde la misma funcion de core/. Si estuviera escrita dos
@@ -62,7 +65,10 @@ const CAMPO_SIN_MODELO = { id: 'actividades', tipo: 'tabla', etiqueta: 'Activida
 // Los textos de una lista de filas de celdas, fila a fila: con esto se comparan las tres salidas.
 const textosDeFilas = (filas) => (filas || []).map((f) => f.map((x) => String(x.text == null ? '' : x.text)));
 
-// ---------------------------------------------------------------- 1. la regla
+// Las etiquetas de las partes vigentes de una estructura, que es lo que se imprime.
+const etiquetas = (e) => e.vigentes.map((p) => p.etiqueta);
+
+// ---------------------------------------------------------------- 1. que estructura sigue
 
 prueba('sin modelo y sin estructura propia, una tabla no sigue ninguna: su forma son sus celdas', () => {
   const valor = { filas: [[c('a'), c('b')]] };
@@ -73,32 +79,47 @@ prueba('sin modelo y sin estructura propia, una tabla no sigue ninguna: su forma
 });
 
 prueba('con modelo y sin estructura propia, la tabla sigue la del modelo', () => {
-  const e = MT.estructuraDeTabla(CAMPO, { filas: [] }, mapaDe(modelo()));
+  const e = MT.estructuraDeTabla(CAMPO, { casillas: {} }, mapaDe(modelo()));
   assert.ok(e, 'no sigue ninguna');
   assert.strictEqual(e.origen, 'modelo');
   assert.strictEqual(e.modelo, 'modelo-actividad');
   assert.strictEqual(e.sentido, 'columnas');
-  assert.deepStrictEqual(e.partes.map((p) => p.etiqueta), ['Actividad', 'Sesiones']);
-  assert.deepStrictEqual(e.vigentes.map((v) => v.hueco), [0, 1]);
+  assert.deepStrictEqual(etiquetas(e), ['Actividad', 'Sesiones']);
 });
 
 prueba('con estructura propia manda la suya, aunque su campo siga apuntando a un modelo', () => {
-  const valor = { estructura: { partes: [{ id: 'mia', etiqueta: 'Solo esta' }] }, filas: [[c('x')]] };
+  const valor = { estructura: { partes: [{ id: 'mia', etiqueta: 'Solo esta' }], sentido: 'columnas' }, casillas: {} };
   const e = MT.estructuraDeTabla(CAMPO, valor, mapaDe(modelo()));
   assert.strictEqual(e.origen, 'propia');
-  assert.deepStrictEqual(e.partes.map((p) => p.etiqueta), ['Solo esta']);
+  assert.deepStrictEqual(etiquetas(e), ['Solo esta']);
   // De que modelo salio se sigue sabiendo, para poder decirlo.
   assert.strictEqual(e.modelo, 'modelo-actividad');
 });
 
 prueba('una tabla divergida cuyo modelo ya no esta sigue siendo suya, y no se queda sin forma', () => {
-  const valor = { estructura: { partes: [{ id: 'mia', etiqueta: 'Solo esta' }] }, filas: [[c('x')]] };
+  const valor = { estructura: { partes: [{ id: 'mia', etiqueta: 'Solo esta' }], sentido: 'columnas' }, casillas: {} };
   const e = MT.estructuraDeTabla(CAMPO, valor, {});
   assert.strictEqual(e.origen, 'propia');
   assert.strictEqual(e.modelo, null, 'la estructura es suya y no hay a quien volver');
-  // El sentido, que `valor.estructura` no guarda, es el de omision del tipo.
-  assert.strictEqual(e.sentido, MT.sentidoPorOmision('tabla'));
   assert.strictEqual(e.sentido, 'columnas');
+});
+
+prueba('EL SENTIDO LO GUARDA LA ESTRUCTURA PROPIA: el modelo no puede girar despues una tabla divergida', () => {
+  // Es el agujero que cierra guardar el sentido: si lo siguiera diciendo el modelo del que la tabla
+  // se desengancho, cambiarselo al modelo leeria el contenido de las columnas como filas, que es
+  // cambiar el documento por la espalda y lo unico que divergir existe para evitar.
+  const valor = {
+    estructura: { partes: [{ id: 'a', etiqueta: 'A' }, { id: 'b', etiqueta: 'B' }], sentido: 'columnas' },
+    casillas: { a: [c('1')], b: [c('2')] },
+  };
+  const girado = mapaDe(modelo({ sentido: 'filas', partes: [{ id: 'z', etiqueta: 'Z' }] }));
+  assert.strictEqual(MT.estructuraDeTabla(CAMPO, valor, girado).sentido, 'columnas');
+  assert.strictEqual(MT.sentidoVigente(CAMPO, valor, girado), 'columnas');
+  // Y la tabla se sigue imprimiendo a lo ancho, con sus dos columnas.
+  const t = MT.tablaVigente(CAMPO, valor, girado, false);
+  assert.deepStrictEqual(textosDeFilas(t.filas), [['A', 'B'], ['1', '2']]);
+  // Sin estructura propia, el sentido es el del modelo, como debe ser.
+  assert.strictEqual(MT.sentidoVigente(CAMPO, { casillas: {} }, girado), 'filas');
 });
 
 prueba('un modelo que no esta en la plantilla no se sigue: la tabla cae al escalon siguiente', () => {
@@ -112,7 +133,7 @@ prueba('un modelo que no esta en la plantilla no se sigue: la tabla cae al escal
 
 prueba('un modelo DE OTRO TIPO no describe esta tabla y no se sigue', () => {
   const m = modelo({ tipo: 'tabla_clave_valor', sentido: 'filas' });
-  assert.strictEqual(MT.estructuraDeTabla(CAMPO, { filas: [] }, mapaDe(m)), null);
+  assert.strictEqual(MT.estructuraDeTabla(CAMPO, { casillas: {} }, mapaDe(m)), null);
   // Al contrario tambien: un modelo de rejilla no describe una tabla de clave y valor.
   const kv = { id: 'k', tipo: 'tabla_clave_valor', modelo: 'modelo-actividad' };
   assert.strictEqual(MT.estructuraDeTabla(kv, { pares: [] }, mapaDe(modelo())), null);
@@ -125,41 +146,6 @@ prueba('un modelo con «partes» vacio no es una estructura: tenerla es tener pa
   assert.strictEqual(Est.queSeImprime(CAMPO, { filas: [] }), 'ninguno');
 });
 
-prueba('una estructura propia con «partes» vacio cae al modelo, no al vacio', () => {
-  const valor = { estructura: { partes: [] }, filas: [[c('a'), c('b')]] };
-  const e = MT.estructuraDeTabla(CAMPO, valor, mapaDe(modelo()));
-  assert.ok(e, 'se ha quedado sin forma');
-  assert.strictEqual(e.origen, 'modelo');
-  // Y sin modelo al que caer, ninguna.
-  assert.strictEqual(MT.estructuraDeTabla(CAMPO_SIN_MODELO, valor, {}), null);
-});
-
-prueba('una parte retirada deja de imprimirse y su hueco en el contenido se conserva', () => {
-  const m = modelo({
-    partes: [
-      { id: 'p-que', etiqueta: 'Actividad' },
-      { id: 'p-ses', etiqueta: 'Sesiones', retirado: true },
-      { id: 'p-ra', etiqueta: 'RA' },
-    ],
-  });
-  const e = MT.estructuraDeTabla(CAMPO, { filas: [] }, mapaDe(m));
-  assert.strictEqual(e.partes.length, 3, 'retirar no borra: la parte sigue en el modelo');
-  assert.deepStrictEqual(e.vigentes.map((v) => v.parte.etiqueta), ['Actividad', 'RA']);
-  // EL HUECO ES LA POSICION ENTRE TODAS LAS PARTES, no entre las vigentes: si fuera entre las
-  // vigentes, retirar la de en medio correria el contenido de la tercera a la segunda columna y cada
-  // tabla del grupo quedaria con su texto bajo otro rotulo.
-  assert.deepStrictEqual(e.vigentes.map((v) => v.hueco), [0, 2]);
-
-  const valor = { filas: [[c('Exposicion'), c('4'), c('RA1')]] };
-  const t = MT.tablaVigente(CAMPO, valor, mapaDe(m), false);
-  assert.deepStrictEqual(textosDeFilas(t.filas), [['Actividad', 'RA'], ['Exposicion', 'RA1']]);
-  // Lo escrito en la parte retirada sigue en el valor y vuelve con ella al restaurarla.
-  assert.strictEqual(valor.filas[0][1].text, '4');
-  const vuelta = m.partes.map((p) => ({ ...p, retirado: undefined }));
-  const t2 = MT.tablaVigente(CAMPO, valor, mapaDe(modelo({ partes: vuelta })), false);
-  assert.deepStrictEqual(textosDeFilas(t2.filas)[1], ['Exposicion', '4', 'RA1']);
-});
-
 prueba('un campo de un tipo al que no se le puede poner modelo no sigue ninguno', () => {
   for (const tipo of ['auto.contenidos', 'auto.tabla_ra_ce', 'auto.ficha_modulo', 'texto_largo', 'ficha_situacion_aprendizaje']) {
     const campo = { id: 'x', tipo, modelo: 'modelo-actividad' };
@@ -167,27 +153,144 @@ prueba('un campo de un tipo al que no se le puede poner modelo no sigue ninguno'
   }
 });
 
-prueba('con los rotulos a lo alto, cada parte es una fila y su etiqueta va delante', () => {
-  const m = modelo({ sentido: 'filas', partes: [{ id: 'a', etiqueta: 'Codigo' }, { id: 'b', etiqueta: 'Horas' }] });
-  const t = MT.tablaVigente(CAMPO, { filas: [[c('0614')], [c('160')]] }, mapaDe(m), true);
+// ---------------------------------------------------------------- 2. de donde sale el contenido
+
+prueba('una tabla se imprime desde su rejilla mientras la tenga: ponerle un modelo no le hace nada', () => {
+  // Es la misma regla que la de la ficha de situacion de aprendizaje y por el mismo motivo. Es
+  // tambien la respuesta a por que esta pieza no cambia nada de lo que hay escrito: una tabla del
+  // departamento lleva su fila de rotulos ENTRE sus celdas, y adoptarle el modelo —soltarsela y
+  // emparejarla con las partes— es una pieza aparte.
+  const modelos = mapaDe(modelo());
+  const conRejilla = { filas: [[c('Actividad', { bold: true }), c('Sesiones', { bold: true })], [c('Exposicion'), c('4')]] };
+  assert.ok(MT.estructuraDeTabla(CAMPO, conRejilla, modelos), 'sigue una estructura');
+  assert.strictEqual(MT.adoptada(conRejilla), false, 'pero no la ha adoptado');
+
+  // Y entonces imprime su rejilla, por identidad, y con la cabecera que decida la regla de siempre.
+  const t = MT.tablaVigente(CAMPO, conRejilla, modelos, 'la de siempre');
+  assert.strictEqual(t.filas, conRejilla.filas);
+  assert.strictEqual(t.cabecera, 'la de siempre');
+  // La puerta la acepta tal cual: su rejilla no tiene que cuadrar con nada.
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, conRejilla, { modelos }), null);
+});
+
+prueba('en cuanto deja de tener rejilla, se imprime desde sus casillas por id de parte', () => {
+  const modelos = mapaDe(modelo());
+  const adoptada = { casillas: { 'p-que': [c('Exposicion'), c('Practica')], 'p-ses': [c('4'), c('6')] } };
+  assert.strictEqual(MT.adoptada(adoptada), true);
+  const t = MT.tablaVigente(CAMPO, adoptada, modelos, false);
+  assert.deepStrictEqual(textosDeFilas(t.filas),
+    [['Actividad', 'Sesiones'], ['Exposicion', '4'], ['Practica', '6']]);
+  assert.strictEqual(t.cabecera, true, 'la fila de los rotulos es la cabecera que se repite');
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, adoptada, { modelos }), null);
+});
+
+prueba('el contenido en dos sitios a la vez no se guarda: al adoptar, el de antes se va', () => {
+  const modelos = mapaDe(modelo());
+  const dos = { filas: [[c('a'), c('b')]], casillas: { 'p-que': [c('a')], 'p-ses': [c('b')] } };
+  const m = Est.motivoDeCampo(CAMPO, dos, { modelos });
+  assert.ok(m && m.includes('dos sitios'), m);
+  // Con rejilla, la rejilla manda, asi que las casillas se guardarian sin imprimirse.
+  assert.strictEqual(MT.adoptada(dos), false);
+});
+
+prueba('una parte sin nada escrito sale con su rotulo y en blanco', () => {
+  const modelos = mapaDe(modelo());
+  // La recien anadida al modelo no tiene entrada ninguna.
+  const t = MT.tablaVigente(CAMPO, { casillas: { 'p-que': [c('Exposicion')] } }, modelos, false);
+  assert.deepStrictEqual(textosDeFilas(t.filas), [['Actividad', 'Sesiones'], ['Exposicion', '']]);
+  // Y una tabla adoptada y todavia vacia es solo sus rotulos.
+  const vacia = MT.tablaVigente(CAMPO, { casillas: {} }, modelos, false);
+  assert.deepStrictEqual(textosDeFilas(vacia.filas), [['Actividad', 'Sesiones']]);
+});
+
+prueba('con los rotulos a lo alto, cada parte guarda UNA casilla: es literalmente ficha[id]', () => {
+  const m = modelo({ sentido: 'filas', partes: [{ id: 'cod', etiqueta: 'Codigo' }, { id: 'hor', etiqueta: 'Horas' }] });
+  const t = MT.tablaVigente(CAMPO, { casillas: { cod: c('0614'), hor: c('160') } }, mapaDe(m), true);
   assert.deepStrictEqual(textosDeFilas(t.filas), [['Codigo', '0614'], ['Horas', '160']]);
   assert.strictEqual(t.cabecera, false, 'con los rotulos a la izquierda no hay fila de cabecera');
+  // Y se puede llenar DE UNA EN UNA, que es lo que el contenido posicional no permitia.
+  const aMedias = MT.tablaVigente(CAMPO, { casillas: { hor: c('160') } }, mapaDe(m), true);
+  assert.deepStrictEqual(textosDeFilas(aMedias.filas), [['Codigo', ''], ['Horas', '160']]);
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, { casillas: { hor: c('160') } }, { modelos: mapaDe(m) }), null);
 });
 
-prueba('los anchos los pone la estructura, y solo si TODAS sus partes los dicen', () => {
-  const todos = modelo({ partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }, { id: 'b', etiqueta: 'B', ancho: 1 }] });
-  assert.deepStrictEqual(MT.tablaVigente(CAMPO, { filas: [] }, mapaDe(todos), false).anchos, [3, 1]);
-  const aMedias = modelo({ partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }, { id: 'b', etiqueta: 'B' }] });
-  assert.strictEqual(MT.tablaVigente(CAMPO, { filas: [] }, mapaDe(aMedias), false).anchos, undefined,
-    'una lista de anchos incompleta la descartaria el motor sin avisar');
-  // Y una parte retirada no cuenta: los anchos son de las columnas que se imprimen.
-  const conRetirada = modelo({
-    partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }, { id: 'b', etiqueta: 'B', ancho: 9, retirado: true }, { id: 'd', etiqueta: 'D', ancho: 1 }],
-  });
-  assert.deepStrictEqual(MT.tablaVigente(CAMPO, { filas: [] }, mapaDe(conRetirada), false).anchos, [3, 1]);
+// ---------------------------------------------------------------- 3. el id es el que empareja
+
+prueba('RETIRAR UNA PARTE NO BORRA SU CONTENIDO, Y RESTAURARLA LO DEVUELVE', () => {
+  const partes = [
+    { id: 'p-que', etiqueta: 'Actividad' },
+    { id: 'p-ses', etiqueta: 'Sesiones' },
+    { id: 'p-ra', etiqueta: 'RA' },
+  ];
+  const valor = {
+    casillas: {
+      'p-que': [c('Exposicion'), c('Practica')],
+      'p-ses': [c('4'), c('6')],
+      'p-ra': [c('RA1'), c('RA2')],
+    },
+  };
+  const conTodas = mapaDe(modelo({ partes }));
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, valor, conTodas, false).filas),
+    [['Actividad', 'Sesiones', 'RA'], ['Exposicion', '4', 'RA1'], ['Practica', '6', 'RA2']]);
+
+  // Se retira LA DE EN MEDIO, que es el caso en el que un emparejamiento por posicion corria las
+  // demas de sitio y dejaba el texto bajo otro rotulo.
+  const retirada = partes.map((p) => (p.id === 'p-ses' ? { ...p, retirado: true } : p));
+  const conRetirada = mapaDe(modelo({ partes: retirada }));
+  const e = MT.estructuraDeTabla(CAMPO, valor, conRetirada);
+  assert.strictEqual(e.partes.length, 3, 'retirar no borra: la parte sigue en el modelo');
+  assert.deepStrictEqual(etiquetas(e), ['Actividad', 'RA']);
+
+  const sinElla = MT.tablaVigente(CAMPO, valor, conRetirada, false);
+  assert.deepStrictEqual(textosDeFilas(sinElla.filas),
+    [['Actividad', 'RA'], ['Exposicion', 'RA1'], ['Practica', 'RA2']],
+    'las partes que quedan no se han corrido de sitio: empareja el id, no el sitio');
+  assert.ok(!JSON.stringify(textosDeFilas(sinElla.filas)).includes('4'), 'sale el contenido de la retirada');
+
+  // EL CONTENIDO SIGUE EN EL VALOR, sin tocar, bajo el id de su parte.
+  assert.deepStrictEqual(valor.casillas['p-ses'].map((x) => x.text), ['4', '6']);
+  // Y el valor sigue pasando la puerta con la parte retirada: su contenido no estorba.
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, valor, { modelos: conRetirada }), null);
+
+  // RESTAURARLA LA DEVUELVE CON LO QUE TENIA, en su sitio, sin que nadie haya tocado el valor.
+  const vuelta = MT.tablaVigente(CAMPO, valor, conTodas, false);
+  assert.deepStrictEqual(textosDeFilas(vuelta.filas),
+    [['Actividad', 'Sesiones', 'RA'], ['Exposicion', '4', 'RA1'], ['Practica', '6', 'RA2']]);
 });
 
-// ---------------------------------------------------------------- 2. las copias no se separan
+prueba('anadir una parte al modelo no toca NINGUNA tabla guardada', () => {
+  // Es lo que el departamento pidio: que el cambio vaya al grupo. Con el contenido posicional,
+  // anadir una columna obligaba a reescribir todas las filas de todas las tablas del grupo.
+  const valor = { casillas: { 'p-que': [c('Exposicion')], 'p-ses': [c('4')] } };
+  const antes = JSON.stringify(valor);
+  const conUnaMas = mapaDe(modelo({
+    partes: [...modelo().partes, { id: 'p-ra', etiqueta: 'RA' }],
+  }));
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, valor, { modelos: conUnaMas }), null,
+    'la tabla de ayer sigue pasando la puerta con el modelo de hoy');
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, valor, conUnaMas, false).filas),
+    [['Actividad', 'Sesiones', 'RA'], ['Exposicion', '4', '']]);
+  assert.strictEqual(JSON.stringify(valor), antes, 'el valor no se ha tocado');
+
+  // Y moverlas tampoco: el orden de las partes es el del modelo y el contenido lo sigue sin moverse.
+  const alReves = mapaDe(modelo({ partes: [modelo().partes[1], modelo().partes[0]] }));
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, valor, alReves, false).filas),
+    [['Sesiones', 'Actividad'], ['4', 'Exposicion']]);
+  assert.strictEqual(JSON.stringify(valor), antes, 'el valor no se ha tocado');
+});
+
+prueba('renombrar una parte en la plantilla la renombra en todas las tablas del grupo', () => {
+  const valor = { casillas: { 'p-que': [c('Exposicion')], 'p-ses': [c('4')] } };
+  const renombrado = mapaDe(modelo({
+    partes: [{ id: 'p-que', etiqueta: 'Que se hace' }, { id: 'p-ses', etiqueta: 'Sesiones' }],
+  }));
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, valor, renombrado, false).filas)[0],
+    ['Que se hace', 'Sesiones']);
+  // El id no ha cambiado, que es por lo que el contenido no se ha quedado huerfano.
+  assert.deepStrictEqual(Object.keys(valor.casillas), ['p-que', 'p-ses']);
+});
+
+// ---------------------------------------------------------------- 4. las copias no se separan
 
 prueba('los tipos y los topes copiados en core/modelos-tabla.js son los de la puerta', () => {
   // Estan copiados a proposito, para que la dependencia vaya en un solo sentido (la puerta pregunta
@@ -197,14 +300,15 @@ prueba('los tipos y los topes copiados en core/modelos-tabla.js son los de la pu
   assert.deepStrictEqual(MT.TIPOS, [Est.TIPO_TABLA, Est.TIPO_CLAVE_VALOR]);
   assert.strictEqual(MT.MAX_PARTES_ANCHO, Est.MAX_COLUMNAS);
   assert.strictEqual(MT.MAX_PARTES_ALTO, Est.MAX_FILAS);
+  assert.strictEqual(MT.MAX_CASILLAS_POR_PARTE, Est.MAX_FILAS);
 });
 
-// ---------------------------------------------------------------- 3. la forma de un modelo
+// ---------------------------------------------------------------- 5. la forma de un modelo
 
 prueba('la forma de un modelo: lo que vale', () => {
   assert.strictEqual(MT.motivoDeModelo(modelo()), null);
   assert.strictEqual(MT.motivoDeModelo(modelo({ version: undefined })), null, 'la version puede no venir');
-  assert.strictEqual(MT.motivoDeModelo(modelo({ partes: [] })), null, 'un modelo a medio hacer vale de forma');
+  assert.strictEqual(MT.motivoDeModelo(modelo({ partes: [] })), null, 'un modelo nace sin partes y se guarda');
   assert.strictEqual(MT.motivoDeModelo(modelo({ sentido: 'filas', partes: [{ id: 'a', etiqueta: '' }] })), null,
     'una etiqueta en blanco es una parte recien anadida');
   assert.strictEqual(MT.motivoDeModelos(undefined), null, 'una plantilla sin modelos es la de hoy');
@@ -232,7 +336,6 @@ prueba('la forma de un modelo: lo que no vale, y por que', () => {
   // Una tabla de clave y valor son dos columnas fijas: sus partes son sus filas y no hay otra
   // manera de leerla.
   malo({ tipo: 'tabla_clave_valor', sentido: 'columnas' }, 'cada parte es una fila');
-  // Mas partes de las que caben a lo ancho de la hoja.
   malo({ partes: Array.from({ length: MT.MAX_PARTES_ANCHO + 1 }, (_, i) => ({ id: 'p' + i, etiqueta: 'P' })) }, 'ancho de la hoja');
 
   // y las partes
@@ -258,146 +361,175 @@ prueba('un modelo guardado bajo una clave que no es su id no vale: los campos en
   assert.ok(MT.motivoDeModelos(muchos).includes(String(MT.MAX_MODELOS)));
 });
 
-// ---------------------------------------------------------------- 4. la estructura propia
+prueba('ENGANCHAR UN MODELO SIN PARTES ES UN ERROR CON EXPLICACION, no un no-op que se calla', () => {
+  // Un modelo recien creado y todavia vacio es indistinguible de no tener modelo: la tabla se
+  // seguiria guardando y pintando como antes y quien lo enganncho no se enteraria de nada.
+  const vacio = mapaDe(modelo({ partes: [] }));
+  const m = Est.motivoDeCampo(CAMPO, { filas: [] }, { modelos: vacio });
+  assert.ok(m, 'se ha aceptado un campo que apunta a un modelo vacio');
+  assert.ok(m.includes('ninguna parte'), m);
+  assert.ok(m.includes('modelo-actividad'), 'el motivo no dice de que modelo habla: ' + m);
+  // El campo que no apunta a ninguno no tiene nada que explicar.
+  assert.strictEqual(Est.motivoDeCampo(CAMPO_SIN_MODELO, { filas: [] }, { modelos: vacio }), null);
+});
+
+// ---------------------------------------------------------------- 6. la estructura propia
 
 prueba('la forma de la estructura que una tabla guarda para si', () => {
+  const buena = { partes: [{ id: 'a', etiqueta: 'A' }], sentido: 'columnas' };
   assert.strictEqual(MT.motivoDeEstructura(undefined, 'la tabla'), null, 'no tenerla es lo normal');
-  assert.strictEqual(MT.motivoDeEstructura({ partes: [] }, 'la tabla'), null);
-  assert.strictEqual(MT.motivoDeEstructura({ partes: [{ id: 'a', etiqueta: 'A' }] }, 'la tabla'), null);
-  // No lleva nombre, ni tipo, ni sentido: eso es del modelo del que divergio, no de la tabla.
-  assert.ok(MT.motivoDeEstructura({ partes: [], nombre: 'Mia' }, 'la tabla').includes('nombre'));
-  assert.ok(MT.motivoDeEstructura({ partes: [], sentido: 'filas' }, 'la tabla').includes('sentido'));
+  assert.strictEqual(MT.motivoDeEstructura(buena, 'la tabla'), null);
+  // El sentido se exige: es lo que impide que el modelo le gire la tabla despues.
+  const sinSentido = MT.motivoDeEstructura({ partes: buena.partes }, 'la tabla');
+  assert.ok(sinSentido && sinSentido.includes('sentido'), sinSentido);
+  assert.ok(MT.motivoDeEstructura({ ...buena, sentido: 'diagonal' }, 'la tabla').includes('sentido'));
+  // Una estructura sin partes no es una forma que seguir.
+  const vacia = MT.motivoDeEstructura({ partes: [], sentido: 'columnas' }, 'la tabla');
+  assert.ok(vacia && vacia.includes('ninguna parte'), vacia);
+  // No lleva nombre ni tipo: eso es del modelo del que divergio, no de la tabla.
+  assert.ok(MT.motivoDeEstructura({ ...buena, nombre: 'Mia' }, 'la tabla').includes('nombre'));
   assert.ok(MT.motivoDeEstructura([], 'la tabla').includes('objeto'));
-  assert.ok(MT.motivoDeEstructura({ partes: [{ etiqueta: 'Sin id' }] }, 'la tabla').includes('id'));
+  assert.ok(MT.motivoDeEstructura({ partes: [{ etiqueta: 'Sin id' }], sentido: 'columnas' }, 'la tabla').includes('id'));
+  // Y una de clave y valor va siempre a lo alto.
+  const kv = MT.motivoDeEstructura({ ...buena }, 'la tabla', { tipo: 'tabla_clave_valor' });
+  assert.ok(kv && kv.includes('cada parte es una fila'), kv);
 });
 
-// ---------------------------------------------------------------- 5. la puerta de guardado
+prueba('una estructura propia se mide con SU sentido, no con el de omision de su tipo', () => {
+  // Una parte se mide distinto a lo ancho que a lo alto: el `ancho` solo existe a lo ancho y el tope
+  // de partes no es el mismo.
+  const conAncho = { estructura: { partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }], sentido: 'filas' }, casillas: { a: c('x') } };
+  const m = Est.motivoDeCampo(CAMPO, conAncho, { modelos: {} });
+  assert.ok(m && m.includes('ancho'), 'se ha aceptado un ancho en una parte que es una fila: ' + m);
+  // El mismo ancho, con la estructura a lo ancho, se guarda.
+  const aLoAncho = { estructura: { partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }], sentido: 'columnas' }, casillas: { a: [c('x')] } };
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, aLoAncho, { modelos: {} }), null);
 
-prueba('la puerta acepta la estructura propia en los dos tipos que pueden seguir un modelo, y en ningun otro', () => {
-  const valor = { estructura: { partes: [{ id: 'a', etiqueta: 'A' }] }, filas: [[c('x')]] };
+  const veintePartes = Array.from({ length: 20 }, (_, i) => ({ id: 'p' + i, etiqueta: 'P' }));
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, { estructura: { partes: veintePartes, sentido: 'filas' }, casillas: {} }, { modelos: {} }),
+    null, 'veinte filas caben de sobra');
+  const apretado = Est.motivoDeCampo(CAMPO, { estructura: { partes: veintePartes, sentido: 'columnas' }, casillas: {} }, { modelos: {} });
+  assert.ok(apretado && apretado.includes(String(MT.MAX_PARTES_ANCHO)), apretado);
+});
+
+// ---------------------------------------------------------------- 7. la puerta de guardado
+
+prueba('la puerta acepta la estructura y las casillas en los dos tipos que pueden seguir un modelo, y en ningun otro', () => {
+  const valor = { estructura: { partes: [{ id: 'a', etiqueta: 'A' }], sentido: 'columnas' }, casillas: { a: [c('x')] } };
   assert.strictEqual(Est.motivoDeCampo(CAMPO_SIN_MODELO, valor, {}), null);
-  assert.strictEqual(Est.motivoDeCampo({ id: 'k', tipo: 'tabla_clave_valor' },
-    { estructura: { partes: [{ id: 'a', etiqueta: 'A' }] }, pares: [{ etiqueta: 'A', valor: '1' }] }, {}), null);
+  const kv = { estructura: { partes: [{ id: 'a', etiqueta: 'A' }], sentido: 'filas' }, casillas: { a: c('1') } };
+  assert.strictEqual(Est.motivoDeCampo({ id: 'k', tipo: 'tabla_clave_valor' }, kv, {}), null);
   // Una clave que se guarda y no significa nada acaba leyendola alguien: en los demas tipos sobra.
   for (const tipo of ['auto.contenidos', 'dual_ra_ce', 'auto.tabla_ra_ce']) {
-    const m = Est.motivoDeCampo({ id: 'x', tipo }, { estructura: { partes: [] }, filas: [] }, {});
+    const m = Est.motivoDeCampo({ id: 'x', tipo }, { estructura: { partes: [], sentido: 'columnas' }, filas: [] }, {});
     assert.ok(m && m.includes('estructura'), `${tipo}: ${m}`);
+    const n = Est.motivoDeCampo({ id: 'x', tipo }, { casillas: {}, filas: [] }, {});
+    assert.ok(n && n.includes('casillas'), `${tipo}: ${n}`);
   }
 });
 
-prueba('la puerta exige que el contenido cuadre con la estructura que la tabla sigue', () => {
+prueba('la puerta exige que las casillas esten bajo el id de una parte que existe', () => {
   const modelos = mapaDe(modelo());
-  assert.strictEqual(Est.motivoDeCampo(CAMPO, { filas: [[c('a'), c('b')]] }, { modelos }), null);
-  assert.strictEqual(Est.motivoDeCampo(CAMPO, { filas: [] }, { modelos }), null,
-    'una tabla sin nada escrito cuadra con cualquier estructura');
-  const corta = Est.motivoDeCampo(CAMPO, { filas: [[c('a')]] }, { modelos });
-  assert.ok(corta && corta.includes('parte por parte'), corta);
-  // Y sin modelo, la misma tabla se guarda: su forma son sus celdas.
-  assert.strictEqual(Est.motivoDeCampo(CAMPO_SIN_MODELO, { filas: [[c('a')]] }, { modelos }), null);
+  const m = Est.motivoDeCampo(CAMPO, { casillas: { 'p-inventada': [c('a')] } }, { modelos });
+  assert.ok(m && m.includes('p-inventada'), m);
+  assert.ok(m.includes('bajo el id de su parte'), m);
+  // Y una tabla sin estructura no guarda contenido por parte: no habria parte a la que pertenezca.
+  const sin = Est.motivoDeCampo(CAMPO_SIN_MODELO, { casillas: {} }, { modelos });
+  assert.ok(sin && sin.includes('casillas'), sin);
 });
 
-prueba('una tabla con estructura no lleva celdas combinadas', () => {
+prueba('la puerta exige que cada parte guarde lo que le toca por el sentido', () => {
+  const aLoAncho = mapaDe(modelo());
+  const comoFila = Est.motivoDeCampo(CAMPO, { casillas: { 'p-que': c('a') } }, { modelos: aLoAncho });
+  assert.ok(comoFila && comoFila.includes('lista de casillas'), comoFila);
+
+  const aLoAlto = mapaDe(modelo({ sentido: 'filas', partes: [{ id: 'cod', etiqueta: 'Codigo' }] }));
+  const comoColumna = Est.motivoDeCampo(CAMPO, { casillas: { cod: [c('a')] } }, { modelos: aLoAlto });
+  assert.ok(comoColumna && comoColumna.includes('una sola casilla'), comoColumna);
+});
+
+prueba('todas las columnas que tengan contenido miden lo mismo', () => {
   const modelos = mapaDe(modelo());
-  const m = Est.motivoDeCampo(CAMPO, {
-    filas: [[c('a', { colspan: 2 }), c('b')], [c('c', { colspan: 2 }), c('d')]],
-  }, { modelos });
-  assert.ok(m && m.includes('combinada'), m);
-  // Cada casilla es de una parte y de una sola: con un colspan, el texto quedaria bajo un rotulo
-  // que no es el suyo en cuanto alguien retirara o moviera una parte.
-  assert.ok(m.includes('una parte'), m);
+  const m = Est.motivoDeCampo(CAMPO, { casillas: { 'p-que': [c('a'), c('b')], 'p-ses': [c('1')] } }, { modelos });
+  assert.ok(m && m.includes('una casilla de cada columna'), m);
+  // Una parte que no aparece es una columna sin nada escrito, y eso si vale: es la recien anadida.
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, { casillas: { 'p-que': [c('a'), c('b')] } }, { modelos }), null);
+  // Y una columna mas larga de lo que cabe en una tabla, no.
+  const larga = Array.from({ length: MT.MAX_CASILLAS_POR_PARTE + 1 }, () => c('x'));
+  const tope = Est.motivoDeCampo(CAMPO, { casillas: { 'p-que': larga } }, { modelos });
+  assert.ok(tope && tope.includes(String(MT.MAX_CASILLAS_POR_PARTE)), tope);
 });
 
-prueba('las partes retiradas cuentan para el contenido: el hueco sigue ahi', () => {
-  const m = modelo({
-    partes: [{ id: 'a', etiqueta: 'A' }, { id: 'b', etiqueta: 'B', retirado: true }, { id: 'd', etiqueta: 'D' }],
-  });
-  assert.strictEqual(Est.motivoDeCampo(CAMPO, { filas: [[c('1'), c('2'), c('3')]] }, { modelos: mapaDe(m) }), null);
-  const sinHueco = Est.motivoDeCampo(CAMPO, { filas: [[c('1'), c('3')]] }, { modelos: mapaDe(m) });
-  assert.ok(sinHueco && sinHueco.includes('retiradas'), sinHueco);
-});
-
-prueba('una tabla de clave y valor con estructura empareja un par con cada parte', () => {
-  const m = modelo({ id: 'm-kv', tipo: 'tabla_clave_valor', sentido: 'filas', partes: [{ id: 'a', etiqueta: 'Ciclo' }, { id: 'b', etiqueta: 'Curso' }] });
-  const campo = { id: 'k', tipo: 'tabla_clave_valor', modelo: 'm-kv' };
-  const modelos = mapaDe(m);
-  assert.strictEqual(Est.motivoDeCampo(campo, { pares: [{ etiqueta: 'x', valor: 'DAW' }, { etiqueta: 'y', valor: '2026-27' }] }, { modelos }), null);
-  assert.strictEqual(Est.motivoDeCampo(campo, { pares: [] }, { modelos }), null, 'sin nada escrito, cuadra');
-  const corta = Est.motivoDeCampo(campo, { pares: [{ etiqueta: 'x', valor: 'DAW' }] }, { modelos });
-  assert.ok(corta && corta.includes('parte por parte'), corta);
-  // Y los rotulos que se imprimen son los de las partes, no los que el par tenga guardados.
-  const { pares } = MT.paresVigentes(campo, { pares: [{ etiqueta: 'lo que sea', valor: 'DAW' }, { etiqueta: 'tampoco', valor: '2026-27' }] }, modelos);
-  assert.deepStrictEqual(pares, [{ etiqueta: 'Ciclo', valor: 'DAW' }, { etiqueta: 'Curso', valor: '2026-27' }]);
-});
-
-// ---------------------------------------------------------------- 6. el editor
-
-prueba('el editor se niega a lo que cambiaria la forma de una tabla con estructura, y lo explica', () => {
+prueba('una casilla es una celda con su estilo, pero sin combinar', () => {
   const modelos = mapaDe(modelo());
-  const valor = { filas: [[c('Exposicion'), c('4')]] };
+  // El estilo por celda se conserva: adoptar un modelo no puede costarle a nadie la negrita.
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, {
+    casillas: { 'p-que': [c('a', { bold: true, fondo: 'etiqueta', alineacion: 'centro', tamano: 'pequena' })] },
+  }, { modelos }), null);
+  // Combinar, no: cada casilla es de una parte y de una sola.
+  for (const clave of ['colspan', 'rowspan']) {
+    const m = Est.motivoDeCampo(CAMPO, { casillas: { 'p-que': [{ text: 'a', [clave]: 2 }] } }, { modelos });
+    assert.ok(m && m.includes(clave), `${clave}: ${m}`);
+  }
+  // Ni una celda sin texto, ni con una marca de Word dentro.
+  assert.ok(Est.motivoDeCampo(CAMPO, { casillas: { 'p-que': [{ bold: true }] } }, { modelos }));
+  assert.ok(Est.motivoDeCampo(CAMPO, { casillas: { 'p-que': 'no es una lista' } }, { modelos }));
+});
+
+// ---------------------------------------------------------------- 8. el editor
+
+prueba('mientras no adopte su modelo, el editor no le quita ni un boton', () => {
+  const modelos = mapaDe(modelo());
+  const valor = { filas: [[c('Actividad', { bold: true }), c('Sesiones', { bold: true })], [c('Exposicion'), c('4')]] };
   for (const [op, args] of [
-    ['anadir-columna', { despuesDe: 0 }],
-    ['quitar-columna', { columna: 0 }],
-    ['combinar', { fila: 0, columna: 0, hacia: 'derecha' }],
+    ['texto', { fila: 1, columna: 0, valor: 'Otra' }],
+    ['negrita', { fila: 1, columna: 0, puesta: true }],
+    ['anadir-fila', {}], ['quitar-fila', { fila: 1 }],
+    ['anadir-columna', { despuesDe: 0 }], ['quitar-columna', { columna: 0 }],
     ['cabecera', { puesta: true }],
-    ['ancho', { columna: 0, hacia: 'ensanchar' }],
-    ['anchos-automaticos', {}],
-  ]) {
-    const m = Edicion.motivoDeNo(valor, op, args, CAMPO, modelos);
-    assert.ok(m, `${op} no se ha negado`);
-    assert.ok(m.includes('escribir en ella y darle estilo'), `${op}: ${m}`);
-    // Y `aplicar` no cambia nada: devuelve el mismo objeto.
-    assert.strictEqual(Edicion.aplicar(valor, op, args, { campo: CAMPO, modelos }), valor, op);
-  }
-  // Escribir y dar estilo se puede siempre, y las filas de CONTENIDO tambien se anaden y se quitan:
-  // con los rotulos arriba, las partes son las columnas.
-  for (const [op, args] of [
-    ['texto', { fila: 0, columna: 0, valor: 'Otra cosa' }],
-    ['negrita', { fila: 0, columna: 0, puesta: true }],
-    ['fondo', { fila: 0, columna: 0, cual: 'etiqueta' }],
-    ['anadir-fila', {}],
-    ['quitar-fila', { fila: 0 }],
+    ['combinar', { fila: 1, columna: 0, hacia: 'derecha' }],
   ]) {
     assert.strictEqual(Edicion.motivoDeNo(valor, op, args, CAMPO, modelos), null, op);
   }
-  // Sin modelos, todas se pueden: la pantalla de lo que hay escrito no cambia.
-  assert.strictEqual(Edicion.motivoDeNo(valor, 'anadir-columna', { despuesDe: 0 }, CAMPO), null);
+  // Y se pinta igual que siempre, con su propia fila de rotulos y su cabecera por negrita.
+  assert.strictEqual(Edicion.tieneCabecera(valor, CAMPO, modelos), true);
+  assert.deepStrictEqual(textosDeFilas(Edicion.paraPintar(valor, CAMPO, modelos).filas),
+    [['Actividad', 'Sesiones'], ['Exposicion', '4']]);
+  // Lo que sale del editor sigue pasando la puerta.
+  const despues = Edicion.aplicar(valor, 'anadir-columna', { despuesDe: 0 }, { campo: CAMPO, modelos });
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, despues, { modelos }), null);
 });
 
-prueba('lo que el editor niega es exactamente lo que la puerta rechazaria', () => {
-  // `aplicar` promete devolver un valor que pasa la puerta. Si una operacion de forma se dejara
-  // pasar, el valor resultante no cuadraria con la estructura y el boton daria un 400.
+prueba('una tabla adoptada se VE tal como se imprime, y el editor dice por que no se cambia aqui', () => {
   const modelos = mapaDe(modelo());
-  const valor = { filas: [[c('a'), c('b')], [c('c'), c('d')]] };
-  for (const [op, args] of [
-    ['anadir-columna', { despuesDe: 0 }], ['quitar-columna', { columna: 0 }],
-    ['anadir-fila', {}], ['quitar-fila', { fila: 0 }],
-    ['texto', { fila: 0, columna: 0, valor: 'z' }], ['negrita', { fila: 1, columna: 1, puesta: true }],
-  ]) {
-    const siguiente = Edicion.aplicar(valor, op, args, { campo: CAMPO, modelos });
-    assert.strictEqual(Est.motivoDeCampo(CAMPO, siguiente, { modelos }), null,
-      `${op} deja un valor que la puerta rechaza: ${Est.motivoDeCampo(CAMPO, siguiente, { modelos })}`);
-  }
-});
-
-prueba('una tabla con estructura no tiene cabecera propia: sus rotulos no estan entre sus celdas', () => {
-  const modelos = mapaDe(modelo());
-  const valor = { filas: [[c('a', { bold: true }), c('b', { bold: true })]] };
-  // Sin modelos, la primera fila entera en negrita es la cabecera, como siempre.
-  assert.strictEqual(Edicion.tieneCabecera(valor, CAMPO_SIN_MODELO), true);
-  // Con estructura, lo guardado es solo contenido: tratarlo como cabecera lo sombrearia en la
-  // pantalla y no en el papel.
+  const valor = { casillas: { 'p-que': [c('Exposicion')], 'p-ses': [c('4')] } };
+  // Se abre, para que se vea: esconderla seria peor que enseñarla con los botones apagados.
+  assert.strictEqual(Edicion.esEditable(CAMPO, valor), true);
+  const pintada = Edicion.paraPintar(valor, CAMPO, modelos);
+  assert.deepStrictEqual(textosDeFilas(pintada.filas), [['Actividad', 'Sesiones'], ['Exposicion', '4']]);
+  assert.strictEqual(pintada.cabecera, true);
+  // Su primera fila guardada no es una cabecera: los rotulos no estan entre sus celdas.
   assert.strictEqual(Edicion.tieneCabecera(valor, CAMPO, modelos), false);
-  assert.strictEqual(Edicion.fondoEfectivo(valor, 0, 0, CAMPO, modelos), 'etiqueta');
-  assert.strictEqual(Edicion.fondoEfectivo(valor, 0, 0, CAMPO_SIN_MODELO), 'cabecera');
+
+  // Y ninguna operacion de rejilla le sirve, porque su contenido no es una rejilla. Se dice.
+  for (const op of ['texto', 'negrita', 'anadir-fila', 'quitar-fila', 'anadir-columna', 'quitar-columna',
+    'cabecera', 'combinar', 'separar', 'ancho', 'anchos-automaticos', 'fondo', 'alineacion', 'tamano']) {
+    const m = Edicion.motivoDeNo(valor, op, { fila: 0, columna: 0, valor: 'x', despuesDe: 0, hacia: 'derecha', puesta: true }, CAMPO, modelos);
+    assert.ok(m, `${op} no se ha negado`);
+    assert.ok(m.includes('por partes y no en una rejilla'), `${op}: ${m}`);
+    // Y `aplicar` devuelve el MISMO objeto: no deja un valor que la puerta rechazaria.
+    assert.strictEqual(Edicion.aplicar(valor, op, { fila: 0, columna: 0 }, { campo: CAMPO, modelos }), valor, op);
+  }
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, valor, { modelos }), null);
 });
 
-// ---------------------------------------------------------------- 7. los tres consumidores
+// ---------------------------------------------------------------- 9. los tres consumidores
 
 // Un documento de una sola tabla, para comparar las tres salidas sobre el mismo valor.
 const unaTablaCon = (campo, valor) => ({
   plantilla: {
     generada: '2026-01-01T00:00:00.000Z',
-    secciones: [{ id: 's1', titulo: 'Las actividades', nivel: 1, hijos: [], campos: [campo] }],
+    secciones: [{ id: 's1', titulo: 'Las actividades', nivel: 1, edita: 'jefe_departamento', presencia: 1, hijos: [], campos: [campo] }],
   },
   datos: { documento: { s1: { [campo.id]: valor } }, instancias: [] },
 });
@@ -436,16 +568,23 @@ prueba('el PDF, el Word y el editor pintan la MISMA tabla de un valor con modelo
       { id: 'p-ses', etiqueta: 'Sesiones', ancho: 1 },
     ],
   });
-  const plantillaConModelos = (base) => ({ ...base.plantilla, modelos: mapaDe(m) });
-  const valor = { filas: [[c('Exposicion'), c('SECRETO-RETIRADA'), c('4')], [c('Practica'), c('tampoco'), c('6')]] };
+  const valor = {
+    casillas: {
+      'p-que': [c('Exposicion'), c('Practica')],
+      'p-oculta': [c('SECRETO-RETIRADA'), c('tampoco')],
+      'p-ses': [c('4'), c('6')],
+    },
+  };
   const base = unaTablaCon(CAMPO, valor);
-  const plantilla = plantillaConModelos(base);
+  const plantilla = { ...base.plantilla, modelos: mapaDe(m) };
 
   const esperado = [['Actividad', 'Sesiones'], ['Exposicion', '4'], ['Practica', '6']];
 
   const pdf = filasDelPdf(plantilla, base.datos);
   assert.deepStrictEqual(pdf.filas, esperado, 'el PDF no pinta la tabla del modelo');
   assert.strictEqual(pdf.tabla.headerRows, 1, 'la fila de los rotulos es la cabecera que se repite');
+  // Los anchos los pone la estructura, y solo los de las partes vigentes.
+  assert.strictEqual(pdf.tabla.widths.length, 2);
 
   const word = await filasDelWord(plantilla, base.datos);
   assert.deepStrictEqual(word, esperado, 'el Word no pinta la tabla del modelo');
@@ -458,7 +597,7 @@ prueba('el PDF, el Word y el editor pintan la MISMA tabla de un valor con modelo
   for (const salida of [pdf.filas, word, textosDeFilas(editor.filas)]) {
     assert.ok(!JSON.stringify(salida).includes('SECRETO-RETIRADA'), 'sale el contenido de la parte retirada');
   }
-  assert.strictEqual(valor.filas[0][1].text, 'SECRETO-RETIRADA', 'retirar no borra');
+  assert.strictEqual(valor.casillas['p-oculta'][0].text, 'SECRETO-RETIRADA', 'retirar no borra');
 });
 
 prueba('el PDF, el Word y el editor pintan la MISMA tabla de clave y valor con modelo', async () => {
@@ -467,7 +606,7 @@ prueba('el PDF, el Word y el editor pintan la MISMA tabla de clave y valor con m
     partes: [{ id: 'a', etiqueta: 'Ciclo' }, { id: 'b', etiqueta: 'Oculta', retirado: true }, { id: 'd', etiqueta: 'Curso' }],
   });
   const campo = { id: 'ficha', tipo: 'tabla_clave_valor', etiqueta: 'Ficha', modelo: 'm-kv' };
-  const valor = { pares: [{ etiqueta: 'lo que sea', valor: 'DAW' }, { etiqueta: 'x', valor: 'SECRETO-KV' }, { etiqueta: 'y', valor: '2026-27' }] };
+  const valor = { casillas: { a: c('DAW'), b: c('SECRETO-KV'), d: c('2026-27') } };
   const base = unaTablaCon(campo, valor);
   const plantilla = { ...base.plantilla, modelos: mapaDe(m) };
 
@@ -475,11 +614,12 @@ prueba('el PDF, el Word y el editor pintan la MISMA tabla de clave y valor con m
   assert.deepStrictEqual(filasDelPdf(plantilla, base.datos).filas, esperado);
   assert.deepStrictEqual(await filasDelWord(plantilla, base.datos), esperado);
   assert.deepStrictEqual(textosDeFilas(Edicion.paraPintar(valor, campo, mapaDe(m)).filas), esperado);
+  assert.strictEqual(Est.motivoDeCampo(campo, valor, { modelos: mapaDe(m) }), null);
 });
 
 prueba('con los rotulos a lo alto, las tres salidas coinciden tambien', async () => {
-  const m = modelo({ sentido: 'filas', partes: [{ id: 'a', etiqueta: 'Codigo' }, { id: 'b', etiqueta: 'Horas' }] });
-  const valor = { filas: [[c('0614')], [c('160')]] };
+  const m = modelo({ sentido: 'filas', partes: [{ id: 'cod', etiqueta: 'Codigo' }, { id: 'hor', etiqueta: 'Horas' }] });
+  const valor = { casillas: { cod: c('0614'), hor: c('160') } };
   const base = unaTablaCon(CAMPO, valor);
   const plantilla = { ...base.plantilla, modelos: mapaDe(m) };
 
@@ -491,20 +631,18 @@ prueba('con los rotulos a lo alto, las tres salidas coinciden tambien', async ()
   assert.deepStrictEqual(textosDeFilas(Edicion.paraPintar(valor, CAMPO, mapaDe(m)).filas), esperado);
 });
 
-// ---------------------------------------------------------------- 7 bis. lo que no puede pasar
-
 prueba('una tabla con TODAS sus partes retiradas no imprime nada, y el PDF se genera', async () => {
   // Retirar la ultima parte que quedaba deja la tabla asi. Lo que saldria si se pintara es una fila
   // de cero celdas: pdfmake no sabe colocarla y revienta la generacion del tomo entero, y el Word la
   // omite sin decir nada, asi que las dos salidas dirian cosas distintas de la misma tabla. Por eso
   // esta prueba genera el PDF de verdad: sobre la definicion sola, el fallo no se veia.
   const m = modelo({ partes: [{ id: 'a', etiqueta: 'A', retirado: true }, { id: 'b', etiqueta: 'B', retirado: true }] });
-  const valor = { filas: [[c('SECRETO-UNO'), c('SECRETO-DOS')]] };
+  const valor = { casillas: { a: [c('SECRETO-UNO')], b: [c('SECRETO-DOS')] } };
   const base = unaTablaCon(CAMPO, valor);
   const plantilla = { ...base.plantilla, modelos: mapaDe(m) };
 
-  const t = MT.tablaVigente(CAMPO, valor, mapaDe(m), false);
-  assert.deepStrictEqual(t.filas, [], 'una tabla sin ninguna parte vigente no tiene filas');
+  assert.deepStrictEqual(MT.tablaVigente(CAMPO, valor, mapaDe(m), false).filas, [],
+    'una tabla sin ninguna parte vigente no tiene filas');
 
   const def = buildDocDefinition({ plantilla, datos: base.datos, instancias: 'todas', titulo: 'T' });
   const textos = JSON.stringify(def.content.slice(7));
@@ -529,57 +667,10 @@ prueba('una tabla con TODAS sus partes retiradas no imprime nada, y el PDF se ge
   // Y el Word tampoco escribe la tabla, pero sin discrepar: las dos salidas la omiten.
   assert.deepStrictEqual(await filasDelWord(plantilla, base.datos), []);
   // Lo escrito sigue guardado y vuelve al restaurar una parte.
-  assert.strictEqual(valor.filas[0][0].text, 'SECRETO-UNO');
+  assert.strictEqual(valor.casillas.a[0].text, 'SECRETO-UNO');
 });
 
-prueba('una fila nueva de una tabla con estructura nace con una celda por parte', () => {
-  // `aplicar` promete devolver un valor que pasa la puerta. Si la fila naciera con el ancho de la
-  // tabla (0 en una que se ha quedado sin filas) o con el que recuerda el editor, no cuadraria con la
-  // estructura y el boton daria un 400.
-  const m = modelo({ partes: [{ id: 'a', etiqueta: 'A' }, { id: 'b', etiqueta: 'B', retirado: true }, { id: 'd', etiqueta: 'D' }] });
-  const modelos = mapaDe(m);
-  const pasa = (v) => assert.strictEqual(Est.motivoDeCampo(CAMPO, v, { modelos }), null,
-    'la puerta rechaza lo que ha salido del editor: ' + Est.motivoDeCampo(CAMPO, v, { modelos }));
-
-  // Desde una tabla sin filas, y con un ancho recordado que dice otra cosa.
-  let v = Edicion.aplicar({ filas: [] }, 'anadir-fila', {}, { campo: CAMPO, modelos, columnas: 7 });
-  assert.strictEqual(v.filas[0].length, 3, 'las partes retiradas tambien cuentan: su hueco sigue ahi');
-  pasa(v);
-
-  // Y la cadena entera con operaciones permitidas: quitar la ultima fila y volver a anadir una.
-  v = Edicion.aplicar(v, 'quitar-fila', { fila: 0 }, { campo: CAMPO, modelos });
-  assert.deepStrictEqual(v.filas, []);
-  pasa(v);
-  v = Edicion.aplicar(v, 'anadir-fila', {}, { campo: CAMPO, modelos });
-  assert.strictEqual(v.filas[0].length, 3);
-  pasa(v);
-
-  // Sin estructura, la fila nace como siempre: con el ancho de la tabla o con el recordado.
-  const libre = Edicion.aplicar({ filas: [] }, 'anadir-fila', {}, { campo: CAMPO_SIN_MODELO, columnas: 7 });
-  assert.strictEqual(libre.filas[0].length, 7);
-});
-
-prueba('una estructura propia se mide con el sentido EN VIGOR, no con el de omision de su tipo', () => {
-  // `valor.estructura` guarda las partes y no el sentido, asi que el sentido es el del modelo al que
-  // apunta el campo. Medirla con el de omision aceptaria unos anchos que luego reparten las columnas
-  // que no son, y rechazaria por «el maximo son 12» una estructura de veinte filas que cabe de sobra.
-  const aLoAlto = mapaDe(modelo({ sentido: 'filas', partes: [{ id: 'z', etiqueta: 'Z' }] }));
-  assert.strictEqual(MT.sentidoVigente(CAMPO, aLoAlto), 'filas');
-  assert.strictEqual(MT.sentidoVigente(CAMPO_SIN_MODELO, aLoAlto), 'columnas', 'sin modelo, el de omision del tipo');
-
-  const conAncho = { estructura: { partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }] }, filas: [[c('x')]] };
-  const m = Est.motivoDeCampo(CAMPO, conAncho, { modelos: aLoAlto });
-  assert.ok(m && m.includes('ancho'), 'se ha aceptado un ancho en una parte que es una fila: ' + m);
-  // Y el mismo valor, con el modelo a lo ancho, se guarda.
-  assert.strictEqual(Est.motivoDeCampo(CAMPO, conAncho, { modelos: mapaDe(modelo()) }), null);
-
-  const veinte = { estructura: { partes: Array.from({ length: 20 }, (_, i) => ({ id: 'p' + i, etiqueta: 'P' })) }, filas: [] };
-  assert.strictEqual(Est.motivoDeCampo(CAMPO, veinte, { modelos: aLoAlto }), null, 'veinte filas caben de sobra');
-  const aLoAncho = Est.motivoDeCampo(CAMPO, veinte, { modelos: mapaDe(modelo()) });
-  assert.ok(aLoAncho && aLoAncho.includes(String(MT.MAX_PARTES_ANCHO)), aLoAncho);
-});
-
-// ---------------------------------------------------------------- 8. LA PUERTA DE ACEPTACION
+// ---------------------------------------------------------------- 10. LA PUERTA DE ACEPTACION
 
 prueba('sin modelo y sin estructura, el PDF sale byte a byte como antes de que el modelo existiera', () => {
   // `ORO.pdf` es el cuerpo de la definicion de pdfmake congelado con el motor de 59dbb81, sobre un
@@ -604,19 +695,21 @@ prueba('sin modelo y sin estructura, el .docx sale con los MISMOS BYTES que ante
   assert.strictEqual(crypto.createHash('sha256').update(buffer).digest('hex'), ORO.docxSha256);
 });
 
-prueba('sin estructura, la regla devuelve LO MISMO que recibe y no copia nada', () => {
+prueba('sin estructura adoptada, la regla devuelve LO MISMO que recibe y no copia nada', () => {
   // Es el porque de que el PDF y el Word salgan iguales, dicho sobre la propia regla: los motores
   // reciben los mismos objetos que habia en el valor, no copias que pudieran diferir en algo.
   const valor = { filas: [[c('x')]], anchos: [1], pares: [{ etiqueta: 'a', valor: 'b' }] };
-  const t = MT.tablaVigente(CAMPO_SIN_MODELO, valor, undefined, 'la de siempre');
-  assert.strictEqual(t.filas, valor.filas);
-  assert.strictEqual(t.anchos, valor.anchos);
-  assert.strictEqual(t.cabecera, 'la de siempre', 'la cabecera que recibe es la que devuelve');
-  assert.strictEqual(t.estructura, null);
-  assert.strictEqual(MT.paresVigentes(CAMPO_SIN_MODELO, valor, undefined).pares, valor.pares);
+  for (const [campo, modelos] of [[CAMPO_SIN_MODELO, undefined], [CAMPO, mapaDe(modelo())]]) {
+    const t = MT.tablaVigente(campo, valor, modelos, 'la de siempre');
+    assert.strictEqual(t.filas, valor.filas);
+    assert.strictEqual(t.anchos, valor.anchos);
+    assert.strictEqual(t.cabecera, 'la de siempre', 'la cabecera que recibe es la que devuelve');
+    assert.strictEqual(MT.paresVigentes(campo, valor, modelos).pares, valor.pares);
+  }
+  assert.strictEqual(MT.tablaVigente(CAMPO_SIN_MODELO, valor, undefined, true).estructura, null);
 });
 
-// ---------------------------------------------------------------- 9. los modelos llegan desde la plantilla
+// ---------------------------------------------------------------- 11. los modelos, desde la plantilla
 
 // Un documento de verdad en el almacen de memoria, con su sesion abierta, para comprobar que
 // `plantilla.modelos` llega desde el documento hasta la puerta. Mismo arnes que test/edicion.js: las
@@ -635,11 +728,7 @@ async function enLaRuta(modelos) {
   const jefa = await repo.usuarios.crear({ nombre: 'Jefatura', email: 'jefa@ejemplo.invalid', rol: 'jefe_departamento', departamento: 'informatica' });
   const { testigo } = await abrirSesion(repo, jefa._id);
 
-  const plantilla = {
-    generada: '2026-01-01T00:00:00.000Z',
-    modelos,
-    secciones: [{ id: 's1', titulo: 'Las actividades', nivel: 1, edita: 'jefe_departamento', presencia: 1, hijos: [], campos: [CAMPO] }],
-  };
+  const plantilla = { ...unaTablaCon(CAMPO, undefined).plantilla, modelos };
   const filas = aFilas({ plantilla, datos: { departamento: 'informatica', documento: {}, instancias: [], asignaciones: {}, compartidos: {} } },
     { curso: '2026-27', departamento: 'informatica' });
   const doc = await repo.documentos.crear(filas.documento);
@@ -665,19 +754,19 @@ prueba('la ruta del apartado le pasa los modelos de la plantilla a la puerta', a
   const { repo, doc, guardar } = await enLaRuta(mapaDe(modelo()));
 
   // La tabla que cuadra con el modelo se guarda.
-  const bien = await guardar({ actividades: { filas: [[c('Exposicion'), c('4')]] } });
+  const bien = await guardar({ actividades: { casillas: { 'p-que': [c('Exposicion')], 'p-ses': [c('4')] } } });
   assert.strictEqual(bien.status, 200, JSON.stringify(await bien.json()));
 
   // Y la que no, se rechaza con el motivo de la regla: eso solo puede pasar si `plantilla.modelos`
   // ha llegado de verdad hasta la puerta.
-  const mal = await guardar({ actividades: { filas: [[c('Exposicion')]] } });
+  const mal = await guardar({ actividades: { casillas: { 'p-inventada': [c('x')] } } });
   assert.strictEqual(mal.status, 400);
   const cuerpo = await mal.json();
-  assert.ok(cuerpo.mensaje.includes('parte por parte'), cuerpo.mensaje);
+  assert.ok(cuerpo.mensaje.includes('p-inventada'), cuerpo.mensaje);
 
   // Lo guardado sigue siendo lo de antes: una peticion rechazada no deja nada escrito.
   const fila = await repo.apartados.leer(doc._id, 's1', null);
-  assert.deepStrictEqual(fila.valores.actividades.filas[0].map((x) => x.text), ['Exposicion', '4']);
+  assert.deepStrictEqual(fila.valores.actividades.casillas['p-que'].map((x) => x.text), ['Exposicion']);
 });
 
 prueba('un modelo torcido en la plantilla se dice al guardar, no al generar el tomo', async () => {

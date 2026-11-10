@@ -236,8 +236,9 @@ function campo(c, valor, ctx = {}) {
         const t = MT.tablaVigente(c, valor, ctx.modelos, Est.cabeceraDeTabla(c, valor));
         return tabla(t.filas, t.anchos, t.cabecera);
       }
-      if (que !== 'pares') return tabla(null);
-      return tabla(filasParejas(MT.paresVigentes(c, valor, ctx.modelos)));
+      if (que !== 'pares' && que !== 'casillas') return tabla(null);
+      const p = MT.paresVigentes(c, valor, ctx.modelos);
+      return tabla(p.pares ? filasParejas(p) : null);
     }
     // Incluye derivado.resumen_situaciones: se escribe tal como se importó. Y es el caso de la
     // tabla genérica editable, la única que puede traer sus propios anchos de columna y la unica
