@@ -496,9 +496,6 @@
 
   // ---------------------------------------------------------------- por qué un modelo no vale
 
-  // La forma de UNA parte. `ancho` solo tiene sentido con `sentido: 'columnas'`: con los rótulos a la
-  // izquierda la parte es una fila y una fila no tiene ancho de columna, así que se rechaza en lugar
-  // de guardarse para no imprimirse nunca.
   // La forma de UNA parte. Cada sentido tiene su medida y su nombre (ver la cabecera), así que lo que
   // se comprueba es que cada una esté donde le toca: `peso` solo a lo ancho, donde es un peso relativo
   // que puede ser decimal; `ancho` solo a lo alto, donde son columnas enteras y no puede pedir más de
@@ -525,7 +522,13 @@
       const sobra = sobran(g, CLAVES_GRUPO);
       if (sobra.length) return `el grupo de ${donde} lleva ${comillas(sobra)}, que no existe en un grupo: solo ${comillas(CLAVES_GRUPO)}.`;
       if (!esCadena(g.id)) return `el grupo de ${donde} no tiene «id»: es con el que se sabe qué partes van juntas y no cambia al renombrarlo.`;
-      if (typeof g.etiqueta !== 'string') return `el grupo de ${donde} no tiene «etiqueta», o no es texto: es el rótulo que se imprime encima.`;
+      // SE EXIGE EL RÓTULO, y no se admite en blanco como en la etiqueta de una parte. Una parte sin
+      // etiqueta imprime su fila igual y se sabe de quién es, porque la celda lleva su `campo`; un
+      // grupo sin rótulo imprime una banda a todo lo ancho que no dice nada y de la que no se sabe
+      // nada, y su único efecto es ese. El precedente no puede siquiera expresarlo: en la ficha el
+      // grupo es una sola cadena, así que un grupo sin texto no escribe ninguna fila.
+      if (!esCadena(g.etiqueta)) return `el grupo de ${donde} no tiene «etiqueta»: es el rótulo que se imprime encima, y un grupo sin rótulo es una banda en blanco que no dice nada.`;
+
       if (g.etiqueta.length > LARGO_NOMBRE) return `la etiqueta del grupo de ${donde} tiene ${g.etiqueta.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
     }
 

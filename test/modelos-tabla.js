@@ -534,6 +534,12 @@ prueba('la forma de un modelo: lo que no vale, y por que', () => {
   alto({ partes: [{ id: 'a', etiqueta: 'A', grupo: 'G' }] }, '{ id, etiqueta }');
   alto({ partes: [{ id: 'a', etiqueta: 'A', grupo: { etiqueta: 'G' } }] }, 'no tiene «id»');
   alto({ partes: [{ id: 'a', etiqueta: 'A', grupo: { id: 'g' } }] }, 'no tiene «etiqueta»');
+  // UN GRUPO SIN ROTULO NO ES UN GRUPO. Una parte sin etiqueta imprime su fila igual y se sabe de
+  // quien es, porque la celda lleva su «campo»; un grupo sin rotulo imprime una banda a todo lo ancho
+  // que no dice nada y de la que no se sabe nada, y su unico efecto es ese. El precedente no puede ni
+  // expresarlo: en la ficha el grupo es una sola cadena y sin texto no escribe ninguna fila.
+  alto({ partes: [{ id: 'a', etiqueta: 'A', grupo: { id: 'g', etiqueta: '' } }] }, 'banda en blanco');
+  alto({ partes: [{ id: 'a', etiqueta: 'A', grupo: { id: 'g', etiqueta: '   ' } }] }, 'banda en blanco');
   alto({ partes: [{ id: 'a', etiqueta: 'A', grupo: { id: 'g', etiqueta: 'G', color: 'azul' } }] }, 'color');
   // Un grupo, un rotulo: dos partes del mismo grupo con etiquetas distintas son dos verdades sobre lo
   // mismo, y la que no se imprimiria se guardaria para no verse nunca.
