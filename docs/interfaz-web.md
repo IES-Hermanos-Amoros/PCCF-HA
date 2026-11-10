@@ -242,6 +242,76 @@ alineación, tamaño de letra, negrita, unir, separar y el ancho de su columna.
   celdas, y qué formato lleva, lo deciden `elegirCelda` y `formatoDeCelda` de
   `core/tablas-edicion.js`, con pruebas en `test/editor-tablas.js`.
 
+### 3.9 El modelo de una tabla: la forma de un grupo de tablas
+
+Una tabla genérica (`tabla`, `tabla_clave_valor`) no tenía forma separada de su contenido: su
+forma **eran** sus celdas. Con las más de mil tablas que trajo el importador, eso convierte cada
+tabla en un documento aparte y deja al jefe de departamento sin manera de decir «las fichas de
+actividad de los once módulos llevan estas cuatro columnas, con estos nombres»: tendría que
+entrar en cada una, y al curso siguiente otra vez.
+
+Así que la forma pasa a vivir en la plantilla, como ya vivía la de la ficha de situación de
+aprendizaje (`plantilla.estructuraFicha`):
+
+```
+plantilla.modelos['modelo-xxx'] = {
+  id,        // con el que apuntan los campos; se acuña una vez y no sigue al nombre
+  nombre,    // lo que se enseña: «Ficha de actividad»
+  tipo,      // 'tabla' | 'tabla_clave_valor'
+  sentido,   // 'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
+  partes: [ { id, etiqueta, ancho?, retirado? } ],
+  version
+}
+```
+
+Un campo apunta al suyo con `campo.modelo`. Una tabla concreta que ha **divergido** guarda su
+forma junto a su contenido, en `valor.estructura = { partes: [...] }`.
+
+**La regla, en un solo sitio.** Una tabla sigue **su propia** estructura mientras la tenga, y la
+del **modelo** cuando no la tenga; si no tiene ninguna de las dos, su forma se deduce de las
+celdas guardadas, que es lo que le pasa a todo lo que hay escrito hoy. Es la misma regla que ya
+gobierna la ficha —«se imprime desde `filas` mientras las tenga y desde el modelo en cuanto deja
+de tenerlas», `completarDesdeFilas` de `core/sa.js`— y por el mismo motivo: lo que alguien tiene
+delante manda sobre lo que diga el grupo, porque si no, el primer cambio del departamento al
+modelo reescribiría por la espalda tablas que nadie ha tocado, y nadie relacionaría lo que
+cambió con lo que hizo.
+
+Vive en `estructuraDeTabla` de `core/modelos-tabla.js` y la llaman los **tres** consumidores: el
+PDF (`motor/render-generico.js`), el Word (`motor/exportar-docx.js`) y el editor con la puerta de
+guardado (`core/tablas-edicion.js` y `core/estructurados.js`). Escrita en cada uno, la pantalla
+acabaría pintando una tabla distinta de la que sale impresa, que es la avería del E0 otra vez.
+
+**Por qué el contenido se empareja con TODAS las partes, retiradas incluidas.** Retirar no borra,
+igual que con un apartado o un campo: la parte se queda con `retirado: true`, deja de imprimirse
+y su hueco **sigue** en el contenido de cada tabla. Si el contenido se emparejara solo con las
+vigentes, retirar la segunda de cuatro columnas correría las otras dos un sitio a la izquierda y
+cada tabla del grupo quedaría con su texto bajo otro rótulo sin que nada lo dijera. Restaurarla
+devuelve la columna con lo que tenía escrito.
+
+**Por qué los rótulos no están entre las celdas.** Con estructura, lo guardado es solo el
+contenido y los rótulos los pone la estructura al pintar. Es lo que hace que el modelo valga para
+algo: renombrar una columna en la plantilla la renombra en las once tablas a la vez. La
+consecuencia es que una tabla con estructura no tiene cabecera propia y que el editor se niega a
+lo que cambiaría su forma —añadirle o quitarle partes, combinar celdas, repartir los anchos a
+mano o tocar su cabecera—; escribir y dar estilo se puede siempre.
+
+**Lo que esta pieza no trae.** No hay operaciones para crear ni cambiar un modelo, ni pantalla
+desde la que hacerlo, ni manera de ponerle un modelo a un campo que ya tiene contenido —eso
+último es una migración: habría que soltar la fila de rótulos que ya está entre las celdas y
+emparejarla con las partes—. Y la ficha de situación de aprendizaje sigue con su mecánica aparte
+(`core/sa.js`, `core/ficha-estructura.js`): se absorbe al final, a propósito y medida aparte.
+
+**Dos costuras conocidas del modelo de datos**, por si el día que molesten no se busque dos veces:
+
+- `valor.estructura` guarda las partes y **no el sentido**, así que el sentido de una tabla
+  divergida lo sigue diciendo el modelo del que salió. El departamento puede girarle la tabla
+  noventa grados a algo que ya había divergido, que es justo lo que divergir tenía que evitar.
+- Con `sentido: 'filas'` el contenido es **posicional** contra las partes, así que una tabla solo
+  puede tener cero filas o todas: no hay estado intermedio y el editor no puede llenarla de una en
+  una. La ficha, que es el mismo problema resuelto antes, guarda el contenido **por id de parte**
+  (`ficha[id]`) justamente por esto. Si las tablas a lo alto se usan de verdad, esa es la forma a
+  la que hay que pasarlas.
+
 ---
 
 ## 4. Roadmap
