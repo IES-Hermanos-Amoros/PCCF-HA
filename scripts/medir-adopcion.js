@@ -89,13 +89,44 @@ function modeloEnClaveValor(t) {
   return { id: ID_MODELO, nombre: 'Modelo medido', tipo: MT.TIPO_CLAVE_VALOR, sentido: MT.SENTIDO_FILAS, partes };
 }
 
+// EL MODELO DE PARES: cada fila es «rótulo | valor», o «rótulo | valor | rótulo | valor», y cada
+// rótulo es una parte que lleva su casilla AL LADO. Es la forma de la identificación de un módulo y
+// de la cabecera de una ficha, y la que `al_lado` añadió al modelo.
+//
+// Se propone solo cuando las filas son regulares —todas de dos o todas de cuatro celdas— y los
+// rótulos de las posiciones pares son cortos y distintos. Con filas irregulares no se puede saber
+// dónde empieza cada par sin adivinar, y adivinar es lo que no se hace en ninguna parte de esto.
+const LARGO_ROTULO = 60;
+function modeloEnPares(t) {
+  const filas = (t.rows || []).map((f) => f.map((celda) => limpio(celda.text)));
+  if (!filas.length) return null;
+  const ancho = filas[0].length;
+  if ((ancho !== 2 && ancho !== 4) || !filas.every((f) => f.length === ancho)) return null;
+  const rotulos = [];
+  for (const f of filas) {
+    for (let j = 0; j < ancho; j += 2) {
+      if (!f[j] || f[j].length > LARGO_ROTULO) return null;
+      rotulos.push(f[j]);
+    }
+  }
+  const partes = partesDe(rotulos).map((parte) => ({ ...parte, ancho: 2, al_lado: true }));
+  if (!partes.length) return null;
+  return {
+    id: ID_MODELO, nombre: 'Modelo medido', tipo: MT.TIPO_TABLA, sentido: MT.SENTIDO_FILAS,
+    columnas: ancho, partes,
+  };
+}
+
 // LOS MODELOS QUE SE LE PUEDEN PROPONER A UNA TABLA, en orden de preferencia: el que corresponde al
-// tipo que el importador le ha dado primero, y el otro detrás. Se prueban los dos porque medir con
+// tipo que el importador le ha dado primero, y los otros detrás. Se prueban todos porque medir con
 // uno solo mediría la suerte del importador y no si la tabla se puede adoptar.
 function propuestas(t, tipo) {
   const enColumnas = modeloEnColumnas(t);
   const enClaveValor = modeloEnClaveValor(t);
-  const orden = tipo === MT.TIPO_CLAVE_VALOR ? [enClaveValor, enColumnas] : [enColumnas, enClaveValor];
+  const enPares = modeloEnPares(t);
+  const orden = tipo === MT.TIPO_CLAVE_VALOR
+    ? [enClaveValor, enColumnas, enPares]
+    : [enColumnas, enClaveValor, enPares];
   return orden.filter(Boolean);
 }
 
@@ -103,6 +134,19 @@ function propuestas(t, tipo) {
 // las 306 fichas reales (`CAMPOS_POR_OMISION` de core/sa.js). Es la traducción que la pieza 8 haría:
 // las partes van a lo alto, cada una ocupa su `ancho` de las cuatro columnas, y el grupo pasa de ser
 // una cadena a ser `{ id, etiqueta }` porque en un modelo el id agrupa y la etiqueta se imprime.
+//
+// Y DELANTE, LAS TRES COSAS DE SU CABECERA QUE EL MODELO SABE DECIR: sesiones, evaluación y
+// resultados de aprendizaje son rótulo y valor en la misma fila, que es lo que `al_lado` expresa.
+// `filasDeFicha` las imprime así: «Sesiones | 10 | Evaluación | 1ª» y «Resultado(s) de aprendizaje»
+// a todo lo ancho. Las otras dos —el número y el título— no están aquí porque el modelo NO sabe
+// decirlas: el número lleva su rótulo pegado al valor en la misma celda («Situación de aprendizaje
+// 3») y el título no lleva rótulo ninguno. Esta medición dice exactamente cuánto texto se queda ahí.
+const CABECERA_DE_LA_FICHA = [
+  { id: 'sesiones', etiqueta: 'Sesiones', ancho: 2, al_lado: true },
+  { id: 'evaluacion', etiqueta: 'Evaluación', ancho: 2, al_lado: true },
+  { id: 'raTexto', etiqueta: 'Resultado(s) de aprendizaje', ancho: 4, al_lado: true },
+];
+
 function modeloDeLaFicha() {
   return {
     id: ID_MODELO,
@@ -110,12 +154,12 @@ function modeloDeLaFicha() {
     tipo: MT.TIPO_TABLA,
     sentido: MT.SENTIDO_FILAS,
     columnas: Sa.COLUMNAS,
-    partes: Sa.CAMPOS_POR_OMISION.map((c) => {
+    partes: CABECERA_DE_LA_FICHA.concat(Sa.CAMPOS_POR_OMISION.map((c) => {
       const parte = { id: c.id, etiqueta: c.etiqueta, ancho: c.ancho };
       if (c.grupo) parte.grupo = { id: c.grupo, etiqueta: c.grupo === 'actividades' ? Sa.CABECERA_ACTIVIDADES : c.grupo };
       if (c.solo_si_hay) parte.solo_si_hay = true;
       return parte;
-    }),
+    })),
   };
 }
 
@@ -164,6 +208,10 @@ function nuevaCuenta() {
     // LAS DOS COSAS QUE NO SON LO MISMO: adoptar sin perder texto, y de esas, en cuántas cambia lo
     // que se imprime. Perder texto es inaceptable; cambiar el aspecto es aceptable y hay que avisarlo.
     aspecto: 0, aspectoPor: new Map(),
+    // Cuántas celdas se quedan sin sitio en las que se niegan, y cuántas por tabla. Es la cifra que
+    // dice si a una familia le falta poco o mucho: 311 tablas que dejan DOS celdas cada una no es lo
+    // mismo que 311 que no se pueden leer, aunque las dos cuenten como una negativa.
+    sueltas: 0, porTabla: new Map(), textos: new Map(),
   };
 }
 
@@ -187,6 +235,12 @@ function sumar(cuenta, r, como) {
   cuenta.motivos.set(r.clave, (cuenta.motivos.get(r.clave) || 0) + 1);
   cuenta.enJuego += r.enJuego || 0;
   cuenta.bloqueados += r.bloqueados || 0;
+  const sueltas = r.informe ? r.informe.sueltas : null;
+  if (sueltas && sueltas.length) {
+    cuenta.sueltas += sueltas.length;
+    cuenta.porTabla.set(sueltas.length, (cuenta.porTabla.get(sueltas.length) || 0) + 1);
+    sueltas.forEach((x) => cuenta.textos.set(x.texto, (cuenta.textos.get(x.texto) || 0) + 1));
+  }
   if (!cuenta.ejemplos.has(r.clave)) cuenta.ejemplos.set(r.clave, { motivo: r.motivo, como });
 }
 
@@ -207,6 +261,14 @@ function imprimirCuenta(nombre, cuenta, opts) {
     console.log(`      se niegan ${cuenta.total - cuenta.adoptadas}: ${cuenta.bloqueados} caracteres se quedan fuera del modelo`
       + `, de los que ${cuenta.enJuego} se perderían si se adoptaran a la fuerza:`);
     for (const [clave, n] of porMotivo(cuenta)) console.log(`        ${clave} x${n}`);
+    if (cuenta.sueltas) {
+      const porTabla = [...cuenta.porTabla].sort((a, b) => b[1] - a[1])
+        .map(([n, veces]) => `${n} en ${veces}`).join(', ');
+      console.log(`        ${cuenta.sueltas} celdas se quedan sin sitio (celdas por tabla: ${porTabla})`);
+      const textos = [...cuenta.textos].sort((a, b) => b[1] - a[1]).slice(0, 4)
+        .map(([t, n]) => `«${t}» x${n}`).join(', ');
+      console.log(`        las que más se repiten: ${textos}`);
+    }
     if (opts.mensajes) {
       for (const [clave, e] of cuenta.ejemplos) console.log(`        · ${clave} (${e.como}): ${e.motivo}`);
     }
@@ -311,7 +373,10 @@ function juntar(cuentas) {
     out.total += c.total; out.adoptadas += c.adoptadas; out.casillas += c.casillas;
     out.caracteres += c.caracteres; out.enJuego += c.enJuego; out.bloqueados += c.bloqueados;
     out.reescritos += c.reescritos; out.sinContenido += c.sinContenido; out.aspecto += c.aspecto;
+    out.sueltas += c.sueltas;
     c.aspectoPor.forEach((n, k) => out.aspectoPor.set(k, (out.aspectoPor.get(k) || 0) + n));
+    c.porTabla.forEach((n, k) => out.porTabla.set(k, (out.porTabla.get(k) || 0) + n));
+    c.textos.forEach((n, k) => out.textos.set(k, (out.textos.get(k) || 0) + n));
     c.motivos.forEach((n, k) => out.motivos.set(k, (out.motivos.get(k) || 0) + n));
     c.ejemplos.forEach((e, k) => { if (!out.ejemplos.has(k)) out.ejemplos.set(k, e); });
   }

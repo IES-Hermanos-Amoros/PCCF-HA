@@ -325,11 +325,13 @@
 
   // LA FORMA DE UNA CELDA, en un solo sitio: la comprueban la rejilla (`motivoDeFilas`) y las
   // casillas de una tabla con estructura (`motivoDeCasilla`), que son las mismas celdas sin las
-  // claves de combinar. `claves` es la lista de las que puede llevar; `suyo` es cómo nombrarla.
-  function motivoDeCelda(celda, suyo, claves) {
+  // claves de combinar. `claves` es la lista de las que puede llevar; `suyo` es cómo nombrarla; y
+  // `sobrante` es por qué sobra una clave que no esté en la lista, porque no es el mismo motivo en
+  // una celda de una rejilla que en la casilla de una tabla de clave y valor.
+  function motivoDeCelda(celda, suyo, claves, sobrante = 'que no existe en una celda') {
     if (!esObjeto(celda)) return `${suyo} no es un objeto { text, colspan, rowspan, bold, fondo }.`;
     const extra = sobran(celda, claves);
-    if (extra.length) return `${suyo} lleva ${comillas(extra)}, que no existe en una celda.`;
+    if (extra.length) return `${suyo} lleva ${comillas(extra)}, ${sobrante}.`;
     if (typeof celda.text !== 'string') return `${suyo} no tiene «text», o no es una cadena.`;
     if (celda.colspan !== undefined && !esEntero(celda.colspan, 1)) return `${suyo} tiene un «colspan» que no es un número entero de 1 en adelante.`;
     if (celda.rowspan !== undefined && !esEntero(celda.rowspan, 1)) return `${suyo} tiene un «rowspan» que no es un número entero de 1 en adelante.`;
@@ -663,19 +665,36 @@
   // modelo no puede costarle a nadie la negrita, el fondo, la alineación ni el tamaño que eligió.
   const CLAVES_CASILLA = CLAVES_CELDA.filter((k) => ['colspan', 'rowspan', 'campo'].indexOf(k) < 0);
 
+  // Y LA CASILLA DE UNA TABLA DE CLAVE Y VALOR SOLO LLEVA SU TEXTO. Una tabla de clave y valor se
+  // imprime por sus pares, y un par es `{ etiqueta, valor }`: el PDF pinta el valor con
+  // `{ text: p.valor }` y el Word con `celda(p.valor)` (`pintarClaveValor` de
+  // motor/render-generico.js, `filasParejas` de motor/exportar-docx.js). Así que una negrita, un
+  // fondo, una alineación o un tamaño guardados ahí no se imprimirían NUNCA, y una clave que se
+  // guarda y no significa nada acaba leyéndola alguien: es el estado silencioso que esta puerta
+  // existe para impedir, el mismo que «en dos sitios a la vez» y que los «anchos» de una tabla
+  // adoptada. Quien adopta un modelo en una tabla de clave y valor pierde el estilo por celda que
+  // trajera del Word, y `adoptar` (core/tablas-adopcion.js) lo dice con el número de partes a las
+  // que les pasa antes de que nadie acepte nada.
+  const CLAVES_CASILLA_PAR = ['text'];
+
   // LA FORMA DEL CONTENIDO POR ID DE PARTE. El emparejamiento —que cada casilla esté bajo el id de
   // una parte que existe y que lo que guarde cada parte sea lo que le toca por el sentido— lo
   // comprueba `motivoDeContenido` de core/modelos-tabla.js, que es quien sabe de partes; aquí se
   // comprueba lo que esta puerta sabe, que es la forma de cada casilla por dentro.
-  function motivoDeCasillas(valor, donde) {
+  function motivoDeCasillas(valor, donde, tipo) {
     const MT_ = MT();
     if (!esObjeto(valor)) return null;
     const casillas = valor[MT_.CLAVE_CASILLAS];
     if (!esObjeto(casillas)) return null;
+    const par = tipo === TIPO_CLAVE_VALOR;
+    const claves = par ? CLAVES_CASILLA_PAR : CLAVES_CASILLA;
+    const sobrante = par
+      ? 'que no se imprimiría nunca: una tabla de clave y valor se imprime por sus pares, que son el rótulo y el texto, así que la negrita, el fondo, la alineación y el tamaño no saldrían en el documento'
+      : 'que no existe en una celda';
     for (const id of Object.keys(casillas)) {
       const x = casillas[id];
       const una = (celda, cual) => {
-        const m = motivoDeCelda(celda, cual, CLAVES_CASILLA);
+        const m = motivoDeCelda(celda, cual, claves, sobrante);
         if (m) return m;
         return motivoDeTextoDeCelda(celda.text, cual);
       };
@@ -713,7 +732,7 @@
     const e = MT().motivoDeEstructura(valor.estructura, donde,
       { tipo: campo.tipo, sentido: MT().sentidoVigente(campo, valor, modelos) });
     if (e) return e;
-    return motivoDeCasillas(valor, donde);
+    return motivoDeCasillas(valor, donde, campo.tipo);
   }
 
   // UNA TABLA ADOPTADA NO LLEVA «anchos». El ancho de cada columna lo dice su parte en el modelo
@@ -1149,7 +1168,8 @@
     ALINEACION_CELDA_OMISION, TAMANO_CELDA_OMISION,
     seGuarda, queSeImprime, fondoDeCelda, alineacionDeCelda, tamanoDeCelda, cabeceraDeTabla, cabeceraFijaDelCampo,
     motivoDeFilas, motivoDeRejilla, motivoDeForma, columnasDeRejilla, motivoDeClaveValor, motivoDeTablaRaCe,
-    motivoDeTablaConModelo, motivoDeClaveValorConModelo, motivoDeCasillas, motivoDeCelda, CLAVES_CASILLA,
+    motivoDeTablaConModelo, motivoDeClaveValorConModelo, motivoDeCasillas, motivoDeCelda,
+    CLAVES_CASILLA, CLAVES_CASILLA_PAR,
     motivoDePonderacion, motivoPonderaciones, conservarFilas, sumas,
     motivoFicha, motivoFichas,
     motivoItems, renumerarItems,

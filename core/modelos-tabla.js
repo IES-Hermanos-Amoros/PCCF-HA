@@ -137,8 +137,24 @@
 (function (global) {
   'use strict';
 
-  // ESTE FICHERO NO DEPENDE DE NADIE, a propósito: la puerta (core/estructurados.js) y el editor
-  // (core/tablas-edicion.js) le preguntan por la regla, y la regla no necesita a ninguno de los dos.
+  // ESTE FICHERO NO DEPENDE DE LA PUERTA NI DEL EDITOR, a propósito: core/estructurados.js y
+  // core/tablas-edicion.js le preguntan por la regla, y la regla no necesita a ninguno de los dos.
+  // Su única dependencia es core/sa.js, y es la del LECTOR: dos partes no pueden llamarse igual, y
+  // eso se comprueba con el mapa con el que se leen las tablas importadas y no con una comparación
+  // parecida (ver `choqueDeEtiquetas`). Es la misma dependencia, por el mismo motivo y con la misma
+  // forma que la de core/plantilla.js, y no hay ciclo: core/sa.js no depende de nadie.
+  //
+  // Las dependencias se resuelven al usarlas y con la ruta LITERAL en cada rama: un
+  // `require(variable)` corta el `npm run build` con «Can't resolve <dynamic>».
+  function deCore(nombre) {
+    if (global.Core && global.Core[nombre]) return global.Core[nombre];
+    if (typeof require === 'function') {
+      if (nombre === 'sa') return require('./sa.js');
+    }
+    throw new Error('core/modelos-tabla.js necesita core/' + nombre + '.js');
+  }
+  const Sa = () => deCore('sa');
+
   // Por eso los dos tipos de campo a los que se les puede poner modelo y los topes están escritos
   // aquí en lugar de importados: son `TIPO_TABLA`, `TIPO_CLAVE_VALOR`, `MAX_COLUMNAS` y `MAX_FILAS`
   // de core/estructurados.js. Es lo mismo que hace `slug` de core/plantilla.js con el del importador,
@@ -175,9 +191,15 @@
   const sobran = (objeto, permitidas) => Object.keys(objeto).filter((k) => permitidas.indexOf(k) < 0);
   const comillas = (claves) => claves.map((k) => '«' + k + '»').join(', ');
   const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+  // «de» + «el» es «del», y los sitios se nombran con su artículo («el modelo», «la tabla»): sin
+  // esto, el motivo que lee una persona dice «la parte 2 de el modelo».
+  const de = (donde) => {
+    const d = String(donde);
+    return d.startsWith('el ') ? `del ${d.slice(3)}` : `de ${d}`;
+  };
 
   const CLAVES_MODELO = ['id', 'nombre', 'tipo', 'sentido', 'columnas', 'partes', 'version'];
-  const CLAVES_PARTE = ['id', 'etiqueta', 'peso', 'ancho', 'grupo', 'solo_si_hay', 'retirado'];
+  const CLAVES_PARTE = ['id', 'etiqueta', 'peso', 'ancho', 'grupo', 'solo_si_hay', 'retirado', 'al_lado'];
   const CLAVES_GRUPO = ['id', 'etiqueta'];
   const CLAVES_ESTRUCTURA = ['partes', 'sentido', 'columnas'];
 
@@ -350,6 +372,25 @@
     return typeof a === 'number' && a > 1 ? a : 1;
   };
 
+  // ¿VA ESTA PARTE AL LADO DE SU RÓTULO, en la misma fila, en lugar de debajo? Es la tercera forma de
+  // colocar y la única que faltaba: `columnas` pone los rótulos arriba, `filas` los pone encima de su
+  // contenido, y `al_lado` los pone a la izquierda, en la misma fila. Sin ella no se pueden decir las
+  // cosas que los documentos del departamento escriben así —«Sesiones | 10» en la cabecera de una
+  // ficha de situación de aprendizaje, o la identificación de un módulo, que lleva DOS pares por
+  // fila—, y no poder decirlas es lo que impedía absorber la ficha: habría que sacar del modelo cinco
+  // de sus campos, y entonces la ficha no se absorbe, se reescribe.
+  //
+  // NO SE SOLAPA CON `tabla_clave_valor`, que es el otro sitio donde un rótulo va al lado de su
+  // valor: allí la tabla es ENTERA de pares, son dos columnas fijas y se imprime por su propio camino
+  // (`paresVigentes`, `pintarClaveValor`). `al_lado` es para una parte DENTRO de una rejilla que
+  // mezcla filas de pares con filas de rótulo encima, que es lo que una tabla de clave y valor no
+  // puede ser. Por eso `motivoDeModelo` lo prohíbe en un modelo de clave y valor: una forma, un sitio.
+  //
+  // `ancho` es lo que ocupa EL PAR: una columna el rótulo y el resto la casilla, así que hacen falta
+  // dos como mínimo. Con `ancho: 4` sale «rótulo | lo escrito a lo ancho de tres columnas».
+  const alLado = (parte) => !!(esObjeto(parte) && parte.al_lado);
+  const ocupaCasilla = (parte) => Math.max(1, ocupa(parte) - 1);
+
   // LAS PARTES, EMPAQUETADAS EN FILAS DE `columnas`. Se abre fila cuando la siguiente no cabe o
   // cuando cambia de grupo, que es lo que hace que un grupo empiece siempre en una fila nueva.
   function empaquetar(vigentes, columnas) {
@@ -359,7 +400,11 @@
     for (const parte of vigentes) {
       const w = ocupa(parte);
       // Se compara el ID del grupo y no su etiqueta: es el id el que dice qué partes van juntas.
-      if (actual.length && (suma + w > columnas || idDeGrupo(actual[0]) !== idDeGrupo(parte))) {
+      // Se abre fila cuando la siguiente no cabe, cuando cambia de grupo y cuando cambia de forma de
+      // colocar: una fila de partes que van al lado de su rótulo imprime UNA fila de tabla y una de
+      // partes con el rótulo encima imprime DOS, así que no se pueden mezclar en la misma.
+      if (actual.length && (suma + w > columnas || idDeGrupo(actual[0]) !== idDeGrupo(parte)
+        || alLado(actual[0]) !== alLado(parte))) {
         filas.push(actual);
         actual = [];
         suma = 0;
@@ -399,6 +444,16 @@
         out.push([celda(etiquetaDeGrupo(fila[0]), conColspan(columnas, { bold: true }))]);
       }
       grupoAnterior = grupo;
+      // LAS PARTES QUE VAN AL LADO DE SU RÓTULO IMPRIMEN UNA SOLA FILA: rótulo, casilla, rótulo,
+      // casilla… Las que lo llevan encima imprimen dos, los rótulos arriba y los contenidos debajo.
+      // `empaquetar` ya garantiza que una fila no mezcla las dos formas.
+      if (alLado(fila[0])) {
+        out.push(fila.reduce((celdas, p) => celdas.concat([
+          celda(etiquetaDe(p), { bold: true, campo: p.id }),
+          Object.assign({}, casillaDe(casillas, p) || celda(''), conColspan(ocupaCasilla(p), undefined)),
+        ]), []));
+        continue;
+      }
       out.push(fila.map((p) => celda(etiquetaDe(p), conColspan(ocupa(p), { bold: true, campo: p.id }))));
       out.push(fila.map((p) => {
         const x = casillaDe(casillas, p);
@@ -507,7 +562,7 @@
     if (!esCadena(parte.id)) return `${donde} no tiene «id»: es con el que se empareja su contenido y no cambia nunca.`;
     if (ids && ids.has(parte.id)) return `${donde} repite el id «${parte.id}», y dos partes con el mismo id no se pueden distinguir.`;
     if (typeof parte.etiqueta !== 'string') return `${donde} no tiene «etiqueta», o no es texto: es el rótulo que se imprime.`;
-    if (parte.etiqueta.length > LARGO_NOMBRE) return `la etiqueta de ${donde} tiene ${parte.etiqueta.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
+    if (parte.etiqueta.length > LARGO_NOMBRE) return `la etiqueta ${de(donde)} tiene ${parte.etiqueta.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
     if (parte.retirado !== undefined && typeof parte.retirado !== 'boolean') return `${donde} tiene «retirado» y no es true ni false.`;
     if (parte.solo_si_hay !== undefined && typeof parte.solo_si_hay !== 'boolean') {
       return `${donde} tiene «solo_si_hay» y no es true ni false.`;
@@ -518,18 +573,30 @@
         return `${donde} tiene «grupo», y los grupos son de las partes que van a lo alto en una tabla: son los que abren fila y escriben su rótulo encima.`;
       }
       const g = parte.grupo;
-      if (!esObjeto(g)) return `el «grupo» de ${donde} no es un objeto { id, etiqueta }: el id dice qué partes van juntas y la etiqueta es lo que se imprime.`;
+      if (!esObjeto(g)) return `el «grupo» ${de(donde)} no es un objeto { id, etiqueta }: el id dice qué partes van juntas y la etiqueta es lo que se imprime.`;
       const sobra = sobran(g, CLAVES_GRUPO);
-      if (sobra.length) return `el grupo de ${donde} lleva ${comillas(sobra)}, que no existe en un grupo: solo ${comillas(CLAVES_GRUPO)}.`;
-      if (!esCadena(g.id)) return `el grupo de ${donde} no tiene «id»: es con el que se sabe qué partes van juntas y no cambia al renombrarlo.`;
+      if (sobra.length) return `el grupo ${de(donde)} lleva ${comillas(sobra)}, que no existe en un grupo: solo ${comillas(CLAVES_GRUPO)}.`;
+      if (!esCadena(g.id)) return `el grupo ${de(donde)} no tiene «id»: es con el que se sabe qué partes van juntas y no cambia al renombrarlo.`;
       // SE EXIGE EL RÓTULO, y no se admite en blanco como en la etiqueta de una parte. Una parte sin
       // etiqueta imprime su fila igual y se sabe de quién es, porque la celda lleva su `campo`; un
       // grupo sin rótulo imprime una banda a todo lo ancho que no dice nada y de la que no se sabe
       // nada, y su único efecto es ese. El precedente no puede siquiera expresarlo: en la ficha el
       // grupo es una sola cadena, así que un grupo sin texto no escribe ninguna fila.
-      if (!esCadena(g.etiqueta)) return `el grupo de ${donde} no tiene «etiqueta»: es el rótulo que se imprime encima, y un grupo sin rótulo es una banda en blanco que no dice nada.`;
+      if (!esCadena(g.etiqueta)) return `el grupo ${de(donde)} no tiene «etiqueta»: es el rótulo que se imprime encima, y un grupo sin rótulo es una banda en blanco que no dice nada.`;
 
-      if (g.etiqueta.length > LARGO_NOMBRE) return `la etiqueta del grupo de ${donde} tiene ${g.etiqueta.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
+      if (g.etiqueta.length > LARGO_NOMBRE) return `la etiqueta del grupo ${de(donde)} tiene ${g.etiqueta.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
+    }
+
+    // `al_lado` es dónde va la casilla de una parte que va a lo alto: al lado de su rótulo en lugar
+    // de debajo. Solo existe ahí, y pide dos columnas, porque el par ocupa las dos.
+    if (parte.al_lado !== undefined) {
+      if (typeof parte.al_lado !== 'boolean') return `${donde} tiene «al_lado» y no es true ni false.`;
+      if (parte.al_lado && !aLoAlto_) {
+        return `${donde} tiene «al_lado», y eso lo dicen las partes que van a lo alto en una tabla: es que su casilla va a la derecha de su rótulo, en la misma fila, en lugar de debajo. A lo ancho el rótulo va siempre arriba, y una tabla de clave y valor es entera de pares.`;
+      }
+      if (parte.al_lado && ocupa(parte) < 2) {
+        return `${donde} va al lado de su rótulo y ocupa una sola columna: hacen falta dos como mínimo, una para el rótulo y otra para lo que se escriba, así que dile el «ancho» del par.`;
+      }
     }
 
     // `peso` es la medida de las partes que van a lo ANCHO: un peso relativo de columna.
@@ -538,7 +605,7 @@
         return `${donde} tiene «peso», y el peso es de las partes que van a lo ancho, donde cada parte es una columna y el peso es la parte del ancho de la hoja que se lleva. A lo alto, lo que se dice es «ancho»: las columnas que ocupa.`;
       }
       if (typeof parte.peso !== 'number' || !Number.isFinite(parte.peso) || parte.peso <= 0) {
-        return `el «peso» de ${donde} no es un número positivo: los pesos son relativos, no medidas.`;
+        return `el «peso» ${de(donde)} no es un número positivo: los pesos son relativos, no medidas.`;
       }
     }
 
@@ -553,7 +620,7 @@
         return `${donde} tiene «ancho», y el ancho son las columnas que ocupa una parte que va a lo alto. A lo ancho, cada parte ES una columna y lo que se dice es «peso»: la parte del ancho de la hoja que se lleva.`;
       }
       if (!esEntero(parte.ancho, 1)) {
-        return `el «ancho» de ${donde} no es un número entero de 1 en adelante: a lo alto, el ancho son las columnas de la tabla que ocupa la parte.`;
+        return `el «ancho» ${de(donde)} no es un número entero de 1 en adelante: a lo alto, el ancho son las columnas de la tabla que ocupa la parte.`;
       }
       if (columnas && parte.ancho > columnas) {
         return `${donde} ocupa ${plural(parte.ancho, 'columna', 'columnas')} y la tabla tiene ${columnas}: una parte no puede ocupar más de lo que hay.`;
@@ -565,7 +632,7 @@
   // La lista de partes de un modelo o de una estructura propia, medida con el sentido, el tipo y las
   // columnas que les tocan.
   function motivoDeListaDePartes(partes, donde, sentido, tipo, columnas) {
-    if (!Array.isArray(partes)) return `las partes de ${donde} no son una lista.`;
+    if (!Array.isArray(partes)) return `las partes ${de(donde)} no son una lista.`;
     const tope = sentido === SENTIDO_FILAS ? MAX_PARTES_ALTO : MAX_PARTES_ANCHO;
     if (partes.length > tope) {
       return sentido === SENTIDO_FILAS
@@ -576,16 +643,71 @@
     // UN GRUPO, UNA ETIQUETA. Dos partes del mismo grupo con rótulos distintos son dos verdades sobre
     // lo mismo, y la que se imprimiría es la de la primera: la otra se guardaría para no verse nunca.
     const etiquetasDeGrupo = new Map();
+    const choque = choqueDeEtiquetas(partes);
+    if (choque) {
+      return `${choque.suya
+        ? `la parte ${choque.i + 1} ${de(donde)} se llama «${choque.etiqueta}», igual que otra de sus partes`
+        : `la parte ${choque.i + 1} ${de(donde)}, «${choque.etiqueta}», se reconoce con la misma redacción que «${choque.dueno}»`}`
+        + ': el lector de una tabla importada reconoce las partes por el texto de su etiqueta, así que con'
+        + ' dos que se llaman igual se queda con una y el texto de la otra se pierde al releerse.';
+    }
     for (let i = 0; i < partes.length; i += 1) {
-      const m = motivoDeParte(partes[i], `la parte ${i + 1} de ${donde}`, { sentido, tipo, columnas, ids });
+      const m = motivoDeParte(partes[i], `la parte ${i + 1} ${de(donde)}`, { sentido, tipo, columnas, ids });
       if (m) return m;
       ids.add(partes[i].id);
       const g = grupoDe(partes[i]);
       if (g) {
         if (etiquetasDeGrupo.has(g.id) && etiquetasDeGrupo.get(g.id) !== g.etiqueta) {
-          return `la parte ${i + 1} de ${donde} llama al grupo «${g.id}» «${g.etiqueta}» y otra de sus partes lo llama «${etiquetasDeGrupo.get(g.id)}»: un grupo se imprime con un solo rótulo.`;
+          return `la parte ${i + 1} ${de(donde)} llama al grupo «${g.id}» «${g.etiqueta}» y otra de sus partes lo llama «${etiquetasDeGrupo.get(g.id)}»: un grupo se imprime con un solo rótulo.`;
         }
         etiquetasDeGrupo.set(g.id, g.etiqueta);
+      }
+    }
+    return null;
+  }
+
+  // DOS PARTES NO PUEDEN LLAMARSE IGUAL, Y NO ES UNA CUESTIÓN DE ESTÉTICA.
+  //
+  // El lector de una tabla importada reconoce cada parte por el TEXTO de su etiqueta, que es lo único
+  // que el Word trae: es con eso con lo que `adoptar` (core/tablas-adopcion.js) empareja los rótulos
+  // de una tabla ya escrita con las partes de su modelo. Con dos partes que se llaman igual, ese mapa
+  // se queda con UNA sola y la otra deja de leerse, así que una tabla con texto en las dos columnas
+  // perdería el de una al volver a montarse, y lo perdería en silencio.
+  //
+  // Se comprueba con el mapa DEL LECTOR (`porEtiqueta` y `norm` de core/sa.js) y no con una
+  // comparación propia, para que el criterio sea exactamente el mismo: así cubre los acentos y las
+  // mayúsculas y también los SINÓNIMOS, que chocan igual aunque el texto no sea idéntico. Es la misma
+  // regla que `choqueDeEtiquetaFicha` de core/plantilla.js, que la ficha ya tenía y el modelo no.
+  //
+  // QUÉ CLAVES RECONOCE EL LECTOR DE UNA PARTE: se le preguntan a él, porque el mapa de una lista de
+  // UNA sola parte son exactamente sus claves —su etiqueta y sus sinónimos—. Escribir aquí esa lista
+  // otra vez sería la segunda copia de la regla, y el día que el lector aceptara una redacción más
+  // esta comprobación dejaría de cubrirla sin que nada lo dijera.
+  //
+  // Las retiradas no cuentan, porque el lector no las mira, y la etiqueta EN BLANCO tampoco: una
+  // parte sin rótulo no la nombra nadie, y por eso `adoptar` no empareja un rótulo en blanco con
+  // ninguna parte.
+  function choqueDeEtiquetas(partes) {
+    const sa = Sa();
+    const vistas = new Map();
+    const lista = Array.isArray(partes) ? partes : [];
+    for (let i = 0; i < lista.length; i += 1) {
+      const parte = lista[i];
+      if (!esObjeto(parte) || parte.retirado) continue;
+      for (const clave of sa.porEtiqueta([parte]).keys()) {
+        if (!clave) continue;
+        const dueno = vistas.get(clave);
+        if (dueno && dueno !== parte) {
+          return {
+            i,
+            etiqueta: etiquetaDe(parte),
+            choca: clave,
+            dueno: etiquetaDe(dueno) || dueno.id,
+            // Se llaman igual, o una de las dos se reconoce también con la redacción de la otra.
+            suya: sa.norm(etiquetaDe(parte)) === clave && sa.norm(etiquetaDe(dueno)) === clave,
+          };
+        }
+        vistas.set(clave, parte);
       }
     }
     return null;
@@ -599,7 +721,7 @@
     if (sentido !== SENTIDO_FILAS || tipo === TIPO_CLAVE_VALOR) {
       return `${donde} dice de cuántas «columnas» es, y eso solo lo dicen las tablas cuyas partes van a lo alto: a lo ancho las columnas son las partes.`;
     }
-    if (!esEntero(columnas, 1)) return `las «columnas» de ${donde} no son un número entero de 1 en adelante.`;
+    if (!esEntero(columnas, 1)) return `las «columnas» ${de(donde)} no son un número entero de 1 en adelante.`;
     if (columnas > MAX_PARTES_ANCHO) {
       return `${donde} dice tener ${columnas} columnas: el máximo son ${MAX_PARTES_ANCHO}, porque con más no caben en el ancho de la hoja.`;
     }
@@ -622,7 +744,7 @@
       return `${donde} está guardado como «${id}» y dice llamarse «${modelo.id}»: el id de un modelo es la clave con la que está en la plantilla.`;
     }
     if (!esCadena(modelo.nombre)) return `${donde} no tiene «nombre», y es con el que se elige en una lista.`;
-    if (modelo.nombre.length > LARGO_NOMBRE) return `el nombre de ${donde} tiene ${modelo.nombre.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
+    if (modelo.nombre.length > LARGO_NOMBRE) return `el nombre ${de(donde)} tiene ${modelo.nombre.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
     if (TIPOS.indexOf(modelo.tipo) < 0) return `${donde} es de tipo «${modelo.tipo}», y los modelos son de ${comillas(TIPOS)}.`;
     if (SENTIDOS.indexOf(modelo.sentido) < 0) return `${donde} no dice en qué sentido van sus partes: los sentidos son ${comillas(SENTIDOS)}.`;
     // Una tabla de clave y valor son dos columnas fijas, el concepto a la izquierda y su contenido a
@@ -636,7 +758,7 @@
       columnasDeclaradas(modelo) || COLUMNAS_POR_OMISION);
     if (p) return p;
     if (modelo.version !== undefined && !(Number.isInteger(modelo.version) && modelo.version >= 1)) {
-      return `la versión de ${donde} no es un número entero de 1 en adelante.`;
+      return `la versión ${de(donde)} no es un número entero de 1 en adelante.`;
     }
     return null;
   }
@@ -667,26 +789,26 @@
   // la tabla con una estructura propia que no hace nada y que nadie ve.
   function motivoDeEstructura(estructura, donde, { tipo, sentido: respaldo } = {}) {
     if (estructura === undefined) return null;
-    if (!esObjeto(estructura)) return `la estructura de ${donde} no es un objeto { partes, sentido }.`;
+    if (!esObjeto(estructura)) return `la estructura ${de(donde)} no es un objeto { partes, sentido }.`;
     const extra = sobran(estructura, CLAVES_ESTRUCTURA);
-    if (extra.length) return `la estructura de ${donde} lleva ${comillas(extra)}, que no existe en la estructura de una tabla: solo ${comillas(CLAVES_ESTRUCTURA)}.`;
-    if (!Array.isArray(estructura.partes)) return `las partes de la estructura de ${donde} no son una lista.`;
+    if (extra.length) return `la estructura ${de(donde)} lleva ${comillas(extra)}, que no existe en la estructura de una tabla: solo ${comillas(CLAVES_ESTRUCTURA)}.`;
+    if (!Array.isArray(estructura.partes)) return `las partes de la estructura ${de(donde)} no son una lista.`;
     if (!estructura.partes.length) {
-      return `la estructura de ${donde} no tiene ninguna parte: una tabla con estructura propia es una que ha divergido de su modelo, y sin partes no hay forma que seguir.`;
+      return `la estructura ${de(donde)} no tiene ninguna parte: una tabla con estructura propia es una que ha divergido de su modelo, y sin partes no hay forma que seguir.`;
     }
     if (estructura.sentido === undefined) {
-      return `la estructura de ${donde} no dice en qué sentido van sus partes: lo guarda ella y no su modelo, para que un cambio del modelo no pueda girarle la tabla después.`;
+      return `la estructura ${de(donde)} no dice en qué sentido van sus partes: lo guarda ella y no su modelo, para que un cambio del modelo no pueda girarle la tabla después.`;
     }
     if (SENTIDOS.indexOf(estructura.sentido) < 0) {
-      return `la estructura de ${donde} va en «${estructura.sentido}», y los sentidos son ${comillas(SENTIDOS)}.`;
+      return `la estructura ${de(donde)} va en «${estructura.sentido}», y los sentidos son ${comillas(SENTIDOS)}.`;
     }
     if (tipo === TIPO_CLAVE_VALOR && estructura.sentido !== SENTIDO_FILAS) {
-      return `la estructura de ${donde} es de clave y valor y va en «${estructura.sentido}»: en una tabla de clave y valor cada parte es una fila.`;
+      return `la estructura ${de(donde)} es de clave y valor y va en «${estructura.sentido}»: en una tabla de clave y valor cada parte es una fila.`;
     }
     const sentido = declarado(estructura) || (SENTIDOS.indexOf(respaldo) >= 0 ? respaldo : sentidoPorOmision(tipo));
-    const col = motivoDeColumnas(estructura.columnas, `la estructura de ${donde}`, sentido, tipo);
+    const col = motivoDeColumnas(estructura.columnas, `la estructura ${de(donde)}`, sentido, tipo);
     if (col) return col;
-    return motivoDeListaDePartes(estructura.partes, `la estructura de ${donde}`, sentido, tipo,
+    return motivoDeListaDePartes(estructura.partes, `la estructura ${de(donde)}`, sentido, tipo,
       columnasDeclaradas(estructura) || COLUMNAS_POR_OMISION);
   }
 
@@ -716,7 +838,7 @@
     }
 
     if (esObjeto(valor) && valor[CLAVE_CASILLAS] !== undefined && !esObjeto(valor[CLAVE_CASILLAS])) {
-      return `«${CLAVE_CASILLAS}» de ${donde} no es un objeto { idDeParte: contenido }.`;
+      return `«${CLAVE_CASILLAS}» ${de(donde)} no es un objeto { idDeParte: contenido }.`;
     }
     if (!adoptada(valor)) {
       // No ha adoptado su estructura: conserva su rejilla o sus pares y se comprueba como siempre. Lo
@@ -770,6 +892,7 @@
     modelosDe, buscar, modeloDeCampo, partesVigentes, casillasDe, adoptada, grupoDe,
     estructuraDeTabla, tablaVigente, paresVigentes,
     motivoDeModelo, motivoDeModelos, motivoDeParte, motivoDeEstructura, motivoDeContenido,
+    choqueDeEtiquetas, alLado,
   };
 
   global.Core = global.Core || {};

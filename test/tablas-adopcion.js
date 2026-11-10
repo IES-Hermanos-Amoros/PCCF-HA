@@ -215,16 +215,38 @@ prueba('una columna sin rotulo y sin nada escrito no se niega: se adopta y se av
   assert.match(r.informe.aviso, /La columna 3 no tiene rótulo ni nada escrito, así que desaparece/);
 });
 
-prueba('se niega con una celda que ocupa varias columnas o varias filas', () => {
-  const conColspan = { filas: [[neg('Nombre'), neg('Descripción')], [c('Uno', { colspan: 2 })]] };
+prueba('se niega con una celda combinada EN LA CABECERA, que es donde no se sabe de quien es', () => {
+  const conColspan = { filas: [[neg('Nombre', { colspan: 2 })], [c('Uno'), c('lo uno')]] };
   const r1 = adoptar(campoDe('tabla'), conColspan, modelo());
   assert.equal(r1.clave, 'celda-combinada');
-  assert.match(r1.motivo, /La celda 1 de la fila 2 ocupa 2 columnas/);
+  assert.match(r1.motivo, /La celda 1 de la fila 1 ocupa 2 columnas/);
   assert.match(r1.motivo, /de una parte y de una sola/);
+  // Un rotulo que ocupa dos filas es rotulo y contenido a la vez.
   const conRowspan = { filas: [[neg('Nombre', { rowspan: 2 }), neg('Descripción')], [c('lo uno')]] };
   const r2 = adoptar(campoDe('tabla'), conRowspan, modelo());
   assert.equal(r2.clave, 'celda-combinada');
   assert.match(r2.motivo, /ocupa 2 filas/);
+});
+
+prueba('una celda combinada en el CUERPO se despliega: no se pierde texto y se avisa', () => {
+  // La forma mayoritaria de los documentos que no son programaciones: una primera columna fusionada
+  // que agrupa varias filas. Desplegada, su texto queda en la primera y las demas en blanco.
+  const valor = {
+    filas: [
+      [neg('Nombre'), neg('Descripción')],
+      [c('Unidad 1', { rowspan: 3 }), c('criterio a')],
+      [c('criterio b')],
+      [c('criterio c')],
+    ],
+  };
+  const campo = campoDe('tabla');
+  const r = adoptar(campo, valor, modelo());
+  assert.equal(r.motivo, null);
+  assert.deepEqual(r.valor.casillas.p1.map((x) => x.text), ['Unidad 1', '', '']);
+  assert.deepEqual(r.valor.casillas.p2.map((x) => x.text), ['criterio a', 'criterio b', 'criterio c']);
+  assert.equal(r.informe.aspecto.combinadas, 1);
+  assert.match(r.informe.aviso, /deja de estar combinada/);
+  assert.equal(Est.motivoDeCampo(campo, r.valor, { modelos: con(modelo()) }), null);
 });
 
 prueba('se niega sin modelo, con el modelo vacio, con el modelo de otro tipo y ya adoptada', () => {
@@ -361,13 +383,16 @@ prueba('a lo alto: una fila con texto que no es de rotulos ni de contenido se ni
   assert.match(r.motivo, /Nota al pie que nadie reconoce/);
 });
 
-prueba('a lo alto: una fila tapada por un rowspan de arriba se niega, y dice por que', () => {
+prueba('a lo alto: un rowspan que corre las celdas de la fila de contenido se niega', () => {
+  // La rejilla se despliega antes de leerla, asi que cada texto se sabe en que columna esta de
+  // verdad. Aqui el rotulo ocupa dos filas y empuja los contenidos a columnas que no son las suyas:
+  // uno se queda sin rotulo encima, y antes de darle a una parte el texto de otra se niega.
   const valor = alto();
   valor.filas[3][0].rowspan = 2;
   const r = adoptar(campoDe('tabla'), valor, mAlto());
-  assert.equal(r.clave, 'celda-combinada');
-  assert.match(r.motivo, /La fila 5 está debajo de una celda que ocupa varias filas/);
-  assert.match(r.motivo, /no están en la columna en la que parecen estar/);
+  assert.equal(r.valor, null);
+  assert.equal(r.clave, 'celda-sin-sitio');
+  assert.match(r.motivo, /lo eval/);
 });
 
 prueba('a lo alto: un rowspan en una fila que no se lee no estorba, y su texto se dice', () => {
@@ -389,6 +414,90 @@ prueba('a lo alto: una parte solo_si_hay sin nada escrito no pierde nada', () =>
   assert.deepEqual(r.informe.sinContenido.map((p) => p.id), ['extra']);
   assert.match(r.informe.aviso, /se queda sin nada escrito/);
   assert.equal(Est.motivoDeCampo(campo, r.valor, { modelos: con(m) }), null);
+});
+
+// ---------------------------------------------------------------- el rotulo y su valor, al lado
+
+// La cabecera de una ficha de situacion de aprendizaje: dos pares en una fila y uno a todo lo ancho.
+const mPar = () => ({
+  id: 'm', nombre: 'Cabecera', tipo: 'tabla', sentido: 'filas', columnas: 4,
+  partes: [
+    { id: 'ses', etiqueta: 'Sesiones', ancho: 2, al_lado: true },
+    { id: 'ev', etiqueta: 'Evaluación', ancho: 2, al_lado: true },
+    { id: 'ra', etiqueta: 'Resultado(s) de aprendizaje', ancho: 4, al_lado: true },
+    { id: 'ce', etiqueta: 'Criterios de evaluación', ancho: 4 },
+  ],
+});
+const par = () => ({
+  filas: [
+    [neg('Sesiones'), c('10'), neg('Evaluación'), c('1ª')],
+    [neg('Resultado(s) de aprendizaje'), c('RA1. Reconoce los elementos', { colspan: 3 })],
+    [neg('Criterios de evaluación', { colspan: 4 })],
+    [c('a) uno\nb) dos', { colspan: 4 })],
+  ],
+});
+
+prueba('al lado: una fila de pares se lee por pares, y la de rotulos por columnas', () => {
+  const campo = campoDe('tabla');
+  const r = adoptar(campo, par(), mPar());
+  assert.equal(r.motivo, null);
+  // La casilla conserva el estilo de la celda, `bold: false` incluido: es lo que la celda traia.
+  assert.deepEqual(r.valor.casillas.ses, { text: '10', bold: false });
+  assert.equal(r.valor.casillas.ev.text, '1ª');
+  assert.equal(r.valor.casillas.ra.text, 'RA1. Reconoce los elementos');
+  assert.equal(r.valor.casillas.ce.text, 'a) uno\nb) dos');
+  assert.equal(Est.motivoDeCampo(campo, r.valor, { modelos: con(mPar()) }), null);
+});
+
+prueba('al lado: lo que se imprime es la misma tabla, celda a celda', () => {
+  const campo = campoDe('tabla');
+  const r = adoptar(campo, par(), mPar());
+  const filas = MT.tablaVigente(campo, r.valor, con(mPar()), false).filas;
+  const texto = (fs) => fs.map((f) => f.map((x) => `${String(x.text).trim()}${x.colspan > 1 ? `/${x.colspan}` : ''}`).join(' | '));
+  assert.deepEqual(texto(filas), texto(par().filas));
+});
+
+prueba('al lado: una fila tapada por un rowspan se lee igual, porque la rejilla se despliega', () => {
+  // Es la cabecera de la ficha de verdad: el numero y el titulo ocupan dos filas, asi que la fila de
+  // «Evaluacion» trae menos celdas y su texto esta en columnas que no son las que parecen.
+  const m = mPar();
+  const valor = {
+    filas: [
+      [neg('Situación de aprendizaje 1', { rowspan: 2 }), neg('El título', { rowspan: 2 }), neg('Sesiones'), c('10')],
+      [neg('Evaluación'), c('1ª')],
+    ],
+  };
+  const r = adoptar(campoDe('tabla'), valor, m);
+  // Se niega, pero por lo que de verdad falla: las dos celdas de arriba no son ninguna parte.
+  assert.equal(r.clave, 'celda-sin-sitio');
+  assert.match(r.motivo, /Situación de aprendizaje 1/);
+  // Y los dos pares de esa cabecera si se han emparejado, cada uno con el suyo.
+  assert.deepEqual(r.informe.rotulos.map((x) => x.parte).sort(), ['ev', 'ses']);
+});
+
+prueba('al lado: la puerta pide dos columnas para el par y solo lo admite a lo alto', () => {
+  const unaColumna = { ...mPar(), partes: [{ id: 'ses', etiqueta: 'Sesiones', ancho: 1, al_lado: true }] };
+  assert.match(MT.motivoDeModelo(unaColumna), /ocupa una sola columna: hacen falta dos/);
+  const aLoAncho = { id: 'm', nombre: 'T', tipo: 'tabla', sentido: 'columnas', partes: [{ id: 'a', etiqueta: 'A', al_lado: true }] };
+  assert.match(MT.motivoDeModelo(aLoAncho), /tiene «al_lado»/);
+  // En una tabla de clave y valor todas las partes van ya al lado de su rotulo: decirlo otra vez
+  // seria la segunda manera de decir lo mismo.
+  const cv = { ...mcv(), partes: [{ id: 'a', etiqueta: 'A', al_lado: true }] };
+  assert.match(MT.motivoDeModelo(cv), /tiene «al_lado»/);
+});
+
+prueba('al lado: dos pares por fila, que es la identificacion de un modulo', () => {
+  const m = {
+    id: 'm', nombre: 'Módulo', tipo: 'tabla', sentido: 'filas', columnas: 4,
+    partes: [
+      { id: 'horas', etiqueta: 'Horas', ancho: 2, al_lado: true },
+      { id: 'etcs', etiqueta: 'ETCS', ancho: 2, al_lado: true },
+    ],
+  };
+  const valor = { filas: [[neg('Horas'), c('100h.'), neg('ETCS'), c('7')]] };
+  const r = adoptar(campoDe('tabla'), valor, m);
+  assert.equal(r.motivo, null);
+  assert.deepEqual(r.valor.casillas, { horas: { text: '100h.', bold: false }, etcs: { text: '7', bold: false } });
 });
 
 // ---------------------------------------------------------------- de ida y vuelta
@@ -486,15 +595,22 @@ prueba('cuando no cambia nada visible, no hay aviso', () => {
   assert.equal(r.informe.aviso, null);
 });
 
-prueba('clave y valor: el estilo por celda deja de imprimirse, y se dice', () => {
-  // Una tabla de clave y valor se imprime por sus pares, que son texto pelado: la negrita y el fondo
-  // que la celda traia del Word no salen. La casilla los sigue guardando.
-  const valor = { filas: [[neg('Familia profesional'), c('Informática', { bold: true })]] };
-  const r = adoptar(campoDe('tabla_clave_valor'), valor, mcv());
+prueba('clave y valor: el estilo por celda no se guarda, porque no se imprimiria, y se dice', () => {
+  // Una tabla de clave y valor se imprime por sus pares, que son texto pelado. Guardar ahi la
+  // negrita seria guardarla para que no se viera nunca, que es el estado silencioso que la puerta
+  // existe para impedir: la casilla se queda solo con su texto y el informe dice a cuantas partes
+  // les pasa.
+  const campo = campoDe('tabla_clave_valor');
+  const valor = { filas: [[neg('Familia profesional'), c('Informática', { bold: true, fondo: 'etiqueta' })]] };
+  const r = adoptar(campo, valor, mcv());
   assert.equal(r.motivo, null);
-  assert.equal(r.valor.casillas.fam.bold, true);
+  assert.deepEqual(r.valor.casillas.fam, { text: 'Informática' });
   assert.equal(r.informe.aspecto.contenido, 1);
   assert.match(r.informe.aviso, /pierde la negrita o el fondo que traía del Word/);
+  assert.equal(Est.motivoDeCampo(campo, r.valor, { modelos: con(mcv()) }), null);
+  // Y la puerta no la dejaria guardar con el estilo dentro.
+  assert.match(Est.motivoDeCasillas({ casillas: { fam: { text: 'x', bold: true } } }, 'la tabla', 'tabla_clave_valor'),
+    /no se imprimiría nunca/);
 });
 
 prueba('a lo alto: avisa si una parte ocupa en el modelo mas columnas que en la tabla', () => {
