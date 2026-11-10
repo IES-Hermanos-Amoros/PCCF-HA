@@ -97,10 +97,19 @@ plantilla.modelos['modelo-xxx'] = {
   nombre,    // lo que se enseña: «Ficha de actividad»
   tipo,      // 'tabla' | 'tabla_clave_valor'
   sentido,   // 'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
-  partes: [ { id, etiqueta, ancho?, retirado? } ],
+  columnas,  // de cuántas columnas es la tabla cuando las partes van a lo alto (por omisión 2)
+  partes: [ { id, etiqueta, peso?, ancho?, grupo?, solo_si_hay?, retirado? } ],
   version
 }
 ```
+
+Cada sentido tiene **su medida y su nombre**, porque son magnitudes distintas y no se convierten una
+en otra: a lo ancho, `peso` es el peso relativo de la columna (puede ser decimal); a lo alto, `ancho`
+son cuántas de las `columnas` ocupa la parte en su fila (un entero, que acaba siendo su `colspan`).
+`grupo` es `{ id, etiqueta }` —el id agrupa, la etiqueta se imprime— y `solo_si_hay` omite la fila
+cuando no tiene nada escrito. Cómo se colocan las partes que van a lo alto, que es la maquetación de
+la ficha y está comprobada celda por celda contra `filasDeFicha`, está en
+[`interfaz-web.md` §3.9](interfaz-web.md).
 
 Un campo apunta a su modelo con `campo.modelo`; sin esa clave, no usa modelo. Una tabla que ha
 divergido guarda su estructura junto a su contenido, en `valor.estructura`, **con su `sentido`
