@@ -11,13 +11,36 @@
 // LO QUE GUARDA LA PLANTILLA
 //
 //   plantilla.modelos['modelo-xxx'] = {
-//     id,       con el que apuntan los campos. Se acuña UNA VEZ y NO sigue al nombre nunca
-//     nombre,   lo que se enseña: «Ficha de actividad»
-//     tipo,     'tabla' | 'tabla_clave_valor': a qué tipo de campo se le puede poner
-//     sentido,  'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
-//     partes: [ { id, etiqueta, ancho?, retirado? } ],
+//     id,        con el que apuntan los campos. Se acuña UNA VEZ y NO sigue al nombre nunca
+//     nombre,    lo que se enseña: «Ficha de actividad»
+//     tipo,      'tabla' | 'tabla_clave_valor': a qué tipo de campo se le puede poner
+//     sentido,   'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
+//     columnas,  de cuántas columnas es la tabla cuando sus partes van a lo alto (por omisión 2)
+//     partes: [ { id, etiqueta, ancho?, grupo?, solo_si_hay?, retirado? } ],
 //     version
 //   }
+//
+// CÓMO SE COLOCAN LAS PARTES QUE VAN A LO ALTO. No es «una fila por parte»: es la maquetación de la
+// ficha de situación de aprendizaje, que es la única que existe en los documentos del departamento y
+// la que lleva 306 fichas funcionando. Las partes se EMPAQUETAN en filas de `columnas`, cada una
+// ocupando las que diga su `ancho`; se abre fila cuando la siguiente no cabe o cuando cambia de
+// `grupo`; y cada fila de partes imprime DOS filas de tabla, los rótulos encima y los contenidos
+// debajo. `grupo` escribe además su nombre una sola vez, en una fila que ocupa la tabla entera.
+// `solo_si_hay` omite la fila cuando ninguna de sus partes tiene nada escrito.
+//
+// `ancho` SIGNIFICA DOS COSAS SEGÚN EL SENTIDO, y no hay manera de evitarlo sin dos nombres: a lo
+// ancho es el PESO relativo de la columna (un número positivo, puede ser decimal, lo reparte cada
+// motor sobre el ancho de la hoja); a lo alto es CUÁNTAS de las `columnas` ocupa la parte en su fila
+// (un entero, como el `colspan` que acaba siendo).
+//
+// LA MAQUETACIÓN ESTÁ ESCRITA DOS VECES, AQUÍ Y EN `filasDeFicha` DE core/sa.js, A PROPÓSITO Y
+// TEMPORALMENTE. Es la única excepción a «una regla en un solo sitio» de toda esta pieza, y existe
+// para no tocar `core/sa.js`, que gobierna 306 fichas reales y hoy no corre ningún riesgo: mover su
+// maquetación aquí por limpieza, antes de que nada más la use, sería el peor cambio posible. La
+// duplicación la quita la pieza que absorba la ficha, no antes. Mientras exista, lo que la mantiene
+// honesta es `test/modelos-tabla.js`, que construye un modelo desde las propias
+// `CAMPOS_POR_OMISION` de core/sa.js y compara celda por celda contra `filasDeFicha`: si las dos se
+// separan, esa prueba falla.
 //
 // Un campo apunta a su modelo con `campo.modelo`; sin esa clave, el campo no usa modelo. Y una
 // tabla concreta que ha DIVERGIDO del modelo guarda su forma junto a su contenido, en
@@ -143,9 +166,15 @@
   const comillas = (claves) => claves.map((k) => '«' + k + '»').join(', ');
   const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
-  const CLAVES_MODELO = ['id', 'nombre', 'tipo', 'sentido', 'partes', 'version'];
-  const CLAVES_PARTE = ['id', 'etiqueta', 'ancho', 'retirado'];
-  const CLAVES_ESTRUCTURA = ['partes', 'sentido'];
+  const CLAVES_MODELO = ['id', 'nombre', 'tipo', 'sentido', 'columnas', 'partes', 'version'];
+  const CLAVES_PARTE = ['id', 'etiqueta', 'ancho', 'grupo', 'solo_si_hay', 'retirado'];
+  const CLAVES_ESTRUCTURA = ['partes', 'sentido', 'columnas'];
+
+  // De cuántas columnas es una tabla cuyas partes van a lo alto, si no lo dice. Dos es el rótulo y su
+  // contenido, que es el caso simple; la ficha dice cuatro.
+  const COLUMNAS_POR_OMISION = 2;
+
+  const esEntero = (x, desde) => Number.isInteger(x) && x >= desde;
 
   // ---------------------------------------------------------------- leer la plantilla
 
@@ -191,6 +220,14 @@
     return declarado(modeloDeCampo(campo, modelos)) || sentidoPorOmision(tipo);
   }
 
+  // DE CUÁNTAS COLUMNAS ES LA TABLA, cuando sus partes van a lo alto. Lo dice la estructura que la
+  // tabla sigue, igual que el sentido y por el mismo motivo: una tabla divergida que no lo diga son
+  // dos columnas, y NO las que diga el modelo del que se desengachó, porque entonces el modelo
+  // podría reempaquetarle las filas después.
+  function columnasDeclaradas(x) {
+    return esObjeto(x) && esEntero(x.columnas, 1) ? x.columnas : null;
+  }
+
   // Las partes que se imprimen y se pintan: todas menos las retiradas, en su orden. La retirada se
   // queda en el modelo y su casilla sigue guardada bajo su id (ver «RETIRAR UNA PARTE NO BORRA»).
   const partesVigentes = (partes) => (Array.isArray(partes) ? partes : [])
@@ -218,6 +255,8 @@
       modelo: modelo ? modelo.id || campo.modelo : null,
       tipo: campo.tipo,
       sentido: sentidoVigente(campo, valor, modelos),
+      columnas: (propias ? columnasDeclaradas(valor.estructura) : columnasDeclaradas(modelo))
+        || COLUMNAS_POR_OMISION,
       partes,
       vigentes: partesVigentes(partes),
     };
@@ -251,10 +290,79 @@
   // Los anchos que pide la estructura: una proporción por parte vigente, y solo si TODAS la dicen. A
   // medias no valen —`motivoDeAnchos` de core/estructurados.js exige una por columna— y una lista
   // incompleta la descartaría cada motor por su cuenta, repartiendo según el texto y sin avisar.
+  //
+  // SOLO A LO ANCHO. A lo alto, el `ancho` de una parte no es el peso de una columna sino cuántas
+  // ocupa en su fila, así que pasarlo como anchos de tabla repartiría las columnas con unos números
+  // que no son de eso.
   function anchosDeEstructura(vigentes) {
     const todos = vigentes.map((parte) => (esObjeto(parte) ? parte.ancho : undefined));
     const vale = (a) => typeof a === 'number' && Number.isFinite(a) && a > 0;
     return todos.length && todos.every(vale) ? todos : undefined;
+  }
+
+  // ¿TIENE ESTA PARTE ALGO ESCRITO? Es lo que decide `solo_si_hay`. Algo escrito es texto que no son
+  // solo espacios, igual que en la ficha (`deLineas(...).trim()` de core/sa.js).
+  const conTexto = (x) => esObjeto(x) && String(x.text == null ? '' : x.text).trim() !== '';
+  function hayContenido(parte, casillas, sentido) {
+    if (sentido === SENTIDO_FILAS) return conTexto(casillaDe(casillas, parte));
+    return columnaDe(casillas, parte).some(conTexto);
+  }
+
+  // Cuántas de las columnas de la tabla ocupa una parte que va a lo alto. Como en la ficha: lo que
+  // diga su `ancho` y al menos una.
+  const ocupa = (parte) => (esObjeto(parte) && esEntero(parte.ancho, 2) ? parte.ancho : 1);
+
+  // LAS PARTES, EMPAQUETADAS EN FILAS DE `columnas`. Se abre fila cuando la siguiente no cabe o
+  // cuando cambia de grupo, que es lo que hace que un grupo empiece siempre en una fila nueva.
+  function empaquetar(vigentes, columnas) {
+    const filas = [];
+    let actual = [];
+    let suma = 0;
+    for (const parte of vigentes) {
+      const w = ocupa(parte);
+      const grupo = esObjeto(parte) ? parte.grupo : undefined;
+      if (actual.length && (suma + w > columnas || (esObjeto(actual[0]) ? actual[0].grupo : undefined) !== grupo)) {
+        filas.push(actual);
+        actual = [];
+        suma = 0;
+      }
+      actual.push(parte);
+      suma += w;
+    }
+    if (actual.length) filas.push(actual);
+    return filas;
+  }
+
+  const conColspan = (ancho, extra) => (ancho > 1 ? Object.assign({ colspan: ancho }, extra) : extra);
+
+  // LA TABLA DE UNAS PARTES QUE VAN A LO ALTO: la maquetación de la ficha (ver la cabecera). Cada
+  // fila de partes imprime dos filas de tabla, los rótulos encima y los contenidos debajo; un grupo
+  // escribe su nombre una vez, en una fila que ocupa la tabla entera; y una fila cuyas partes son
+  // todas `solo_si_hay` y ninguna tiene nada escrito no se imprime.
+  //
+  // El rótulo lleva `campo` con el id de su parte, por lo mismo que en la ficha: quien edite la tabla
+  // sabe así qué celda es de qué parte sin fiarse del texto del rótulo, que se puede renombrar.
+  function aLoAlto(estructura, casillas) {
+    const { vigentes, columnas } = estructura;
+    const out = [];
+    const grupos = new Set();
+    for (const fila of empaquetar(vigentes, columnas)) {
+      const todasOpcionales = fila.every((p) => esObjeto(p) && p.solo_si_hay);
+      if (todasOpcionales && !fila.some((p) => hayContenido(p, casillas, SENTIDO_FILAS))) continue;
+      const grupo = esObjeto(fila[0]) ? fila[0].grupo : undefined;
+      if (esCadena(grupo) && !grupos.has(grupo)) {
+        out.push([celda(grupo, conColspan(columnas, { bold: true }))]);
+        grupos.add(grupo);
+      }
+      out.push(fila.map((p) => celda(etiquetaDe(p), conColspan(ocupa(p), { bold: true, campo: p.id }))));
+      out.push(fila.map((p) => {
+        const x = casillaDe(casillas, p);
+        const base = conColspan(ocupa(p), undefined);
+        return base ? Object.assign({}, x || celda(''), base) : (x || celda(''));
+      }));
+    }
+    // Los rótulos van dentro de la tabla, no en una cabecera que se repita al cambiar de página.
+    return { filas: out, anchos: undefined, cabecera: false };
   }
 
   // LA TABLA QUE SE IMPRIME Y SE PINTA, en la forma que los dos motores y el editor ya saben
@@ -293,23 +401,17 @@
     // no queda ninguna parte que enseñar. Lo escrito sigue guardado y vuelve al restaurar una parte.
     if (!vigentes.length) return { estructura, filas: [], anchos: undefined, cabecera: false };
     const casillas = casillasDe(valor);
-    const anchos = anchosDeEstructura(vigentes);
-    if (sentido === SENTIDO_FILAS) {
-      return {
-        estructura,
-        // La parte sin nada escrito sale con su rótulo y la casilla en blanco, que es la fila a medio
-        // rellenar: el estado normal mientras se escribe.
-        filas: vigentes.map((parte) => [celda(etiquetaDe(parte), { bold: true }),
-          casillaDe(casillas, parte) || celda('')]),
-        anchos,
-        cabecera: false,
-      };
-    }
-    const alto = vigentes.reduce((n, parte) => Math.max(n, columnaDe(casillas, parte).length), 0);
+    if (sentido === SENTIDO_FILAS) return Object.assign({ estructura }, aLoAlto(estructura, casillas));
+    // A lo ancho, una parte `solo_si_hay` sin nada escrito es una columna que no se imprime. Aquí se
+    // decide por parte y no por fila porque cada parte ES una columna: no hay fila que compartir.
+    const aLaVista = vigentes.filter((p) => !(esObjeto(p) && p.solo_si_hay) || hayContenido(p, casillas, SENTIDO_COLUMNAS));
+    if (!aLaVista.length) return { estructura, filas: [], anchos: undefined, cabecera: false };
+    const anchos = anchosDeEstructura(aLaVista);
+    const alto = aLaVista.reduce((n, parte) => Math.max(n, columnaDe(casillas, parte).length), 0);
     return {
       estructura,
-      filas: [vigentes.map((parte) => celda(etiquetaDe(parte), { bold: true }))].concat(
-        Array.from({ length: alto }, (_, i) => vigentes.map((parte) => {
+      filas: [aLaVista.map((parte) => celda(etiquetaDe(parte), { bold: true, campo: parte.id }))].concat(
+        Array.from({ length: alto }, (_, i) => aLaVista.map((parte) => {
           const x = columnaDe(casillas, parte)[i];
           return esObjeto(x) ? x : celda('');
         })),
@@ -337,10 +439,13 @@
     const casillas = casillasDe(valor);
     return {
       estructura,
-      pares: estructura.vigentes.map((parte) => {
-        const x = casillaDe(casillas, parte);
-        return { etiqueta: etiquetaDe(parte), valor: x ? String(x.text == null ? '' : x.text) : '' };
-      }),
+      // Una parte `solo_si_hay` sin nada escrito no imprime su fila, igual que en cualquier otra tabla.
+      pares: estructura.vigentes
+        .filter((p) => !(esObjeto(p) && p.solo_si_hay) || hayContenido(p, casillas, SENTIDO_FILAS))
+        .map((parte) => {
+          const x = casillaDe(casillas, parte);
+          return { etiqueta: etiquetaDe(parte), valor: x ? String(x.text == null ? '' : x.text) : '' };
+        }),
     };
   }
 
@@ -349,7 +454,10 @@
   // La forma de UNA parte. `ancho` solo tiene sentido con `sentido: 'columnas'`: con los rótulos a la
   // izquierda la parte es una fila y una fila no tiene ancho de columna, así que se rechaza en lugar
   // de guardarse para no imprimirse nunca.
-  function motivoDeParte(parte, donde, { sentido, ids } = {}) {
+  // La forma de UNA parte. `ancho` significa dos cosas según el sentido (ver la cabecera), así que se
+  // comprueba distinto: a lo ancho es un peso relativo y puede ser decimal; a lo alto son columnas
+  // enteras y no puede pedir más de las que la tabla tiene.
+  function motivoDeParte(parte, donde, { sentido, tipo, columnas, ids } = {}) {
     if (!esObjeto(parte)) return `${donde} no es un objeto { id, etiqueta }.`;
     const extra = sobran(parte, CLAVES_PARTE);
     if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en una parte de un modelo.`;
@@ -358,9 +466,34 @@
     if (typeof parte.etiqueta !== 'string') return `${donde} no tiene «etiqueta», o no es texto: es el rótulo que se imprime.`;
     if (parte.etiqueta.length > LARGO_NOMBRE) return `la etiqueta de ${donde} tiene ${parte.etiqueta.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
     if (parte.retirado !== undefined && typeof parte.retirado !== 'boolean') return `${donde} tiene «retirado» y no es true ni false.`;
+    if (parte.solo_si_hay !== undefined && typeof parte.solo_si_hay !== 'boolean') {
+      return `${donde} tiene «solo_si_hay» y no es true ni false.`;
+    }
+    if (parte.grupo !== undefined) {
+      if (sentido !== SENTIDO_FILAS || tipo === TIPO_CLAVE_VALOR) {
+        return `${donde} tiene «grupo», y los grupos son de las partes que van a lo alto en una tabla: son los que abren fila y escriben su rótulo una sola vez encima.`;
+      }
+      if (!esCadena(parte.grupo)) {
+        return `${donde} tiene un «grupo» que no es un texto: el grupo es el rótulo que se escribe una vez encima de las partes que lo comparten.`;
+      }
+      if (parte.grupo.length > LARGO_NOMBRE) {
+        return `el grupo de ${donde} tiene ${parte.grupo.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
+      }
+    }
     if (parte.ancho === undefined) return null;
     if (sentido === SENTIDO_FILAS) {
-      return `${donde} tiene «ancho», y las partes de este modelo son filas: el ancho es la proporción de una columna.`;
+      // Una tabla de clave y valor tiene las dos columnas fijas: el concepto a la izquierda y el resto
+      // del ancho para su contenido (`pintarClaveValor` de motor/render-generico.js).
+      if (tipo === TIPO_CLAVE_VALOR) {
+        return `${donde} tiene «ancho», y una tabla de clave y valor tiene las dos columnas fijas: el concepto a la izquierda y el resto para su contenido.`;
+      }
+      if (!esEntero(parte.ancho, 1)) {
+        return `el «ancho» de ${donde} no es un número entero de 1 en adelante: a lo alto, el ancho son las columnas de la tabla que ocupa la parte.`;
+      }
+      if (columnas && parte.ancho > columnas) {
+        return `${donde} ocupa ${plural(parte.ancho, 'columna', 'columnas')} y la tabla tiene ${columnas}: una parte no puede ocupar más de lo que hay.`;
+      }
+      return null;
     }
     if (typeof parte.ancho !== 'number' || !Number.isFinite(parte.ancho) || parte.ancho <= 0) {
       return `el «ancho» de ${donde} no es un número positivo: los anchos son pesos relativos, no medidas.`;
@@ -368,8 +501,9 @@
     return null;
   }
 
-  // La lista de partes de un modelo o de una estructura propia, medida con el sentido que les toca.
-  function motivoDeListaDePartes(partes, donde, sentido) {
+  // La lista de partes de un modelo o de una estructura propia, medida con el sentido, el tipo y las
+  // columnas que les tocan.
+  function motivoDeListaDePartes(partes, donde, sentido, tipo, columnas) {
     if (!Array.isArray(partes)) return `las partes de ${donde} no son una lista.`;
     const tope = sentido === SENTIDO_FILAS ? MAX_PARTES_ALTO : MAX_PARTES_ANCHO;
     if (partes.length > tope) {
@@ -379,9 +513,24 @@
     }
     const ids = new Set();
     for (let i = 0; i < partes.length; i += 1) {
-      const m = motivoDeParte(partes[i], `la parte ${i + 1} de ${donde}`, { sentido, ids });
+      const m = motivoDeParte(partes[i], `la parte ${i + 1} de ${donde}`, { sentido, tipo, columnas, ids });
       if (m) return m;
       ids.add(partes[i].id);
+    }
+    return null;
+  }
+
+  // POR QUÉ LAS COLUMNAS DE UNA TABLA DE PARTES A LO ALTO NO VALEN. Solo existen ahí: a lo ancho las
+  // columnas SON las partes, y en una tabla de clave y valor son dos y fijas, así que decirlas en
+  // cualquiera de los dos casos sería guardar un número que nadie lee.
+  function motivoDeColumnas(columnas, donde, sentido, tipo) {
+    if (columnas === undefined) return null;
+    if (sentido !== SENTIDO_FILAS || tipo === TIPO_CLAVE_VALOR) {
+      return `${donde} dice de cuántas «columnas» es, y eso solo lo dicen las tablas cuyas partes van a lo alto: a lo ancho las columnas son las partes.`;
+    }
+    if (!esEntero(columnas, 1)) return `las «columnas» de ${donde} no son un número entero de 1 en adelante.`;
+    if (columnas > MAX_PARTES_ANCHO) {
+      return `${donde} dice tener ${columnas} columnas: el máximo son ${MAX_PARTES_ANCHO}, porque con más no caben en el ancho de la hoja.`;
     }
     return null;
   }
@@ -410,7 +559,10 @@
     if (modelo.tipo === TIPO_CLAVE_VALOR && modelo.sentido !== SENTIDO_FILAS) {
       return `${donde} es de clave y valor y dice que sus partes van en «${modelo.sentido}»: en una tabla de clave y valor cada parte es una fila.`;
     }
-    const p = motivoDeListaDePartes(modelo.partes, donde, modelo.sentido);
+    const col = motivoDeColumnas(modelo.columnas, donde, modelo.sentido, modelo.tipo);
+    if (col) return col;
+    const p = motivoDeListaDePartes(modelo.partes, donde, modelo.sentido, modelo.tipo,
+      columnasDeclaradas(modelo) || COLUMNAS_POR_OMISION);
     if (p) return p;
     if (modelo.version !== undefined && !(Number.isInteger(modelo.version) && modelo.version >= 1)) {
       return `la versión de ${donde} no es un número entero de 1 en adelante.`;
@@ -461,7 +613,10 @@
       return `la estructura de ${donde} es de clave y valor y va en «${estructura.sentido}»: en una tabla de clave y valor cada parte es una fila.`;
     }
     const sentido = declarado(estructura) || (SENTIDOS.indexOf(respaldo) >= 0 ? respaldo : sentidoPorOmision(tipo));
-    return motivoDeListaDePartes(estructura.partes, `la estructura de ${donde}`, sentido);
+    const col = motivoDeColumnas(estructura.columnas, `la estructura de ${donde}`, sentido, tipo);
+    if (col) return col;
+    return motivoDeListaDePartes(estructura.partes, `la estructura de ${donde}`, sentido, tipo,
+      columnasDeclaradas(estructura) || COLUMNAS_POR_OMISION);
   }
 
   // ---------------------------------------------------------------- la tabla contra su estructura
@@ -540,6 +695,7 @@
     TIPOS, TIPO_TABLA, TIPO_CLAVE_VALOR, CLAVE_CASILLAS,
     SENTIDOS, SENTIDO_COLUMNAS, SENTIDO_FILAS, sentidoPorOmision, sentidoVigente,
     MAX_PARTES_ANCHO, MAX_PARTES_ALTO, MAX_CASILLAS_POR_PARTE, MAX_MODELOS, LARGO_NOMBRE,
+    COLUMNAS_POR_OMISION, empaquetar,
     modelosDe, buscar, modeloDeCampo, partesVigentes, casillasDe, adoptada,
     estructuraDeTabla, tablaVigente, paresVigentes,
     motivoDeModelo, motivoDeModelos, motivoDeParte, motivoDeEstructura, motivoDeContenido,
