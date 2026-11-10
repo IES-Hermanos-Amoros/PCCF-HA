@@ -80,7 +80,19 @@ subirlo después a departamento **no obliga a rehacer el editor**, solo a mover 
 revés sí: empezar por la colección compartida obliga a resolver versiones entre documentos, permisos
 propios y avisos a documentos que otra gente tiene abiertos, antes de que nada funcione.
 
-### 3.5 Sin peticiones dentro de la aplicación
+### 3.5 Una tabla importada se imprime como vino, también en el estilo
+
+Una tabla de dos columnas **creada en la aplicación** saca la columna de los conceptos en negrita
+sobre fondo gris: es lo que promete el catálogo de campos para «clave y valor». Una **importada** se
+imprime desde la rejilla del Word tal cual, y muchas no llevan ni negrita ni fondo. Son dos aspectos
+distintos para el mismo tipo de tabla dentro del mismo documento.
+
+Se queda así: **manda la fidelidad al documento**. Unificarlas cambiaría el aspecto de tablas que ya
+están impresas en los documentos del departamento, y este proyecto no cambia lo que alguien ya
+escribió para que la herramienta quede más bonita. El estilo solo se unifica cuando quien manda lo
+pida: entonces es parte de la forma de la tabla y viaja en el modelo, como el resto de la forma.
+
+### 3.6 Sin peticiones dentro de la aplicación
 
 Que el docente le pida una casilla al jefe de departamento **se habla fuera de la aplicación**. Solo
 hay permisos: el docente no cambia la forma, quien manda sí.
