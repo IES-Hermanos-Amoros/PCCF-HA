@@ -1,0 +1,1423 @@
+{
+ "plantilla": {
+  "generada": "2026-01-01T00:00:00.000Z",
+  "origen": "congelado",
+  "secciones": [
+   {
+    "id": "generico",
+    "titulo": "Tablas genericas",
+    "nivel": 1,
+    "hijos": [],
+    "campos": [
+     {
+      "id": "imp",
+      "tipo": "tabla",
+      "etiqueta": "Importada con cabecera declarada",
+      "columnas": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "id": "neg",
+      "tipo": "tabla",
+      "etiqueta": "Importada con cabecera en negrita"
+     },
+     {
+      "id": "crea",
+      "tipo": "tabla",
+      "etiqueta": "Creada aqui",
+      "columnas": [
+       "Columna 1",
+       "Columna 2"
+      ],
+      "inicial": {
+       "filas": 2,
+       "columnas": 2,
+       "cabecera": true
+      }
+     },
+     {
+      "id": "estilo",
+      "tipo": "tabla",
+      "etiqueta": "Con anchos y estilo"
+     },
+     {
+      "id": "varias",
+      "tipo": "tabla",
+      "etiqueta": "Varias tablas",
+      "multiple": true
+     },
+     {
+      "id": "vacia",
+      "tipo": "tabla",
+      "etiqueta": "Vacia"
+     },
+     {
+      "id": "sinvalor",
+      "tipo": "tabla",
+      "etiqueta": "Sin valor"
+     }
+    ]
+   },
+   {
+    "id": "parejas",
+    "titulo": "Clave y valor",
+    "nivel": 1,
+    "hijos": [],
+    "campos": [
+     {
+      "id": "kv",
+      "tipo": "tabla_clave_valor",
+      "etiqueta": "Creada en pares"
+     },
+     {
+      "id": "kvimp",
+      "tipo": "tabla_clave_valor",
+      "etiqueta": "Importada con filas y pares",
+      "columnas": [
+       "Concepto",
+       "Contenido"
+      ]
+     },
+     {
+      "id": "kvvacia",
+      "tipo": "tabla_clave_valor",
+      "etiqueta": "Sin pares"
+     }
+    ]
+   },
+   {
+    "id": "autos",
+    "titulo": "Las de la plantilla",
+    "nivel": 1,
+    "hijos": [],
+    "campos": [
+     {
+      "id": "race",
+      "tipo": "auto.tabla_ra_ce",
+      "etiqueta": "RA y CE"
+     },
+     {
+      "id": "racesinra",
+      "tipo": "auto.tabla_ra_ce",
+      "etiqueta": "RA y CE sin leer"
+     },
+     {
+      "id": "fmod",
+      "tipo": "auto.ficha_modulo",
+      "etiqueta": "Ficha del modulo"
+     },
+     {
+      "id": "cont",
+      "tipo": "auto.contenidos",
+      "etiqueta": "Contenidos"
+     },
+     {
+      "id": "compobj",
+      "tipo": "auto.competencias_objetivos",
+      "etiqueta": "Competencias y objetivos"
+     },
+     {
+      "id": "dual",
+      "tipo": "dual_ra_ce",
+      "etiqueta": "Dual"
+     },
+     {
+      "id": "resumen",
+      "tipo": "derivado.resumen_situaciones",
+      "etiqueta": "Resumen importado"
+     },
+     {
+      "id": "texto",
+      "tipo": "texto_largo",
+      "etiqueta": "Un texto"
+     }
+    ]
+   },
+   {
+    "id": "modulos",
+    "titulo": "Modulos",
+    "nivel": 1,
+    "instancias": true,
+    "etiqueta_instancia": "modulo",
+    "hijos": [
+     {
+      "id": "mod-tablas",
+      "titulo": "Tablas del modulo",
+      "nivel": 2,
+      "hijos": [],
+      "campos": [
+       {
+        "id": "mimp",
+        "tipo": "tabla",
+        "etiqueta": "Tabla del modulo",
+        "columnas": [
+         "X",
+         "Y"
+        ]
+       },
+       {
+        "id": "mkv",
+        "tipo": "tabla_clave_valor",
+        "etiqueta": "Pares del modulo"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "datos": {
+  "documento": {
+   "generico": {
+    "imp": {
+     "filas": [
+      [
+       {
+        "text": "A"
+       },
+       {
+        "text": "B"
+       },
+       {
+        "text": "C"
+       }
+      ],
+      [
+       {
+        "text": "a1"
+       },
+       {
+        "text": "b1"
+       },
+       {
+        "text": "c1"
+       }
+      ],
+      [
+       {
+        "text": "a2"
+       },
+       {
+        "text": "b2"
+       },
+       {
+        "text": "c2"
+       }
+      ]
+     ]
+    },
+    "neg": {
+     "filas": [
+      [
+       {
+        "text": "T1",
+        "bold": true
+       },
+       {
+        "text": "T2",
+        "bold": true
+       }
+      ],
+      [
+       {
+        "text": "v1"
+       },
+       {
+        "text": "v2"
+       }
+      ]
+     ]
+    },
+    "crea": {
+     "filas": [
+      [
+       {
+        "text": "Columna 1",
+        "bold": true
+       },
+       {
+        "text": "Columna 2",
+        "bold": true
+       }
+      ],
+      [
+       {
+        "text": ""
+       },
+       {
+        "text": ""
+       }
+      ]
+     ]
+    },
+    "estilo": {
+     "anchos": [
+      3,
+      1,
+      1
+     ],
+     "filas": [
+      [
+       {
+        "text": "Cabecera ancha",
+        "bold": true,
+        "colspan": 2
+       },
+       {
+        "text": "Suelta",
+        "bold": true,
+        "fondo": "cabecera"
+       }
+      ],
+      [
+       {
+        "text": "Alta",
+        "rowspan": 2
+       },
+       {
+        "text": "centrada",
+        "alineacion": "centro",
+        "tamano": "pequena"
+       },
+       {
+        "text": "derecha",
+        "alineacion": "derecha",
+        "tamano": "grande"
+       }
+      ],
+      [
+       {
+        "text": "etiqueta",
+        "fondo": "etiqueta"
+       },
+       {
+        "text": "sin fondo",
+        "bold": true,
+        "fondo": "ninguno"
+       }
+      ]
+     ]
+    },
+    "varias": [
+     {
+      "filas": [
+       [
+        {
+         "text": "uno"
+        }
+       ]
+      ]
+     },
+     {
+      "filas": [
+       [
+        {
+         "text": "dos",
+         "bold": true
+        }
+       ],
+       [
+        {
+         "text": "y su fila"
+        }
+       ]
+      ],
+      "anchos": [
+       1
+      ]
+     }
+    ],
+    "vacia": {
+     "filas": []
+    }
+   },
+   "parejas": {
+    "kv": {
+     "pares": [
+      {
+       "etiqueta": "Ciclo",
+       "valor": "DAW"
+      },
+      {
+       "etiqueta": "Curso",
+       "valor": "2026-27"
+      }
+     ]
+    },
+    "kvimp": {
+     "pares": [
+      {
+       "etiqueta": "Concepto",
+       "valor": "Contenido"
+      }
+     ],
+     "filas": [
+      [
+       {
+        "text": "Concepto",
+        "bold": true
+       },
+       {
+        "text": "Contenido"
+       }
+      ],
+      [
+       {
+        "text": "Centro"
+       },
+       {
+        "text": "IES"
+       }
+      ]
+     ],
+     "anchos": [
+      2,
+      5
+     ]
+    },
+    "kvvacia": {
+     "pares": []
+    }
+   },
+   "autos": {
+    "race": {
+     "filas": [
+      [
+       {
+        "text": "Resultados de aprendizaje",
+        "bold": true
+       },
+       {
+        "text": "Criterios de evaluacion",
+        "bold": true
+       }
+      ],
+      [
+       {
+        "text": "1. Primero"
+       },
+       {
+        "text": "a) Uno\nb) Otro"
+       }
+      ]
+     ],
+     "ra": [
+      {
+       "num": 1,
+       "texto": "Primero",
+       "ce": [
+        {
+         "letra": "a",
+         "texto": "Uno"
+        },
+        {
+         "letra": "b",
+         "texto": "Otro"
+        }
+       ]
+      }
+     ]
+    },
+    "racesinra": {
+     "filas": [
+      [
+       {
+        "text": "En crudo"
+       }
+      ],
+      [
+       {
+        "text": "porque nadie supo leerla"
+       }
+      ]
+     ]
+    },
+    "fmod": {
+     "pares": [
+      {
+       "etiqueta": "Codigo",
+       "valor": "0614"
+      }
+     ],
+     "filas": [
+      [
+       {
+        "text": "Codigo",
+        "bold": true
+       },
+       {
+        "text": "0614"
+       }
+      ],
+      [
+       {
+        "text": "Horas",
+        "bold": true
+       },
+       {
+        "text": "160"
+       }
+      ]
+     ]
+    },
+    "cont": {
+     "filas": [
+      [
+       {
+        "text": "Bloque",
+        "bold": true
+       }
+      ],
+      [
+       {
+        "text": "Contenido uno"
+       }
+      ]
+     ]
+    },
+    "compobj": {
+     "filas": [
+      [
+       {
+        "text": "Competencia",
+        "bold": true
+       },
+       {
+        "text": "Objetivo",
+        "bold": true
+       }
+      ],
+      [
+       {
+        "text": "a"
+       },
+       {
+        "text": "b"
+       }
+      ]
+     ]
+    },
+    "dual": {
+     "filas": [
+      [
+       {
+        "text": "RA",
+        "bold": true
+       },
+       {
+        "text": "CE",
+        "bold": true
+       }
+      ],
+      [
+       {
+        "text": "1"
+       },
+       {
+        "text": "a"
+       }
+      ]
+     ]
+    },
+    "resumen": {
+     "filas": [
+      [
+       {
+        "text": "Ev.",
+        "bold": true
+       },
+       {
+        "text": "SA",
+        "bold": true
+       }
+      ],
+      [
+       {
+        "text": "1"
+       },
+       {
+        "text": "Nada"
+       }
+      ]
+     ]
+    },
+    "texto": [
+     {
+      "tipo": "parrafo",
+      "texto": "Un parrafo cualquiera."
+     }
+    ]
+   }
+  },
+  "instancias": [
+   {
+    "titulo": "Modulo primero",
+    "valores": {
+     "mod-tablas": {
+      "mimp": {
+       "filas": [
+        [
+         {
+          "text": "X"
+         },
+         {
+          "text": "Y"
+         }
+        ],
+        [
+         {
+          "text": "x1"
+         },
+         {
+          "text": "y1"
+         }
+        ]
+       ]
+      },
+      "mkv": {
+       "pares": [
+        {
+         "etiqueta": "Horas",
+         "valor": "160"
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "titulo": "Modulo segundo",
+    "valores": {
+     "mod-tablas": {
+      "mimp": {
+       "filas": [
+        [
+         {
+          "text": "X"
+         },
+         {
+          "text": "Y"
+         }
+        ],
+        [
+         {
+          "text": "x2"
+         },
+         {
+          "text": "y2"
+         }
+        ]
+       ]
+      },
+      "mkv": {
+       "pares": []
+      }
+     }
+    }
+   }
+  ]
+ },
+ "saltoPortada": 7,
+ "pdf": [
+  {
+   "text": "1. Tablas genericas",
+   "style": "h1",
+   "tocItem": true,
+   "tocMargin": [
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     156.33333333333331,
+     156.33333333333331,
+     156.33333333333331
+    ],
+    "body": [
+     [
+      {
+       "text": "A"
+      },
+      {
+       "text": "B"
+      },
+      {
+       "text": "C"
+      }
+     ],
+     [
+      {
+       "text": "a1"
+      },
+      {
+       "text": "b1"
+      },
+      {
+       "text": "c1"
+      }
+     ],
+     [
+      {
+       "text": "a2"
+      },
+      {
+       "text": "b2"
+      },
+      {
+       "text": "c2"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     238.75,
+     238.75
+    ],
+    "body": [
+     [
+      {
+       "text": "T1",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      },
+      {
+       "text": "T2",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      }
+     ],
+     [
+      {
+       "text": "v1"
+      },
+      {
+       "text": "v2"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     238.75,
+     238.75
+    ],
+    "body": [
+     [
+      {
+       "text": "Columna 1",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      },
+      {
+       "text": "Columna 2",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      }
+     ],
+     [
+      {
+       "text": ""
+      },
+      {
+       "text": ""
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     281.4,
+     93.8,
+     93.8
+    ],
+    "body": [
+     [
+      {
+       "text": "Cabecera ancha",
+       "colSpan": 2,
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      },
+      {},
+      {
+       "text": "Suelta",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      }
+     ],
+     [
+      {
+       "text": "Alta",
+       "rowSpan": 2
+      },
+      {
+       "text": "centrada",
+       "fontSize": 8,
+       "alignment": "center"
+      },
+      {
+       "text": "derecha",
+       "fontSize": 12,
+       "alignment": "right"
+      }
+     ],
+     [
+      {},
+      {
+       "text": "etiqueta",
+       "fillColor": "#F2F2F2"
+      },
+      {
+       "text": "sin fondo",
+       "bold": true
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 0,
+    "widths": [
+     486
+    ],
+    "body": [
+     [
+      {
+       "text": "uno"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     486
+    ],
+    "body": [
+     [
+      {
+       "text": "dos",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      }
+     ],
+     [
+      {
+       "text": "y su fila"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "text": "(tabla vacía)",
+   "margin": [
+    0,
+    0,
+    0,
+    6
+   ],
+   "alignment": "justify",
+   "italics": true,
+   "color": "#666666"
+  },
+  {
+   "text": "2. Clave y valor",
+   "style": "h1",
+   "tocItem": true,
+   "tocMargin": [
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "table": {
+    "widths": [
+     150,
+     "*"
+    ],
+    "body": [
+     [
+      {
+       "text": "Ciclo",
+       "bold": true,
+       "fillColor": "#F2F2F2"
+      },
+      {
+       "text": "DAW"
+      }
+     ],
+     [
+      {
+       "text": "Curso",
+       "bold": true,
+       "fillColor": "#F2F2F2"
+      },
+      {
+       "text": "2026-27"
+      }
+     ]
+    ]
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     136.42857142857142,
+     341.07142857142856
+    ],
+    "body": [
+     [
+      {
+       "text": "Concepto",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      },
+      {
+       "text": "Contenido"
+      }
+     ],
+     [
+      {
+       "text": "Centro"
+      },
+      {
+       "text": "IES"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "text": "(tabla vacía)",
+   "margin": [
+    0,
+    0,
+    0,
+    6
+   ],
+   "alignment": "justify",
+   "italics": true,
+   "color": "#666666"
+  },
+  {
+   "text": "3. Las de la plantilla",
+   "style": "h1",
+   "tocItem": true,
+   "tocMargin": [
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     "*",
+     "*"
+    ],
+    "body": [
+     [
+      {
+       "text": "Resultados de aprendizaje",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      },
+      {
+       "text": "Criterios de evaluación",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      }
+     ],
+     [
+      {
+       "text": [
+        {
+         "text": "RA1. ",
+         "bold": true
+        },
+        "Primero"
+       ]
+      },
+      {
+       "stack": [
+        {
+         "text": "a) Uno",
+         "margin": [
+          0,
+          0,
+          0,
+          2
+         ]
+        },
+        {
+         "text": "b) Otro",
+         "margin": [
+          0,
+          0,
+          0,
+          2
+         ]
+        }
+       ]
+      }
+     ]
+    ]
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 0,
+    "widths": [
+     485.99999999999994
+    ],
+    "body": [
+     [
+      {
+       "text": "En crudo"
+      }
+     ],
+     [
+      {
+       "text": "porque nadie supo leerla"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 0,
+    "widths": [
+     252.84305244898798,
+     224.65694755101202
+    ],
+    "body": [
+     [
+      {
+       "text": "Codigo",
+       "bold": true,
+       "fillColor": "#F2F2F2"
+      },
+      {
+       "text": "0614"
+      }
+     ],
+     [
+      {
+       "text": "Horas",
+       "bold": true,
+       "fillColor": "#F2F2F2"
+      },
+      {
+       "text": "160"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     486
+    ],
+    "body": [
+     [
+      {
+       "text": "Bloque",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      }
+     ],
+     [
+      {
+       "text": "Contenido uno"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     248.4450144284309,
+     229.05498557156912
+    ],
+    "body": [
+     [
+      {
+       "text": "Competencia",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      },
+      {
+       "text": "Objetivo",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      }
+     ],
+     [
+      {
+       "text": "a"
+      },
+      {
+       "text": "b"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     238.75,
+     238.75
+    ],
+    "body": [
+     [
+      {
+       "text": "RA",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      },
+      {
+       "text": "CE",
+       "bold": true,
+       "fillColor": "#D9E2F3"
+      }
+     ],
+     [
+      {
+       "text": "1"
+      },
+      {
+       "text": "a"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "margin": [
+    0,
+    0,
+    0,
+    6
+   ],
+   "alignment": "justify"
+  },
+  {
+   "text": "4. Modulos",
+   "style": "h1",
+   "tocItem": true,
+   "pageBreak": "before"
+  },
+  {
+   "text": "2 modulos de 2 del documento original.",
+   "margin": [
+    0,
+    0,
+    0,
+    6
+   ],
+   "alignment": "justify",
+   "italics": true,
+   "color": "#666666"
+  },
+  {
+   "text": "4.1. Modulo primero",
+   "style": "h2",
+   "tocItem": true,
+   "tocMargin": [
+    12,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "text": "4.1.1. Tablas del modulo",
+   "style": "h3",
+   "tocItem": false,
+   "tocMargin": [
+    24,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     238.75,
+     238.75
+    ],
+    "body": [
+     [
+      {
+       "text": "X"
+      },
+      {
+       "text": "Y"
+      }
+     ],
+     [
+      {
+       "text": "x1"
+      },
+      {
+       "text": "y1"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "table": {
+    "widths": [
+     150,
+     "*"
+    ],
+    "body": [
+     [
+      {
+       "text": "Horas",
+       "bold": true,
+       "fillColor": "#F2F2F2"
+      },
+      {
+       "text": "160"
+      }
+     ]
+    ]
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "text": "4.2. Modulo segundo",
+   "style": "h2",
+   "tocItem": true,
+   "tocMargin": [
+    12,
+    0,
+    0,
+    0
+   ],
+   "pageBreak": "before"
+  },
+  {
+   "text": "4.2.1. Tablas del modulo",
+   "style": "h3",
+   "tocItem": false,
+   "tocMargin": [
+    24,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "table": {
+    "headerRows": 1,
+    "widths": [
+     238.75,
+     238.75
+    ],
+    "body": [
+     [
+      {
+       "text": "X"
+      },
+      {
+       "text": "Y"
+      }
+     ],
+     [
+      {
+       "text": "x2"
+      },
+      {
+       "text": "y2"
+      }
+     ]
+    ],
+    "dontBreakRows": false
+   },
+   "layout": {},
+   "margin": [
+    0,
+    0,
+    0,
+    10
+   ]
+  },
+  {
+   "text": "(tabla vacía)",
+   "margin": [
+    0,
+    0,
+    0,
+    6
+   ],
+   "alignment": "justify",
+   "italics": true,
+   "color": "#666666"
+  }
+ ],
+ "docxXml": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:pPr><w:pStyle w:val=\"Title\"/></w:pPr><w:r><w:t xml:space=\"preserve\">Congelado</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr><w:r><w:t xml:space=\"preserve\">1. Tablas genericas</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"3213\"/><w:gridCol w:w=\"3213\"/><w:gridCol w:w=\"3213\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"3213\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">A</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"3213\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">B</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"3213\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">C</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"3213\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">a1</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"3213\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">b1</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"3213\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">c1</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"3213\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">a2</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"3213\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">b2</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"3213\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">c2</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"4819\"/><w:gridCol w:w=\"4819\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">T1</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">T2</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">v1</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">v2</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"4819\"/><w:gridCol w:w=\"4819\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Columna 1</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Columna 2</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"5782\"/><w:gridCol w:w=\"1928\"/><w:gridCol w:w=\"1928\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"7710\" w:type=\"dxa\"/><w:gridSpan w:val=\"2\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Cabecera ancha</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"1928\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Suelta</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"5782\" w:type=\"dxa\"/><w:vMerge w:val=\"restart\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">Alta</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"1928\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr><w:sz w:val=\"16\"/></w:rPr><w:t xml:space=\"preserve\">centrada</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"1928\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/><w:jc w:val=\"right\"/></w:pPr><w:r><w:rPr><w:sz w:val=\"24\"/></w:rPr><w:t xml:space=\"preserve\">derecha</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"5782\" w:type=\"dxa\"/><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:tcPr><w:tcW w:w=\"1928\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F2F2F2\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">etiqueta</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"1928\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">sin fondo</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"9638\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9638\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">uno</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"9638\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"9638\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">dos</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9638\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">y su fila</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr><w:r><w:t xml:space=\"preserve\">2. Clave y valor</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"4819\"/><w:gridCol w:w=\"4819\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F2F2F2\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Ciclo</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">DAW</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F2F2F2\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Curso</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">2026-27</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"2754\"/><w:gridCol w:w=\"6884\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"2754\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Concepto</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"6884\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">Contenido</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"2754\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">Centro</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"6884\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">IES</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr><w:r><w:t xml:space=\"preserve\">3. Las de la plantilla</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"4764\"/><w:gridCol w:w=\"4874\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4764\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Resultados de aprendizaje</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4874\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Criterios de evaluación</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4764\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">1. Primero</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4874\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">a) Uno</w:t></w:r></w:p><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">b) Otro</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"9638\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9638\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">En crudo</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9638\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">porque nadie supo leerla</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"5103\"/><w:gridCol w:w=\"4535\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"5103\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F2F2F2\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Codigo</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4535\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">0614</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"5103\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F2F2F2\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Horas</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4535\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">160</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"9638\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"9638\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Bloque</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9638\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">Contenido uno</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"5015\"/><w:gridCol w:w=\"4623\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"5015\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Competencia</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4623\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Objetivo</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"5015\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">a</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4623\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">b</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"4819\"/><w:gridCol w:w=\"4819\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">RA</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">CE</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">1</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">a</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"4633\"/><w:gridCol w:w=\"5005\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4633\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Ev.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"5005\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9E2F3\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">SA</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4633\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">1</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"5005\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">Nada</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr><w:r><w:t xml:space=\"preserve\">4. Modulos</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"Heading2\"/></w:pPr><w:r><w:t xml:space=\"preserve\">4.1. Modulo primero</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"Heading3\"/></w:pPr><w:r><w:t xml:space=\"preserve\">4.1.1. Tablas del modulo</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"4819\"/><w:gridCol w:w=\"4819\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">X</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">Y</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">x1</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">y1</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"5121\"/><w:gridCol w:w=\"4517\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"5121\" w:type=\"dxa\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F2F2F2\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Horas</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4517\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">160</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:p><w:pPr><w:pStyle w:val=\"Heading2\"/></w:pPr><w:r><w:t xml:space=\"preserve\">4.2. Modulo segundo</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"Heading3\"/></w:pPr><w:r><w:t xml:space=\"preserve\">4.2.1. Tablas del modulo</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"9638\" w:type=\"dxa\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/></w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w=\"4819\"/><w:gridCol w:w=\"4819\"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">X</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">Y</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">x2</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4819\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr><w:r><w:t xml:space=\"preserve\">y2</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p><w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1134\" w:right=\"1134\" w:bottom=\"1134\" w:left=\"1134\" w:header=\"567\" w:footer=\"567\" w:gutter=\"0\"/></w:sectPr></w:body></w:document>",
+ "docxSha256": "3bf92e81998e53cd6a231f09e1f7b55ac61f6c1ff980ace5cbd9b24d1222a99a"
+}
