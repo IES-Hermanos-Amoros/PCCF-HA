@@ -70,6 +70,9 @@ const SUITES = [
   { archivo: 'test/estados.js', nombre: 'estados del documento, PCCF y memoria' },
   { archivo: 'test/coordinacion.js', nombre: 'coordinación y comentarios' },
   { archivo: 'test/reglas.js', nombre: 'comprobaciones configurables del documento' },
+
+  // --- agrupar tablas por su forma (solo propone) ---------------------------
+  { archivo: 'test/tablas-forma.js', nombre: 'propuesta de grupos de tablas por forma' },
 ];
 
 const AZUL = '\x1b[34m'; const ROJO = '\x1b[31m'; const VERDE = '\x1b[32m';

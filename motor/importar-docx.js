@@ -512,7 +512,10 @@ const convertir = async (input, styleMap) => {
 };
 const cuantosTitulos = (nodos, nivel) => nodos.filter((n) => n.type === 'h' && (!nivel || n.level === nivel)).length;
 
-async function importarDocx(input, opts = {}) {
+// La lectura del Word hasta tener los nodos, con el respaldo del índice si hace falta. Aparte para que
+// quien solo necesite las tablas (scripts/medir-tablas.js) lea el documento exactamente como lo lee
+// el importador.
+async function leerNodos(input) {
   const partes = await partesDocx(input, ['word/styles.xml']);
   const styles = partes && partes['word/styles.xml'];
   const styleMap = reglasDeNivelDeEsquema(estilosDeParrafo(styles));
@@ -545,6 +548,11 @@ async function importarDocx(input, opts = {}) {
     }
   }
 
+  return { leido, indice };
+}
+
+async function importarDocx(input, opts = {}) {
+  const { leido, indice } = await leerNodos(input);
   const { messages, nodos } = leido;
   const raiz = construirArbol(nodos);
   const avisos = [];
@@ -629,4 +637,4 @@ async function importarDocx(input, opts = {}) {
   return { plantilla, datos, informe };
 }
 
-module.exports = { importarDocx, norm, slug };
+module.exports = { importarDocx, leerNodos, clasificarTabla, norm, slug };
