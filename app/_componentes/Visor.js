@@ -473,6 +473,21 @@ export default function Visor({
 
   // Lo llama la tarjeta *Estructura* cuando el servidor ha aceptado un cambio.
   const alCambiarEstructura = useCallback(async (accion, r) => {
+    // UNA FILA DE LA FICHA NO RECARGA EL APARTADO NI EL ÁRBOL. La respuesta ya trae la estructura
+    // nueva y la versión de la plantilla, y recargar hace que `vistaApartado` pinte «Cargando el
+    // apartado…» y desmonte la lista de situaciones, que al volver a montarse lleva el foco a su
+    // título: se perdía el foco del botón que se acababa de pulsar. El árbol no cambia con una fila
+    // de la ficha (no hay apartados nuevos ni retirados), así que no hay nada que releer.
+    if (accion === 'ficha') {
+      if (r && Array.isArray(r.estructuraFicha)) {
+        setApartado((a) => (a ? { ...a, estructuraFicha: r.estructuraFicha } : a));
+      }
+      if (r && r.plantillaVersion) {
+        setEstructura((e) => (e ? { ...e, plantillaVersion: r.plantillaVersion } : e));
+      }
+      return;
+    }
+
     // El apartado retirado deja de estar en el árbol, así que la pantalla no
     // puede quedarse en él: se sube al padre. El `ir` limpia el aviso, y por eso
     // el aviso se pone DESPUÉS: es el mensaje de este cambio, no del anterior.
@@ -496,7 +511,7 @@ export default function Visor({
     }
 
     // Un campo nuevo cambia lo que trae el apartado abierto (`campos`): se vuelve a pedir.
-    if (['anadir_campo', 'retirar_campo', 'restaurar_campo', 'renombrar_campo', 'mover_campo', 'ficha'].includes(accion)) recargarApartado();
+    if (['anadir_campo', 'retirar_campo', 'restaurar_campo', 'renombrar_campo', 'mover_campo'].includes(accion)) recargarApartado();
 
     // Y si ha nacido o ha vuelto, se enseña: el id lo dice la respuesta, no esta pantalla. Al
     // retirarlo no se enseña nada, porque lo que había que ver es que ya no está.
