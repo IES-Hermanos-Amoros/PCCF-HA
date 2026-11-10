@@ -278,6 +278,7 @@
   // documento parecería perder algo, y un aviso que sale siempre no avisa de nada. Se descarta SOLO
   // si su texto es el rótulo de un grupo de la estructura; cualquier otra fila que no sea de rótulos
   // ni de contenido es texto que se quedaría sin sitio.
+  //
   // EL `rowspan` SOLO ESTORBA EN LAS FILAS QUE SE LEEN. Aquí el `colspan` es la forma —el `ancho` de
   // cada parte—, y la cabecera de la ficha, que es la que trae el `rowspan` en los documentos del
   // departamento, no es ninguna parte: su texto se queda sin sitio y eso se dice como lo que es, en
