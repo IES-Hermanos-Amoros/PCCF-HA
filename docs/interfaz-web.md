@@ -260,7 +260,7 @@ plantilla.modelos['modelo-xxx'] = {
   tipo,      // 'tabla' | 'tabla_clave_valor'
   sentido,   // 'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
   columnas,  // de cuántas columnas es la tabla cuando las partes van a lo alto (por omisión 2)
-  partes: [ { id, etiqueta, ancho?, grupo?, solo_si_hay?, retirado? } ],
+  partes: [ { id, etiqueta, peso?, ancho?, grupo?, solo_si_hay?, retirado? } ],
   version
 }
 ```
@@ -308,14 +308,28 @@ No es «una fila por parte». Es **la maquetación de la ficha de situación de 
 - las partes se **empaquetan** en filas de `columnas`, cada una ocupando las que diga su `ancho`;
 - se **abre fila** cuando la siguiente no cabe o cuando cambia de `grupo`;
 - cada fila de partes imprime **dos filas de tabla**: los rótulos encima y los contenidos debajo;
-- un `grupo` escribe además su nombre **una sola vez**, en una fila que ocupa la tabla entera;
+- un `grupo` escribe además su rótulo **cada vez que el grupo cambia** respecto de la fila anterior
+  que se imprimió, en una fila que ocupa la tabla entera: así un grupo que reaparece después de otro
+  se vuelve a rotular en lugar de parecer la continuación del de arriba, y una fila que no se imprime
+  no cuenta como cambio, para que el rótulo no salga separado de las filas que encabeza;
 - y una parte `solo_si_hay` no imprime su fila cuando no tiene nada escrito (a lo alto se decide por
   fila de partes, como en la ficha; a lo ancho, por parte, porque cada parte *es* una columna).
 
-`ancho` **significa dos cosas según el sentido**, y no hay manera de evitarlo sin dos nombres: a lo
-ancho es el **peso** relativo de la columna (un número positivo, puede ser decimal, lo reparte cada
-motor sobre el ancho de la hoja); a lo alto es **cuántas** de las `columnas` ocupa la parte en su
-fila (un entero, que acaba siendo su `colspan`). La puerta lo comprueba distinto en cada caso.
+**Cada sentido tiene su medida y su nombre**, porque son magnitudes distintas y no se convierten una
+en otra: a lo ancho, `peso` es el peso **relativo** de la columna (un número positivo, puede ser
+decimal, lo reparte cada motor sobre el ancho de la hoja); a lo alto, `ancho` es **cuántas** de las
+`columnas` ocupa la parte en su fila (un entero, que acaba siendo su `colspan`). Con un solo nombre
+para las dos, un número escrito para un sentido se usaba como la medida del otro en cuanto alguien le
+cambiaba el sentido al modelo, y repartir las columnas con unos números que no son de eso no se ve:
+sale una tabla torcida y nadie sabe por qué. Usar la del otro sentido es un error con explicación, no
+un valor que se ignore en silencio.
+
+Y **`grupo` es `{ id, etiqueta }`**, no un texto, por lo mismo que el id de una parte no es su nombre:
+el id decide qué partes van juntas y la etiqueta es lo que se imprime, así que renombrar un grupo no
+cambia su identidad. En la ficha están separados a propósito —el id es `'actividades'` y el rótulo es
+otro texto, `CABECERA_ACTIVIDADES`—, así que eso deja de ser una traducción rara y pasa a ser el caso
+normal. Dos partes del mismo grupo con rótulos distintos no se guardan: un grupo se imprime con un
+solo rótulo.
 
 Y la estructura propia de una tabla divergida guarda también `columnas`, por lo mismo que guarda
 `sentido`: para que un cambio del modelo no pueda reempaquetarle las filas después. Si no lo dice,
@@ -331,15 +345,14 @@ son dos, y **no** las que diga el modelo del que se desengachó.
 > `filasDeFicha`, con los dos casos de `solo_si_hay` y con la cabecera del grupo escrita una vez. Si
 > las dos se separan, esa prueba falla.
 
-**Y hay una celda en la que las dos difieren, a propósito y medida.** `filasDeFicha` tiene el nombre
-del grupo **cableado**: escribe su cabecera solo cuando el grupo es, literalmente, `'actividades'`. La
-regla la escribe para cualquier grupo, que es lo que `grupo` promete y lo que un modelo genérico tiene
-que hacer. No es teórico: `anadir_campo_ficha` de `core/plantilla.js` acepta hoy cualquier texto como
-grupo, así que un documento real puede tener una fila con `grupo: 'Mis actividades'`, y hoy esa fila
-**se agrupa pero no se rotula**. La diferencia es exactamente **una fila**, la del rótulo, y
-`test/modelos-tabla.js` la mide: quitándola, las dos salidas son idénticas celda por celda. El
-cableado lo tiene que quitar la pieza que absorba la ficha, y hasta entonces esa prueba dice qué va a
-cambiar y dónde.
+**Y la equivalencia es total, también con un grupo que no es el de la ficha.** Lo fue después de
+arreglar `core/sa.js`: `filasDeFicha` tenía el nombre del grupo **cableado** y comparaba con la cadena
+fija `'actividades'`, así que un grupo propio se agrupaba pero su rótulo **no se imprimía en ninguna
+celda**, ni en el PDF ni en el Word. Era alcanzable de punta a punta —`anadir_campo_ficha` de
+`core/plantilla.js` acepta cualquier texto y la ruta lo pasa tal cual—, y de ahí sale la regla de
+arriba: el rótulo se escribe cada vez que el grupo cambia. `test/modelos-tabla.js` vigila la
+equivalencia con los tres casos que la rompían: un grupo propio, un grupo que reaparece y una fila
+opcional vacía que parte un grupo.
 
 Por id y no por posición, y los motivos son tres:
 
