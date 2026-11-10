@@ -73,7 +73,10 @@ export default function EstructuraFicha({
   useEffect(() => {
     const quiere = focoPendiente.current;
     if (!quiere) return;
-    const nodo = quiere.map((k) => botones.current.get(k)).find((n) => n && !n.disabled);
+    // Mientras la estructura sea la de antes del cambio, la tabla todavía no está repintada: enfocar
+    // ahora iría a un botón que va a cambiar de sitio y el foco se quedaría en el del vecino.
+    if (quiere.desde !== undefined && quiere.desde === estructura) return;
+    const nodo = quiere.claves.map((k) => botones.current.get(k)).find((n) => n && !n.disabled);
     if (!nodo) return;
     focoPendiente.current = null;
     nodo.focus();
@@ -110,7 +113,8 @@ export default function EstructuraFicha({
       const informe = FE.informeDeCambio((r || {}).cambio, recuento, donde);
       setAviso(informe.estado + yEnTodas(r));
       setAlerta(informe.alerta);
-      focoPendiente.current = foco ? foco(r || {}) : null;
+      const claves = foco ? foco(r || {}) : null;
+      focoPendiente.current = claves ? { claves, desde: estructura } : null;
       setEditando(null);
       if (onCambiado) await onCambiado('ficha', r || {});
       return true;
@@ -125,7 +129,7 @@ export default function EstructuraFicha({
   const abrirRenombrar = (c) => {
     setEditando(c.id); setTexto(nombre(c)); setAviso(null); setAlerta(null); setError(null);
   };
-  const cerrarRenombrar = (c) => { focoPendiente.current = [`${c.id}:renombrar`]; setEditando(null); };
+  const cerrarRenombrar = (c) => { focoPendiente.current = { claves: [`${c.id}:renombrar`] }; setEditando(null); };
   const renombrar = (c) => mandar('renombrar', { campoFicha: c.id, etiqueta: texto }, () => [`${c.id}:renombrar`]);
 
   const mover = (c, sentido) => mandar(sentido, { campoFicha: c.id }, () => (sentido === 'subir'
@@ -168,7 +172,7 @@ export default function EstructuraFicha({
     const k = vigentes.indexOf(c);
     const antesDeRetirar = FE.avisoAntesDeRetirar(c, recuento, donde);
     return (
-      <td key={j} colSpan={celda.colspan} rowSpan={celda.rowspan} className="celda-neg">
+      <td key={c.id} colSpan={celda.colspan} rowSpan={celda.rowspan} className="celda-neg">
         {editando === c.id ? (
           <>
             <input
@@ -356,7 +360,13 @@ export default function EstructuraFicha({
 
       {/* Lo que ha pasado, siempre montado para que se anuncie; y lo que deja de imprimirse, aparte y
           como alerta, que es lo que no se puede dejar pasar. */}
-      <p className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'} role="status">{aviso || ''}</p>
+      <p
+        className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'}
+        role="status"
+        data-que="estructura-ficha-estado"
+      >
+        {aviso || ''}
+      </p>
       {alerta ? (
         <div className="nota nota-error" role="alert">
           <div>{alerta}</div>
