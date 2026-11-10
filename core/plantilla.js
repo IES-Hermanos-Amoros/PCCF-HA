@@ -985,6 +985,30 @@
     return { etiqueta: limpia };
   }
 
+  // DOS FILAS NO PUEDEN LLAMARSE IGUAL, Y NO ES UNA CUESTIÓN DE ESTÉTICA.
+  //
+  // El lector de una tabla importada reconoce cada fila por el TEXTO de su etiqueta (`porEtiqueta`
+  // de core/sa.js), que es lo único que el Word trae. Con dos filas con la misma etiqueta, ese mapa
+  // se queda con una sola y la otra deja de leerse: una ficha con texto en las dos pierde el de una
+  // al volver a montarse, y lo pierde en silencio. Medido: con «Objetivos» renombrado igual que
+  // «Criterios de evaluación», la ida y vuelta devuelve `ce: []`.
+  //
+  // Se compara con el mapa DEL LECTOR y no con una comparación propia, para que sea exactamente el
+  // mismo criterio: así cubre los acentos y las mayúsculas (`norm`) y también los SINÓNIMOS, que
+  // chocan igual aunque el texto no sea idéntico.
+  function choqueDeEtiquetaFicha(lista, etiqueta, idPropio) {
+    const Sa = deCore('sa');
+    const vigentes = lista.filter(vigenteFicha);
+    const dueno = Sa.porEtiqueta(vigentes).get(Sa.norm(etiqueta));
+    if (!dueno || dueno.id === idPropio) return null;
+    const suya = Sa.norm(dueno.etiqueta) === Sa.norm(etiqueta);
+    return no(suya
+      ? `La fila «${nombreFicha(dueno)}» ya se llama así. Dos filas con el mismo nombre no se pueden`
+        + ' distinguir al leer una ficha que venga del Word, y el texto de una de las dos se perdería.'
+      : `«${etiqueta}» es una de las redacciones con las que se reconoce la fila «${nombreFicha(dueno)}»,`
+        + ' así que las dos se confundirían al leer una ficha que venga del Word. Ponle otro nombre.');
+  }
+
   // AÑADIR UNA FILA. `posicion` es el sitio que ocupará entre las filas vigentes, contando desde 1;
   // sin ella va al final. El id se acuña aquí, de la etiqueta con la que nace, y se queda.
   function anadirCampoFicha(plantilla, { etiqueta, posicion, ancho, grupo, solo_si_hay: soloSiHay } = {}) {
@@ -1005,6 +1029,8 @@
     }
 
     return conFicha(plantilla, (lista) => {
+      const choque = choqueDeEtiquetaFicha(lista, e.etiqueta, null);
+      if (choque) return choque;
       const vigentes = lista.filter(vigenteFicha);
       if (vigentes.length >= MAX_CAMPOS_FICHA) {
         return no(`La ficha ya tiene ${MAX_CAMPOS_FICHA} filas, que es lo máximo: es una tabla de ${ANCHO_MAX_FICHA} columnas en una página y con más deja de leerse. Retira alguna antes de añadir otra.`);
@@ -1040,6 +1066,8 @@
       const c = buscarFicha(lista, campoFicha);
       if (!c) return sinFila(campoFicha);
       if (c.retirado) return no(`La fila «${nombreFicha(c)}» está retirada: restáurala antes de renombrarla.`);
+      const choque = choqueDeEtiquetaFicha(lista, e.etiqueta, c.id);
+      if (choque) return choque;
       const antes = nombreFicha(c);
       c.etiqueta = e.etiqueta;
       return { cambio: cambioFicha('campo_ficha_renombrado', c, { antes }) };
@@ -1104,6 +1132,10 @@
       const c = buscarFicha(lista, campoFicha);
       if (!c) return sinFila(campoFicha);
       if (!c.retirado) return no(`La fila «${nombreFicha(c)}» no está retirada: no hay nada que restaurar.`);
+      // Mientras estaba retirada, otra fila pudo quedarse con su nombre: restaurarla a ciegas
+      // crearía el choque por la puerta de atrás.
+      const choque = choqueDeEtiquetaFicha(lista, nombreFicha(c), c.id);
+      if (choque) return choque;
       if (lista.filter(vigenteFicha).length >= MAX_CAMPOS_FICHA) {
         return no(`La ficha ya tiene ${MAX_CAMPOS_FICHA} filas, que es lo máximo: no cabe una más. Retira otra antes de restaurar «${nombreFicha(c)}».`);
       }

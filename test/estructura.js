@@ -1847,6 +1847,30 @@ prueba('renombrar una fila de la ficha cambia la etiqueta y NADA mas: el id se q
   assert.match(aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'nada', etiqueta: 'X' }).motivo, /ninguna fila «nada»/);
 });
 
+prueba('dos filas de la ficha no pueden llamarse igual, porque el lector las confundiria', () => {
+  // Con dos filas con la misma etiqueta, `porEtiqueta` se queda con una sola: una ficha con texto
+  // en las dos pierde el de una al volver a montarse, y en silencio. Medido antes de esta regla:
+  // renombrando «objetivos» como «Criterios de evaluacion», la ida y vuelta devolvia ce: [].
+  const dup = aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'objetivos', etiqueta: 'Criterios de evaluación' });
+  assert.match(dup.motivo, /ya se llama así/);
+  assert.ok(!dup.plantilla, 'no se devuelve plantilla a medio cambiar');
+  // El criterio es el del lector, asi que los acentos y las mayusculas no lo esquivan.
+  assert.match(aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'objetivos', etiqueta: 'CRITERIOS DE EVALUACION' }).motivo, /ya se llama así/);
+  // Ni los SINONIMOS, que el lector reconoce igual.
+  assert.match(aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'objetivos', etiqueta: 'Actividades de profundización' }).motivo, /se reconoce la fila «Actividades de ampliación»/);
+  // Anadir, lo mismo.
+  assert.match(aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Criterios de evaluación' }).motivo, /ya se llama así/);
+  // Renombrarse con su propio nombre vale, y un nombre libre tambien.
+  assert.ok(!aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'ce', etiqueta: 'Criterios de evaluación' }).motivo);
+  assert.ok(!aplicarFicha(base(), { tipo: 'renombrar_campo_ficha', campoFicha: 'objetivos', etiqueta: 'Metas del modulo' }).motivo);
+  // Y no se puede colar por la puerta de atras: si otra fila se queda con el nombre de una
+  // retirada mientras lo estaba, restaurarla se rechaza en vez de crear el choque.
+  let pl = aplicarFicha(base(), { tipo: 'retirar_campo_ficha', campoFicha: 'recursos' }).plantilla;
+  pl = aplicarFicha(pl, { tipo: 'renombrar_campo_ficha', campoFicha: 'objetivos', etiqueta: 'Materiales y recursos didácticos disponibles' }).plantilla;
+  assert.ok(pl, 'con la fila retirada el nombre esta libre: el lector no la lee');
+  assert.match(aplicarFicha(pl, { tipo: 'restaurar_campo_ficha', campoFicha: 'recursos' }).motivo, /ya se llama así/);
+});
+
 prueba('anadir una fila acuna el id de la etiqueta, la pone en su sitio y no lo cambia al renombrar', () => {
   const uno = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Atención a la diversidad', posicion: 4, ancho: 2, grupo: 'actividades', solo_si_hay: true });
   assert.ok(!uno.motivo, uno.motivo);
@@ -1868,17 +1892,21 @@ prueba('anadir una fila acuna el id de la etiqueta, la pone en su sitio y no lo 
 });
 
 prueba('el id de una fila anadida no coincide con el de una retirada con la misma etiqueta, ni con ninguno', () => {
+  // Se retira antes de volver a usar el nombre porque dos filas vigentes no pueden llamarse igual
+  // (el lector las confundiria). El id de la retirada sigue reservado: es lo que se comprueba aqui.
   let p = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Rúbrica' }).plantilla;
   assert.ok(idsDe(p).includes('rubrica'));
   p = aplicarFicha(p, { tipo: 'retirar_campo_ficha', campoFicha: 'rubrica' }).plantilla;
   p = aplicarFicha(p, { tipo: 'anadir_campo_ficha', etiqueta: 'Rúbrica' }).plantilla;
+  p = aplicarFicha(p, { tipo: 'retirar_campo_ficha', campoFicha: 'rubrica-2' }).plantilla;
   p = aplicarFicha(p, { tipo: 'anadir_campo_ficha', etiqueta: 'Rúbrica' }).plantilla;
   const ids = idsDe(p);
   assert.deepStrictEqual(ids.filter((i) => i.startsWith('rubrica')).sort(), ['rubrica', 'rubrica-2', 'rubrica-3']);
   assert.equal(new Set(ids).size, ids.length, 'hay ids repetidos');
   // Tampoco toma el de una de las de omision ni una clave de la propia ficha.
-  const comoOmision = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Introducción' }).plantilla;
-  assert.ok(idsDe(comoOmision).includes('introduccion-2'));
+  let conOmision = aplicarFicha(base(), { tipo: 'retirar_campo_ficha', campoFicha: 'introduccion' }).plantilla;
+  conOmision = aplicarFicha(conOmision, { tipo: 'anadir_campo_ficha', etiqueta: 'Introducción' }).plantilla;
+  assert.ok(idsDe(conOmision).includes('introduccion-2'));
   const comoTitulo = aplicarFicha(base(), { tipo: 'anadir_campo_ficha', etiqueta: 'Título' }).plantilla;
   assert.ok(!idsDe(comoTitulo).includes('titulo'));
 });
