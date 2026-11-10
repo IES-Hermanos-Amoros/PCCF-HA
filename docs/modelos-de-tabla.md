@@ -110,7 +110,7 @@ plantilla.modelos['modelo-xxx'] = {
   tipo,      // 'tabla' | 'tabla_clave_valor'
   sentido,   // 'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
   columnas,  // de cuántas columnas es la tabla cuando las partes van a lo alto (por omisión 2)
-  partes: [ { id, etiqueta, peso?, ancho?, grupo?, solo_si_hay?, retirado? } ],
+  partes: [ { id, etiqueta, peso?, ancho?, al_lado?, grupo?, solo_si_hay?, retirado? } ],
   version
 }
 ```
@@ -122,6 +122,30 @@ son cuántas de las `columnas` ocupa la parte en su fila (un entero, que acaba s
 cuando no tiene nada escrito. Cómo se colocan las partes que van a lo alto, que es la maquetación de
 la ficha y está comprobada celda por celda contra `filasDeFicha`, está en
 [`interfaz-web.md` §3.9](interfaz-web.md).
+
+### Y `al_lado`: el rótulo y su valor en la misma fila
+
+Las dos primeras formas de colocar dejaban un hueco: `columnas` pone los rótulos **arriba** y `filas`
+los pone **encima** de su contenido, y faltaba ponerlos **a la izquierda**, en la misma fila. Sin eso
+no se pueden decir dos cosas que los documentos del departamento escriben así y que están medidas: la
+cabecera de una ficha de situación de aprendizaje —«Sesiones | 10 | Evaluación | 1ª»— y la
+identificación de un módulo, que es `rótulo | valor | rótulo | valor` en cada fila. Y no poder
+decirlas no era un detalle de maquetación: obligaba a sacar del modelo cinco campos de la ficha, y
+entonces la ficha no se absorbe, se reescribe.
+
+Se dice **por parte** y dentro de `sentido: 'filas'`, no con un sentido nuevo, porque lo que cambia no
+es hacia dónde van las partes —siguen yendo a lo alto— sino dónde va la casilla de una respecto de su
+rótulo. Así se reaprovecha todo lo demás: el empaquetado en filas, el `ancho`, el `grupo`, el
+`solo_si_hay` y el contenido por id. `ancho` es lo que ocupa **el par**, una columna el rótulo y el
+resto la casilla, así que pide dos como mínimo; y una fila no mezcla las dos formas de colocar, porque
+una fila de pares imprime UNA fila de tabla y una de rótulos encima imprime DOS.
+
+**No se solapa con `tabla_clave_valor`**, que es el otro sitio donde un rótulo va al lado de su valor.
+Allí la tabla es **entera** de pares, son dos columnas fijas y se imprime por su propio camino
+(`paresVigentes`, los 150 pt del PDF, `filasParejas` en el Word); `al_lado` es para una parte **dentro
+de una rejilla** que mezcla filas de pares con filas de rótulo encima, que es lo que una tabla de
+clave y valor no puede ser. Por eso está prohibido en un modelo de clave y valor: dos caminos para la
+misma forma es el defecto que esta pieza lleva once fallos evitando.
 
 Un campo apunta a su modelo con `campo.modelo`; sin esa clave, no usa modelo. Una tabla que ha
 divergido guarda su estructura junto a su contenido, en `valor.estructura`, **con su `sentido`
@@ -152,7 +176,7 @@ Tres reglas vienen de lo ya aprendido con la estructura de la ficha y no se vuel
 |---|---|
 | El `id` se acuña una vez y no sigue a la etiqueta | El contenido se guarda por id. Un id que siguiera al nombre dejaría huérfano lo escrito en cuanto alguien corrigiera una tilde |
 | Retirar no borra | Una parte retirada deja de imprimirse y su contenido sigue ahí. Borrar es otra cosa, se pide aparte y dice cuánto se pierde |
-| Dos partes no pueden llamarse igual | El lector de una tabla importada reconoce las partes por el texto de su etiqueta. Con dos iguales se queda con una, y el texto de la otra se pierde al releerse |
+| Dos partes no pueden llamarse igual | El lector de una tabla importada reconoce las partes por el texto de su etiqueta. Con dos iguales se queda con una, y el texto de la otra se pierde al releerse. Lo comprueba la puerta del modelo con **el mapa del lector** (`porEtiqueta`, `norm`), igual que `choqueDeEtiquetaFicha`, así que cubre acentos, mayúsculas y sinónimos |
 
 ## 5. La regla única
 
@@ -224,46 +248,67 @@ es la negrita escrita de forma irregular y los anchos que difieren por redondeo,
 ### Y la medición de la pieza 2: cuántas tablas se pueden adoptar
 
 La adopción tiene la misma clase de riesgo y se mide igual, con `scripts/medir-adopcion.js` sobre los
-mismos doce documentos y sin escribir nada. Son 1.095 tablas, y el modelo contra el que se mide lo
-propone el propio guion con los rótulos que cada tabla ya tiene, que es lo más favorable que se puede
-hacer sin inventar nombres.
+mismos doce documentos y sin escribir nada. Son 1.095 tablas, de las que **42 son derivadas** —el
+resumen de situaciones, que se calcula y no se guarda nunca—, así que las que se podrían guardar son
+**1.053**. El modelo contra el que se mide lo propone el propio guion con los rótulos que cada tabla
+ya tiene, que es lo más favorable que se puede hacer sin inventar nombres.
 
-| Medición | Se adoptan sin perder un carácter |
-|---|---|
-| Con el modelo de su **grupo**, de las que hoy pueden tener modelo y están en un grupo | **91 de 224** (41 %) |
-| Con un modelo hecho a su medida: el **techo** de las 1.095 | **512** (47 %) |
-| La **ficha de SA** contra el modelo de la ficha de verdad | **0 de 311** |
+| Medición | Se adoptan sin perder un carácter | Antes de `al_lado` y de desplegar la rejilla |
+|---|---|---|
+| Con el modelo de su **grupo**, de las que hoy pueden tener modelo y están en un grupo | **110 de 224** (49 %) | 91 (41 %) |
+| Sueltas, con un modelo hecho a su medida | **29 de 83** | 19 |
+| El **techo**: las 1.095 con un modelo a su medida | **541** (51 % de las 1.053 guardables) | 512 |
+| La **ficha de SA** contra el modelo de la ficha | **0 de 311** | 0 de 311 |
+
+Las dos cosas que movieron el número son las dos de esta pieza: **desplegar la rejilla** antes de
+leerla y **`al_lado`**. La primera convirtió 39 negativas en adopciones; la segunda, las demás.
 
 **El techo, familia por familia, es lo que de verdad decide**: las ponderaciones (290/290), la tabla
 de RA y CE (44/44), competencias y objetivos (37/37) y los contenidos (18/18) se adoptan **todas**,
-así que esos cuatro `if` del importador pueden pasar a ser modelos. Las tablas genéricas se quedan en
-76 de 248 y las de clave y valor en 47 de 59. Y hay tres familias que hoy no pueden: la ficha de SA,
-la identificación del módulo y el resumen de situaciones, que es derivado y no se guarda nunca.
+así que esos cuatro `if` del importador pueden pasar a ser modelos. Las tablas genéricas suben a 105
+de 248 y las de clave y valor se quedan en 47 de 59. Y hay dos familias que no pueden, las dos por el
+mismo motivo y las dos medidas abajo: la ficha de SA y la identificación del módulo.
 
-**Por qué se niega, agrupado por motivo** (el techo, 583 tablas): 452 porque la tabla no tiene
-rótulos de los que sacar un modelo, 113 por una celda combinada donde el emparejamiento tiene que ser
-de una celda a una parte, 12 porque el rótulo mide más de 100 caracteres —no es un rótulo, es un
-párrafo que la heurística de cabecera confundió—, 4 por dos rótulos que casan con la misma parte y 2
-por una celda con texto que se quedaría sin sitio. En esas 583 hay 1,55 millones de caracteres que se
-quedan fuera del modelo, y 74 que se perderían si se adoptaran a la fuerza.
+**Por qué se niega, agrupado por motivo** (el techo, 554 tablas): 448 porque la tabla no tiene rótulos
+de los que sacar un modelo, 74 por una celda combinada **en la fila de rótulos** —que es el único
+sitio donde ya no se admite, porque un rótulo que cubre dos columnas no dice de qué parte es—, 26
+porque con sus rótulos no se puede escribir un modelo (una etiqueta de más de 100 caracteres, que no
+es un rótulo sino un párrafo, o dos rótulos que se llaman igual) y 6 por una celda con texto que se
+quedaría sin sitio. En esas 554 hay 1,50 millones de caracteres que se quedan fuera del modelo, y
+13.526 que se perderían si se adoptaran a la fuerza.
 
-**La ficha de SA no la bloquea su cuerpo, sino su cabecera.** Sus doce filas se emparejan sin
-problema; lo que no tiene sitio son las cinco cosas de arriba —número, título, sesiones, evaluación y
-resultados de aprendizaje—, que no son partes a lo alto: son rótulo y valor en la MISMA fila, con un
-`rowspan` para el título. Son 90.467 caracteres de las 311 fichas, y ningún `sentido` de los dos
-actuales sabe colocarlos: `columnas` pone los rótulos arriba y `filas` los pone encima de su
-contenido. La identificación del módulo (44 tablas) falla por lo mismo, y de forma más clara: es
-`rótulo | valor | rótulo | valor` en cada fila. **Es el agujero del modelo de datos**, y la pieza 8 no
-puede salir adelante sin taparlo: hace falta decir que una parte lleva su contenido AL LADO y no
-debajo, que es una tercera forma de colocar, o sacar esos cinco campos del modelo.
+**Lo que `al_lado` NO arregla, y es la pregunta de la que cuelga la pieza 8.** Las 311 fichas siguen
+sin adoptarse, pero ya no por cinco campos: por **dos celdas**. Con las tres partes de su cabecera que
+el modelo sabe decir —sesiones, evaluación y resultados de aprendizaje—, el texto que se queda fuera
+baja de 90.467 a **23.639 caracteres**, y de las 311 fichas **300 dejan exactamente dos celdas sueltas**
+(10 dejan tres y una, cinco). Esas dos son siempre las mismas: **«Situación de aprendizaje 3»**, que
+lleva el rótulo pegado al valor dentro de la misma celda, y **el título**, que no lleva rótulo ninguno.
+Ninguna de las dos se puede emparejar por el texto de un rótulo, que es el único emparejamiento que
+este proyecto admite; y hacerlo por posición es exactamente la media correspondencia con la que el
+texto de una parte acaba en otra sin que nadie lo vea. Así que la pieza 8 tiene dos salidas honradas:
+que el **lector de la ficha** (`fichaDeFilas`, que ya sabe leer esas dos celdas y está probado contra
+los documentos reales) rellene esas dos partes y la adopción genérica haga las quince restantes; o que
+el modelo aprenda a decir «el rótulo de esta parte es un prefijo de su celda», que solo sirve para una
+celda de una familia y obliga al motor a concatenar al imprimir. La primera no inventa nada.
+
+**La identificación del módulo (44 tablas) falla por lo que el modelo sigue sin saber decir**: una
+celda que **agrupa varias filas**. Su primera columna es «Identificación», «Profesorado» o
+«Distribución horaria» cubriendo tres o cuatro filas de pares a su derecha. Probado con un modelo
+escrito a mano con sus doce rótulos: empareja diez de ellos y se niega, porque la celda que agrupa se
+come como valor el rótulo que tiene al lado y el valor de verdad se queda sin sitio. Se niega, que es
+lo que tiene que hacer, pero no se adopta. **`grupo` no sirve para esto**: un grupo es un conjunto de
+**partes** con una banda impresa encima de sus filas, y esto es una celda a la **izquierda** que cubre
+varias **filas de contenido**. En una tabla a lo ancho las filas de contenido no son partes, así que no
+hay nada que agrupar; y por eso ahí el problema se resolvió desplegando la rejilla, no con `grupo`.
 
 **Adoptar puede cambiar el aspecto sin perder un carácter**, y es aceptable pero se avisa (§3.5). De
-las 91 que se adoptan con el modelo de su grupo, 39 cambian lo que se imprime: 32 cambian el reparto
-de las columnas, 9 un rótulo que el modelo reescribe, 7 la negrita o el fondo, 6 pierden el estilo por
-celda que traían del Word y 1 gana la cabecera que se repite al cambiar de página. Y una advertencia
-que salió de medir: si el modelo no lleva el `peso` de cada columna, cambian las **91**, porque una
-tabla adoptada no guarda `anchos` y el reparto pasa a hacerlo el texto. Quien proponga el modelo de un
-grupo tiene que sembrarlo con los anchos del `w:tblGrid` de la tabla representante.
+las 110 que se adoptan con el modelo de su grupo, **58 cambian lo que se imprime**: 40 el reparto de
+las columnas, 19 la negrita o el fondo de un rótulo, 13 ganan la cabecera que se repite al cambiar de
+página, 10 un rótulo que el modelo reescribe y 6 pierden el estilo por celda que traían del Word. Y
+una advertencia que salió de medir: si el modelo no lleva el `peso` de cada columna, cambian las
+**110**, porque una tabla adoptada no guarda `anchos` y el reparto pasa a hacerlo el texto. Quien
+proponga el modelo de un grupo tiene que sembrarlo con los anchos del `w:tblGrid` de la tabla
+representante.
 
 ---
 
