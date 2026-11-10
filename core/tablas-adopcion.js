@@ -198,7 +198,7 @@
       const rotulo = texto(celda);
       const parte = casa(rotulo);
       if (parte) {
-        r.rotulos.push({ texto: rotulo, donde: `la columna ${j + 1}`, parte });
+        r.rotulos.push({ texto: rotulo, donde: `la columna ${j + 1}`, parte, celda, fila: 0, colspan: 1 });
         r.contenido.push({ parte, celdas: columna.map(casillaDeCelda) });
         return;
       }
@@ -230,7 +230,7 @@
       const rotulo = texto(celdas[0]);
       const parte = casa(rotulo);
       if (parte) {
-        r.rotulos.push({ texto: rotulo, donde: `la fila ${i + 1}`, parte });
+        r.rotulos.push({ texto: rotulo, donde: `la fila ${i + 1}`, parte, celda: celdas[0], fila: i, colspan: 1 });
         r.contenido.push({ parte, celdas: [casillaDeCelda(celdas[1])] });
       } else {
         if (rotulo.trim()) r.rotulos.push({ texto: rotulo, donde: `la fila ${i + 1}`, parte: null });
@@ -257,7 +257,7 @@
       const valor = String(p.valor == null ? '' : p.valor);
       const parte = casa(etiqueta);
       if (parte) {
-        r.rotulos.push({ texto: etiqueta, donde: `el par ${i + 1}`, parte });
+        r.rotulos.push({ texto: etiqueta, donde: `el par ${i + 1}`, parte, celda: null, fila: i, colspan: 1 });
         r.contenido.push({ parte, celdas: [{ text: valor }] });
         return;
       }
@@ -310,7 +310,7 @@
           const rotulo = texto(celda);
           const parte = rotulo.trim() ? casa(rotulo) : null;
           if (parte) {
-            r.rotulos.push({ texto: rotulo, donde: `la celda ${j + 1} de la fila ${i + 1}`, parte });
+            r.rotulos.push({ texto: rotulo, donde: `la celda ${j + 1} de la fila ${i + 1}`, parte, celda, fila: i, colspan: span(celda, 'colspan') });
             r.contenido.push({ parte, celdas: [casillaDeCelda(contenido[j])] });
           } else if (limpio(contenido[j])) {
             r.sueltas.push({ donde: `la celda ${j + 1} de la fila ${i + 2}`, texto: limpio(contenido[j]) });
@@ -372,6 +372,75 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- lo que cambia de aspecto
+
+  // CÓMO SE VE UNA CELDA IMPRESA, preguntándoselo a las reglas que lo deciden (`fondoDeCelda`,
+  // `alineacionDeCelda` y `tamanoDeCelda` de core/estructurados.js) en lugar de mirar sus claves: el
+  // fondo de una celda del Word no está escrito en ninguna clave, lo deduce la negrita y el estar o no
+  // en la cabecera, así que compararlas por sus claves diría que no cambia nada cuando sí cambia.
+  function comoSeVe(celda, enCabecera) {
+    const e = Est();
+    return [
+      esObjeto(celda) && !!celda.bold ? 'N' : 'n',
+      e.fondoDeCelda(celda, enCabecera) || '-',
+      e.alineacionDeCelda(celda) || '-',
+      e.tamanoDeCelda(celda) || '-',
+    ].join('|');
+  }
+
+  // Las celdas de rótulo que el modelo pinta, por el id de su parte: son las que llevan `campo`.
+  function rotulosPintados(filas) {
+    const out = new Map();
+    lista(filas).forEach((f) => lista(f).forEach((c) => {
+      if (esObjeto(c) && typeof c.campo === 'string') out.set(c.campo, c);
+    }));
+    return out;
+  }
+
+  // QUÉ CAMBIA DE LO QUE SE IMPRIME, aunque no se pierda ni un carácter. Una tabla importada se
+  // imprime como vino, también en el estilo (§3.5 de docs/modelos-de-tabla.md), y ADOPTAR es justo el
+  // momento en que eso deja de aplicarse: los rótulos salen de la estructura, así que el estilo pasa a
+  // ser el del modelo. Perder texto es inaceptable y por eso se niega; cambiar el aspecto es
+  // aceptable, pero quien lo pide tiene derecho a saber el número antes de aceptar.
+  //
+  // Se compara contra lo que los motores van a pintar DE VERDAD —`tablaVigente` y `paresVigentes`—,
+  // no contra lo que esta pieza supone que harán.
+  function aspectoDe(campo, valor, nuevo, modelos, lectura) {
+    const mt = MT();
+    const cabeceraAntes = Est().cabeceraDeTabla(campo, valor);
+    const porPares = esObjeto(campo) && campo.tipo === mt.TIPO_CLAVE_VALOR;
+    const pintada = porPares ? { cabecera: false, filas: [] } : mt.tablaVigente(campo, nuevo, modelos, cabeceraAntes);
+    const pintados = rotulosPintados(pintada.filas);
+    const casados = lectura.rotulos.filter((x) => x.parte);
+    let estilo = 0;
+    let ancho = 0;
+    for (const x of casados) {
+      // UNA TABLA DE CLAVE Y VALOR SE IMPRIME POR SUS PARES, y un par es texto pelado: su rótulo lo
+      // pinta `pintarClaveValor` con el estilo que esa tabla tiene en la aplicación, y el contenido
+      // pierde la negrita, el fondo, la alineación y el tamaño que trajera del Word.
+      if (porPares) {
+        if (comoSeVe(x.celda, false) !== 'n|-|-|-') estilo += 1;
+        continue;
+      }
+      const despues = pintados.get(x.parte.id);
+      if (comoSeVe(x.celda, cabeceraAntes && x.fila === 0) !== comoSeVe(despues, pintada.cabecera)) estilo += 1;
+      if (x.colspan !== span(despues, 'colspan')) ancho += 1;
+    }
+    let contenido = 0;
+    if (porPares) {
+      for (const { celdas } of lectura.contenido) {
+        if (celdas.some((c) => comoSeVe(c, false) !== 'n|-|-|-')) contenido += 1;
+      }
+    }
+    const anchos = esObjeto(valor) && valor.anchos !== undefined;
+    const cabecera = !porPares && cabeceraAntes !== !!pintada.cabecera;
+    const rotulos = casados.filter((x) => x.texto.trim() !== etiquetaDe(x.parte).trim()).length;
+    return {
+      cambia: !!(rotulos || estilo || ancho || contenido || anchos || cabecera),
+      rotulos, estilo, ancho, contenido, anchos, cabecera,
+    };
+  }
+
   // Los mismos textos, descontado lo que está en blanco y sin su orden: una celda vacía no es texto
   // que se pueda perder, y el orden en que se recorren las columnas no es el de las filas impresas.
   const soloTextos = (xs) => xs.map((t) => String(t == null ? '' : t).trim()).filter(Boolean).sort();
@@ -428,6 +497,9 @@
       bandas: lectura.bandas,
       // EL TEXTO EN JUEGO: lo que se perdería si esto se adoptara tal cual. Es la cifra que decide.
       enJuego: cuantos(lectura.sueltas) + cuantos(sinParte),
+      // Qué cambia de lo que se imprime aunque no se pierda texto. Se rellena solo cuando la
+      // adopción se puede hacer: es lo que hay que avisar antes de aceptarla.
+      aspecto: null,
       frase: null,
       aviso: null,
     };
@@ -435,7 +507,8 @@
 
   // La frase con la que la pantalla cuenta una adopción que sí se puede hacer, y el aviso de lo que
   // cambia aunque no se pierda nada. `aviso` es null cuando no cambia nada visible.
-  function redactar(informe, anchos) {
+  function redactar(informe) {
+    const aspecto = informe.aspecto || {};
     const reescritos = informe.rotulos.filter((x) => x.cambia);
     informe.frase = `Se colocan ${plural(informe.casillas, 'casilla', 'casillas')} en `
       + `${plural(informe.rotulos.length, 'parte', 'partes')} de las ${informe.partes} del modelo, con `
@@ -455,7 +528,19 @@
       partes.push(`${mayuscula(enLista(informe.sinRotulo.map((x) => x.donde)))} `
         + `${informe.sinRotulo.length === 1 ? 'no tiene rótulo ni nada escrito, así que desaparece' : 'no tienen rótulo ni nada escrito, así que desaparecen'} de la tabla.`);
     }
-    if (anchos) partes.push('La tabla deja de llevar sus anchos de columna: los pondrá el modelo.');
+    // EL ASPECTO IMPRESO, que no es lo mismo que el texto. Una tabla importada se imprime como vino,
+    // también en el estilo; adoptar es el momento en que el estilo pasa a ser el del modelo.
+    if (aspecto.estilo || aspecto.contenido || aspecto.cabecera) {
+      const comos = [];
+      if (aspecto.estilo) comos.push(`${plural(aspecto.estilo, 'rótulo cambia', 'rótulos cambian')} de negrita o de fondo`);
+      if (aspecto.contenido) comos.push(`${plural(aspecto.contenido, 'parte pierde', 'partes pierden')} la negrita o el fondo que traía del Word`);
+      if (aspecto.cabecera) comos.push('la fila de los rótulos pasa a ser la cabecera que se repite al cambiar de página');
+      partes.push(`${mayuscula(enLista(comos))}: la tabla seguirá diciendo lo mismo, pero no se imprimirá igual.`);
+    }
+    if (aspecto.ancho) {
+      partes.push(`${plural(aspecto.ancho, 'parte ocupa', 'partes ocupan')} en el modelo un número de columnas distinto del que ocupaba en la tabla.`);
+    }
+    if (aspecto.anchos) partes.push('La tabla deja de llevar sus anchos de columna: los pondrá el modelo.');
     informe.aviso = partes.length ? partes.join(' ') : null;
     return informe;
   }
@@ -600,10 +685,11 @@
         + 'Adoptar no puede cambiar lo que sale impreso, así que no se ha tocado nada.', informe);
     }
 
-    return { valor: nuevo, clave: null, motivo: null, informe: redactar(informe, esObjeto(valor) && valor.anchos !== undefined) };
+    informe.aspecto = aspectoDe(campo, valor, nuevo, modelos, lectura);
+    return { valor: nuevo, clave: null, motivo: null, informe: redactar(informe) };
   }
 
-  const api = { adoptar, emparejador, contenidoImpreso, MOTIVOS };
+  const api = { adoptar, emparejador, contenidoImpreso, aspectoDe, MOTIVOS };
 
   global.Core = global.Core || {};
   global.Core.tablasAdopcion = api;
