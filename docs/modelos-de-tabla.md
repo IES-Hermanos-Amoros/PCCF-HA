@@ -97,10 +97,19 @@ plantilla.modelos['modelo-xxx'] = {
   nombre,    // lo que se enseña: «Ficha de actividad»
   tipo,      // 'tabla' | 'tabla_clave_valor'
   sentido,   // 'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
-  partes: [ { id, etiqueta, ancho?, retirado? } ],
+  columnas,  // de cuántas columnas es la tabla cuando las partes van a lo alto (por omisión 2)
+  partes: [ { id, etiqueta, peso?, ancho?, grupo?, solo_si_hay?, retirado? } ],
   version
 }
 ```
+
+Cada sentido tiene **su medida y su nombre**, porque son magnitudes distintas y no se convierten una
+en otra: a lo ancho, `peso` es el peso relativo de la columna (puede ser decimal); a lo alto, `ancho`
+son cuántas de las `columnas` ocupa la parte en su fila (un entero, que acaba siendo su `colspan`).
+`grupo` es `{ id, etiqueta }` —el id agrupa, la etiqueta se imprime— y `solo_si_hay` omite la fila
+cuando no tiene nada escrito. Cómo se colocan las partes que van a lo alto, que es la maquetación de
+la ficha y está comprobada celda por celda contra `filasDeFicha`, está en
+[`interfaz-web.md` §3.9](interfaz-web.md).
 
 Un campo apunta a su modelo con `campo.modelo`; sin esa clave, no usa modelo. Una tabla que ha
 divergido guarda su estructura junto a su contenido, en `valor.estructura`, **con su `sentido`
@@ -184,7 +193,40 @@ genérica ya funciona contra tablas de ejemplo.
 
 ### La medición que puede tumbar el plan
 
-La pieza 6 depende de que agrupar tablas por forma dé grupos sensatos en documentos de verdad. Se
+La pieza 7 depende de que agrupar tablas por forma dé grupos sensatos en documentos de verdad. Se
 mide antes de construir la pantalla, sobre los doce documentos de `docs/entrada_ej/`, y con atención
 a los ocho que no son programaciones didácticas. Si el agrupamiento da disparates, lo que hay que
 cambiar es el plan, no la pantalla.
+
+Medido ya: el agrupamiento acierta de pleno en seis de las nueve familias que el importador etiqueta
+en una programación, y se queda en el 80 % en las fichas de situación de aprendizaje, cuyo techo es
+que en los documentos del departamento hay **dos diseños distintos de ficha**, no uno. Los grupos que
+casan por cabecera son fiables; los que agrupan solo por geometría son los que mezclan, así que la
+pantalla tendrá que marcarlos como débiles y dar por hecho que alguien unirá y partirá a mano.
+
+---
+
+## 7. Lo que queda sin cerrar
+
+Tres cosas que la pieza 1 deja abiertas a propósito. Están aquí para que no se descubran dentro de
+tres meses como si fueran defectos nuevos.
+
+**La regla de maquetación está escrita dos veces**, en `core/sa.js` para la ficha y en
+`core/modelos-tabla.js` para un modelo a lo alto. Es la única excepción a «una regla en un solo
+sitio» de todo esto, y es deliberada: unificarla obliga a tocar el código que gobierna las 306
+fichas reales, y eso le toca a la pieza que absorba la ficha y no a ninguna anterior. Lo que
+mantiene la excepción honesta es una prueba que compara las dos maquetaciones celda por celda sobre
+los campos de la propia ficha; mientras pase, las dos dicen lo mismo.
+
+**El lado de escritura del editor, para una tabla que ha adoptado su modelo, está cerrado con
+llave.** Las mil líneas de `core/tablas-edicion.js` indexan por `(fila, columna)` sobre lo pintado,
+y en una tabla adoptada lo pintado lleva la fila de rótulos y lo guardado no. Media correspondencia
+es exactamente cómo se le da formato a la celda equivocada, así que el editor enseña esas tablas y
+se niega a las catorce operaciones con su motivo. Le toca a la pieza de adopción, que es la que crea
+esas tablas.
+
+**El tope de partes a lo alto cuenta partes y el tope de la hoja cuenta filas.** Un modelo con 200
+partes lo acepta la puerta y produciría más de 400 filas impresas, cuando el máximo de una rejilla
+guardada son 200. No revienta, porque la tabla generada no vuelve a pasar por la puerta, y 200 partes
+en una tabla es absurdo —la ficha tiene doce—. Cerrarlo de verdad es comprobar las filas que la
+maquetación va a producir, no inventar un medio tope.

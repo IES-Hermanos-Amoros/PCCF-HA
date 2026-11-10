@@ -259,7 +259,8 @@ plantilla.modelos['modelo-xxx'] = {
   nombre,    // lo que se enseña: «Ficha de actividad»
   tipo,      // 'tabla' | 'tabla_clave_valor'
   sentido,   // 'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
-  partes: [ { id, etiqueta, ancho?, retirado? } ],
+  columnas,  // de cuántas columnas es la tabla cuando las partes van a lo alto (por omisión 2)
+  partes: [ { id, etiqueta, peso?, ancho?, grupo?, solo_si_hay?, retirado? } ],
   version
 }
 ```
@@ -298,6 +299,60 @@ pantalla acabaría pintando una tabla distinta de la que sale impresa, que es la
 |---|---|---|
 | `'filas'` | una fila | **una casilla**. Es literalmente `ficha[id]` de `core/sa.js` |
 | `'columnas'` | una columna | **la lista de sus casillas** hacia abajo |
+
+### Cómo se colocan las partes que van a lo alto
+
+No es «una fila por parte». Es **la maquetación de la ficha de situación de aprendizaje**, que es la
+única que existe en los documentos del departamento y la que lleva 306 fichas funcionando:
+
+- las partes se **empaquetan** en filas de `columnas`, cada una ocupando las que diga su `ancho`;
+- se **abre fila** cuando la siguiente no cabe o cuando cambia de `grupo`;
+- cada fila de partes imprime **dos filas de tabla**: los rótulos encima y los contenidos debajo;
+- un `grupo` escribe además su rótulo **cada vez que el grupo cambia** respecto de la fila anterior
+  que se imprimió, en una fila que ocupa la tabla entera: así un grupo que reaparece después de otro
+  se vuelve a rotular en lugar de parecer la continuación del de arriba, y una fila que no se imprime
+  no cuenta como cambio, para que el rótulo no salga separado de las filas que encabeza;
+- y una parte `solo_si_hay` no imprime su fila cuando no tiene nada escrito (a lo alto se decide por
+  fila de partes, como en la ficha; a lo ancho, por parte, porque cada parte *es* una columna).
+
+**Cada sentido tiene su medida y su nombre**, porque son magnitudes distintas y no se convierten una
+en otra: a lo ancho, `peso` es el peso **relativo** de la columna (un número positivo, puede ser
+decimal, lo reparte cada motor sobre el ancho de la hoja); a lo alto, `ancho` es **cuántas** de las
+`columnas` ocupa la parte en su fila (un entero, que acaba siendo su `colspan`). Con un solo nombre
+para las dos, un número escrito para un sentido se usaba como la medida del otro en cuanto alguien le
+cambiaba el sentido al modelo, y repartir las columnas con unos números que no son de eso no se ve:
+sale una tabla torcida y nadie sabe por qué. Usar la del otro sentido es un error con explicación, no
+un valor que se ignore en silencio.
+
+Y **`grupo` es `{ id, etiqueta }`**, no un texto, por lo mismo que el id de una parte no es su nombre:
+el id decide qué partes van juntas y la etiqueta es lo que se imprime, así que renombrar un grupo no
+cambia su identidad. En la ficha están separados a propósito —el id es `'actividades'` y el rótulo es
+otro texto, `CABECERA_ACTIVIDADES`—, así que eso deja de ser una traducción rara y pasa a ser el caso
+normal. Dos partes del mismo grupo con rótulos distintos no se guardan: un grupo se imprime con un
+solo rótulo.
+
+Y la estructura propia de una tabla divergida guarda también `columnas`, por lo mismo que guarda
+`sentido`: para que un cambio del modelo no pueda reempaquetarle las filas después. Si no lo dice,
+son dos, y **no** las que diga el modelo del que se desengachó.
+
+> **La maquetación está escrita dos veces, aquí y en `filasDeFicha` de `core/sa.js`, a propósito y
+> temporalmente.** Es la única excepción a «una regla en un solo sitio» de toda esta pieza, y existe
+> para no tocar `core/sa.js`, que gobierna 306 fichas reales del departamento y hoy no corre ningún
+> riesgo: mover su maquetación al modelo genérico por limpieza, antes de que nada más la use, sería
+> el peor cambio posible. **La duplicación la quita la pieza que absorba la ficha, no antes.**
+> Mientras exista, lo que la mantiene honesta es `test/modelos-tabla.js`: construye un modelo desde
+> las propias `CAMPOS_POR_OMISION` de `core/sa.js` y compara **celda por celda** contra
+> `filasDeFicha`, con los dos casos de `solo_si_hay` y con la cabecera del grupo escrita una vez. Si
+> las dos se separan, esa prueba falla.
+
+**Y la equivalencia es total, también con un grupo que no es el de la ficha.** Lo fue después de
+arreglar `core/sa.js`: `filasDeFicha` tenía el nombre del grupo **cableado** y comparaba con la cadena
+fija `'actividades'`, así que un grupo propio se agrupaba pero su rótulo **no se imprimía en ninguna
+celda**, ni en el PDF ni en el Word. Era alcanzable de punta a punta —`anadir_campo_ficha` de
+`core/plantilla.js` acepta cualquier texto y la ruta lo pasa tal cual—, y de ahí sale la regla de
+arriba: el rótulo se escribe cada vez que el grupo cambia. `test/modelos-tabla.js` vigila la
+equivalencia con los tres casos que la rompían: un grupo propio, un grupo que reaparece y una fila
+opcional vacía que parte un grupo.
 
 Por id y no por posición, y los motivos son tres:
 
@@ -348,8 +403,11 @@ y todavía vacío sería indistinguible de no tener modelo, y quien lo enganchó
   ni pantalla desde la que hacerlo. `version` existe en el modelo pero todavía no lo lee nadie:
   empezará a significar algo con las operaciones.
 - La ficha de situación de aprendizaje sigue con su mecánica aparte (`core/sa.js`,
-  `core/ficha-estructura.js`): se absorbe al final, a propósito y medida aparte. Ahora es el mismo
-  modelo de datos, así que absorberla es quitar código, no traducirlo.
+  `core/ficha-estructura.js`): se absorbe al final, a propósito y medida aparte. Ahora el modelo
+  genérico **sí la puede expresar** —mismo modelo de datos y misma maquetación, comprobada celda por
+  celda contra `filasDeFicha`—, así que absorberla es quitar código y no traducirlo. Lo que le queda
+  de propio son las tres filas de su encabezado (el número, el título, las sesiones, la evaluación y
+  el RA), que no son partes sino datos de la ficha, y sus sinónimos de lectura.
 
 ---
 
