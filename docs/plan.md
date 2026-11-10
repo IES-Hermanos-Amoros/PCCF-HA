@@ -323,10 +323,72 @@ porque nadie las podía mirar de golpe. Conviene arreglarlas en el documento.
   Artificial y Robótica (2º y 3º ESO)» —la que lleva dentro PIAR I y PIAR II— no tiene la estructura
   que el importador espera de un bloque repetido, y se ignora con un aviso. Por eso entran 3 de las 4
   materias y solo un 73 % del texto, frente al 91 % de Bachillerato. El aviso se ve al importar y en
-  la pantalla de subida, así que no se pierde en silencio, pero **está sin resolver**.
+  la pantalla de subida, así que no se pierde en silencio, pero **está sin resolver**. Lo que se
+  pierde con ella está medido: 8 tablas y 18 bloques de texto en la de 2025-26, 8 y 16 en la de
+  2026-27, y 3 y 10 en la de Bachillerato de 2025-26 —que tiene el mismo problema con PRSI—. Ninguna
+  de esas 19 tablas es de las que el importador reconoce por su cabecera: son rejillas de
+  competencias, criterios y saberes básicos, que entran como tabla genérica.
 - **Los recuentos de SMR entre cursos no cuadran** y puede que no sea un fallo: 2025-26 trae 57
   secciones y 222 apartados, y 2026-27, 56 y 212. Conviene mirar si el documento de este curso está a
   medias o si de verdad se quitó algo.
+
+### Lo que ha dejado auditar lo que el importador no decía
+
+Partida de un número que no cuadraba: en la PD de SMR de 2025-26, `clasificarTabla` reconoce **76**
+fichas de situación de aprendizaje y en `datos` acababan **71**. El único aviso del informe hablaba de
+la portada. En la base de datos, el módulo de Seguridad informática tenía **una** situación de
+aprendizaje guardada y los demás módulos del mismo documento, entre cuatro y diez.
+
+- **La pérdida era muda, y eso era lo primero que había que arreglar.** La plantilla se deduce
+  fusionando las instancias y los datos se sacan sección por sección: son **dos recorridos del mismo
+  árbol** y no tienen por qué cuadrar, así que hay sitios del documento por los que la extracción no
+  pasa. Lo que quedaba ahí no se importaba y no se decía. El importador apunta ahora qué bloques del
+  Word llegan a un campo y nombra los que no: cada tabla con su etiqueta, su tamaño, su cabecera y la
+  ruta de títulos donde está, y el texto por los sitios en los que se queda
+  (`informe.tablasSinCampo`, `informe.textosSinCampo` y un aviso más en `informe.avisos`).
+
+  Es el patrón de `filasSinCampo` e `informeDeFilas` de `core/sa.js` **al nivel del documento**: allí
+  son las filas de una ficha que no van a ningún campo de la ficha; aquí, los bloques del Word que no
+  van a ningún campo de la plantilla. Y el motivo es el mismo: la lista de sitios por los que la
+  extracción pasa siempre irá por detrás de lo que alguien escriba en su Word, así que lo que no
+  puede pasar es que la pérdida sea muda. Un aviso no arregla el documento, pero lo pone donde se ve
+  en abril y no en junio.
+
+  Lo primero que encontró la auditoría no fueron las cinco fichas, sino la materia de las propuestas
+  pedagógicas: 19 tablas y 56 bloques de texto en tres documentos (ver el punto de arriba). Ese aviso
+  ya existía, pero decía qué apartado se ignoraba, no qué había dentro.
+
+- **No era un diseño de ficha distinto: era un nivel de título mal puesto.** Las cinco fichas que
+  faltaban son las situaciones 2 a 6 de Seguridad informática, y el módulo las escribe con un nivel
+  de título **más bajo** que la situación 1: la 1 es un «Título 4» y las otras cinco, «Título 5». Word
+  las mete DENTRO de la 1, el repetidor solo recogía los hijos directos del apartado y los
+  subapartados de un ítem no se miraban, así que de las seis llegaba una. Eso explica también por qué
+  la primera sí: es la única que estaba al nivel en el que se buscaba.
+
+  Medido, porque la sospecha era otra: las **311** fichas que `clasificarTabla` reconoce en los doce
+  documentos tienen **cuatro columnas**, las cinco que faltaban incluidas, y su forma —18×4— es la de
+  248 de ellas y la misma que la de la situación 1 del mismo módulo. No hay dos diseños de ficha en
+  juego aquí, y `COLUMNAS = 4` de `core/sa.js` sigue siendo la única maquetación.
+
+- **La regla elegida: un ítem de una serie no contiene otro ítem de la misma serie.** Los ítems se
+  recogen atravesando los ítems de esa misma serie, en el orden del documento. Se eligió esto, y no
+  guardar esas tablas como tabla suelta, porque las cinco **son** fichas de situación de aprendizaje
+  —el lector las entiende enteras, igual que la situación 1 de al lado— y guardarlas como otra cosa
+  las dejaría fuera del resumen SA × RA, de la validación de sesiones y del editor de situaciones:
+  estarían en la base de datos y seguirían sin ser lo que son. Lo que estaba mal no era la ficha, era
+  el sitio donde el árbol la había puesto.
+
+  Y se eligió esta regla, y no dar subapartados de verdad a los repetidores, porque esto corrige un
+  nivel mal puesto **sin inventar estructura**: solo se atraviesan secciones que son de la serie, una
+  sección que no lo es no se abre, y lo que queda fuera ya lo nombra el informe. Dar subapartados al
+  repetidor cambiaría la plantilla de los cuatro documentos que tienen repetidores para resolver uno.
+
+- **Qué cambia en los doce documentos.** Congeladas antes las huellas de `plantilla`, `datos` e
+  `informe` (sin `plantilla.generada`): cambia **solo la PD de SMR de 2025-26**, y en ella solo se
+  añade. Seguridad informática pasa de 1 a 6 situaciones, las 76 fichas del documento llegan a
+  `datos`, y en la plantilla cambia un número: la presencia del campo de ficha del repetidor, de 70 a
+  75. Los otros once salen byte a byte idénticos en `plantilla` y en `datos`; en los doce cambia
+  `informe`, que es donde van los avisos nuevos.
 
 ### Lo que ha dejado el E7
 
