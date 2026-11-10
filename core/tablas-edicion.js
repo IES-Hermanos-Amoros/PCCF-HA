@@ -199,29 +199,34 @@
   // no sabe abrir: cualquier valor que no tenga la forma de su tipo (una rejilla sin `filas`, o una
   // clave y valor sin `filas` ni `pares`). Sin valor guardado se abre con el de nacimiento del campo
   // y no hay nada que descartar.
-  function esEditable(campo, guardado) {
+  function esEditable(campo, guardado, modelos) {
     const E = Estructurados();
     if (!campo || E.TIPOS_EDITABLES.indexOf(campo.tipo) < 0) return false;
-    if (campo.multiple) return esListaEditable(campo, guardado);
+    if (campo.multiple) return esListaEditable(campo, guardado, modelos);
     if (guardado === undefined || guardado === null) return true;
     if (!esObjeto(guardado)) return false;
     if (Array.isArray(guardado.filas)) return true;
     // Una tabla que ya ha adoptado su modelo se abre para que SE VEA, aunque todavía no se pueda
     // cambiar desde aquí: esconderla sería peor que enseñarla con los botones apagados y el motivo.
-    if (MT().adoptada(guardado)) return true;
+    //
+    // Pero SOLO SI QUIEN PREGUNTA TRAE LOS MODELOS de la plantilla. Sin ellos no hay manera de saber
+    // qué partes tiene, así que `paraPintar` devolvería una tabla vacía y todos los botones estarían
+    // muertos con el motivo equivocado: un editor en blanco es peor que no abrir el editor. Así esta
+    // función no promete nada que no pueda cumplir.
+    if (MT().adoptada(guardado)) return !!MT().estructuraDeTabla(campo, guardado, modelos);
     return E.TIPOS_CON_PARES.indexOf(campo.tipo) >= 0 && Array.isArray(guardado.pares);
   }
 
   // Una lista de tablas se edita si es de tabla o de clave y valor y cada elemento tiene la forma de
   // su tipo. Sin valor guardado se abre con una tabla; una lista vacía también se abre (para poder
   // añadirle una).
-  function esListaEditable(campo, guardado) {
+  function esListaEditable(campo, guardado, modelos) {
     const E = Estructurados();
     if (campo.tipo !== E.TIPO_TABLA && campo.tipo !== E.TIPO_CLAVE_VALOR) return false;
     if (guardado === undefined || guardado === null) return true;
     if (!Array.isArray(guardado)) return false;
     const uno = unaTabla(campo);
-    return guardado.every((t) => esEditable(uno, t));
+    return guardado.every((t) => esEditable(uno, t, modelos));
   }
 
   // El campo visto desde UNA de sus tablas: el mismo, sin `multiple`. El editor de una tabla y la

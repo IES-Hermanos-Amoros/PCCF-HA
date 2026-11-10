@@ -233,10 +233,16 @@
   const casillasDe = (valor) => (esObjeto(valor) && esObjeto(valor[CLAVE_CASILLAS]) ? valor[CLAVE_CASILLAS] : {});
 
   // ¿HA ADOPTADO YA ESTA TABLA SU ESTRUCTURA? La ha adoptado cuando su contenido va por id de parte y
-  // ya no tiene rejilla. Es la segunda mitad de la regla: una tabla se imprime desde `filas` mientras
-  // las tenga, igual que una ficha (`completarDesdeFilas` de core/sa.js), así que ponerle un modelo a
-  // una tabla ya escrita no le hace nada hasta que alguien la adopte, que es una pieza aparte.
-  const adoptada = (valor) => esObjeto(valor) && esObjeto(valor[CLAVE_CASILLAS]) && !filasDe(valor).length;
+  // ya no tiene el de antes: ni rejilla ni pares. Es la segunda mitad de la regla: una tabla se
+  // imprime desde `filas` mientras las tenga, igual que una ficha (`completarDesdeFilas` de
+  // core/sa.js), así que ponerle un modelo a una tabla ya escrita no le hace nada hasta que alguien
+  // la adopte, que es una pieza aparte.
+  //
+  // LOS `pares` CUENTAN IGUAL QUE LAS `filas`. Si no contaran, una tabla de clave y valor con las dos
+  // cosas se daría por adoptada y sus pares se quedarían guardados sin imprimirse, que es el estado
+  // silencioso que la puerta existe para impedir (`motivoDeContenido`, «en dos sitios a la vez»).
+  const adoptada = (valor) => esObjeto(valor) && esObjeto(valor[CLAVE_CASILLAS])
+    && !filasDe(valor).length && valor.pares === undefined;
 
   // Lo que guarda una parte: una casilla si es una fila, su lista de casillas si es una columna.
   const casillaDe = (casillas, parte) => (esObjeto(casillas[parte.id]) ? casillas[parte.id] : null);
@@ -491,7 +497,8 @@
       // que no vale es tener el contenido en los dos sitios, porque entonces uno de los dos se
       // guardaría sin imprimirse y acabaría leyéndolo alguien.
       if (esObjeto(valor) && esObjeto(valor[CLAVE_CASILLAS])) {
-        return `${donde} tiene su contenido en dos sitios a la vez, «${CLAVE_CASILLAS}» y ${filasDe(valor).length ? '«filas»' : '«pares»'}: al adoptar la estructura, el contenido pasa de uno al otro y el de antes se va.`;
+        const otro = filasDe(valor).length ? '«filas»' : '«pares»';
+        return `${donde} tiene su contenido en dos sitios a la vez, «${CLAVE_CASILLAS}» y ${otro}: al adoptar la estructura, el contenido pasa de uno al otro y el de antes se va.`;
       }
       return null;
     }

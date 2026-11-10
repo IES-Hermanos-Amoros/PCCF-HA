@@ -176,7 +176,9 @@
     if (!esObjeto(valor)) return 'ninguno';
     if (tipo === TIPO_TABLA_RA_CE && Array.isArray(valor.ra) && valor.ra.length) return 'ra';
     if (Array.isArray(valor.filas) && valor.filas.length) return 'filas';
-    if (esObjeto(valor[MT().CLAVE_CASILLAS])) return 'casillas';
+    // Los `pares` se miran antes de dar la tabla por adoptada, por lo mismo que las `filas`: ver
+    // `adoptada` de core/modelos-tabla.js, que es quien decide y con quien esto tiene que coincidir.
+    if (esObjeto(valor[MT().CLAVE_CASILLAS]) && valor.pares === undefined) return 'casillas';
     if (Array.isArray(valor.pares)) return 'pares';
     return 'ninguno';
   }
@@ -714,17 +716,30 @@
     return motivoDeCasillas(valor, donde);
   }
 
+  // UNA TABLA ADOPTADA NO LLEVA «anchos». El ancho de cada columna lo dice su parte en el modelo
+  // (`tablaVigente` de core/modelos-tabla.js), así que uno guardado en el valor se guardaría sin
+  // imprimirse nunca, y eso acaba leyéndolo alguien.
+  function motivoDeAnchosAdoptada(anchos, donde) {
+    if (anchos === undefined) return null;
+    return `${donde} lleva «anchos» y guarda su contenido por partes: el ancho de cada columna lo dice su parte en el modelo, no la tabla.`;
+  }
+
+  // LA PUERTA DE SIEMPRE SE PASA IGUAL, ADOPTADA O NO. Es la única que comprueba las claves de
+  // regalo, así que saltársela dejaría entrar cualquier cosa al lado de las casillas. A la tabla
+  // adoptada se le pasa con la mitad vacía que ya no tiene —`filas: []` o `pares: []`—, que es
+  // exactamente lo que es: una tabla sin rejilla y sin pares.
   function motivoDeTablaConModelo(campo, valor, donde, guardada, modelos) {
     if (!esObjeto(valor)) return `${donde} no es una tabla { filas: [[celda, …], …] }.`;
     const suyo = motivoDeLoSuyo(campo, valor, donde, modelos);
     if (suyo) return suyo;
-    // La rejilla se comprueba como siempre, SIN las claves que son de la estructura: una tabla que ha
-    // adoptado su modelo ya no tiene rejilla, y una que no lo ha adoptado la tiene igual que ayer.
     const { estructura, [MT().CLAVE_CASILLAS]: casillas, ...rejilla } = valor;
-    if (rejilla.filas !== undefined || casillas === undefined) {
-      const m = motivoDeRejilla(rejilla, donde, { guardada });
-      if (m) return m;
+    const sinRejilla = casillas !== undefined && rejilla.filas === undefined;
+    if (sinRejilla) {
+      const a = motivoDeAnchosAdoptada(rejilla.anchos, donde);
+      if (a) return a;
     }
+    const m = motivoDeRejilla(sinRejilla ? { ...rejilla, filas: [] } : rejilla, donde, { guardada });
+    if (m) return m;
     return MT().motivoDeContenido(campo, valor, modelos, donde);
   }
 
@@ -733,12 +748,13 @@
     const suyo = motivoDeLoSuyo(campo, valor, donde, modelos);
     if (suyo) return suyo;
     const { estructura, [MT().CLAVE_CASILLAS]: casillas, ...resto } = valor;
-    // Una tabla de clave y valor que ha adoptado su modelo guarda su contenido por parte, así que ya
-    // no tiene que traer `pares`; la que no lo ha adoptado se comprueba como siempre.
-    if (resto.pares !== undefined || resto.filas !== undefined || casillas === undefined) {
-      const m = motivoDeClaveValor(resto, donde);
-      if (m) return m;
+    const sinPares = casillas !== undefined && resto.pares === undefined && resto.filas === undefined;
+    if (sinPares) {
+      const a = motivoDeAnchosAdoptada(resto.anchos, donde);
+      if (a) return a;
     }
+    const m = motivoDeClaveValor(sinPares ? { ...resto, pares: [] } : resto, donde);
+    if (m) return m;
     return MT().motivoDeContenido(campo, valor, modelos, donde);
   }
 

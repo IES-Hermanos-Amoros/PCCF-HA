@@ -186,11 +186,51 @@ prueba('en cuanto deja de tener rejilla, se imprime desde sus casillas por id de
 
 prueba('el contenido en dos sitios a la vez no se guarda: al adoptar, el de antes se va', () => {
   const modelos = mapaDe(modelo());
-  const dos = { filas: [[c('a'), c('b')]], casillas: { 'p-que': [c('a')], 'p-ses': [c('b')] } };
-  const m = Est.motivoDeCampo(CAMPO, dos, { modelos });
-  assert.ok(m && m.includes('dos sitios'), m);
+  const conFilas = { filas: [[c('a'), c('b')]], casillas: { 'p-que': [c('a')], 'p-ses': [c('b')] } };
+  const m = Est.motivoDeCampo(CAMPO, conFilas, { modelos });
+  assert.ok(m && m.includes('dos sitios') && m.includes('filas'), m);
   // Con rejilla, la rejilla manda, asi que las casillas se guardarian sin imprimirse.
-  assert.strictEqual(MT.adoptada(dos), false);
+  assert.strictEqual(MT.adoptada(conFilas), false);
+
+  // Y LOS PARES CUENTAN IGUAL QUE LAS FILAS. Si no contaran, una tabla de clave y valor con las dos
+  // cosas se daria por adoptada y sus pares se quedarian guardados sin imprimirse, que es justo el
+  // estado silencioso que esta puerta existe para impedir.
+  const kvm = modelo({ id: 'm-kv', tipo: 'tabla_clave_valor', sentido: 'filas', partes: [{ id: 'a', etiqueta: 'Ciclo' }] });
+  const kv = { id: 'k', tipo: 'tabla_clave_valor', modelo: 'm-kv' };
+  const conPares = { pares: [{ etiqueta: 'Ciclo', valor: 'viejo' }], casillas: { a: c('nuevo') } };
+  assert.strictEqual(MT.adoptada(conPares), false);
+  const p = Est.motivoDeCampo(kv, conPares, { modelos: mapaDe(kvm) });
+  assert.ok(p && p.includes('dos sitios') && p.includes('pares'), p);
+  // Y `queSeImprime` dice lo mismo que `adoptada`: no se puede dar por adoptada con pares dentro.
+  assert.strictEqual(Est.queSeImprime(kv, conPares), 'pares');
+});
+
+prueba('la puerta de siempre se pasa igual, adoptada o no: es la unica que mira las claves de regalo', () => {
+  // Saltarsela dejaria entrar cualquier cosa al lado de las casillas, y «lo que entra sin puerta es
+  // un documento que deja de salir».
+  const modelos = mapaDe(modelo());
+  const casillas = { 'p-que': [c('a')], 'p-ses': [c('b')] };
+  const regalo = Est.motivoDeCampo(CAMPO, { casillas, loQueSea: 1 }, { modelos });
+  assert.ok(regalo && regalo.includes('loQueSea'), regalo);
+  // Una tabla no lleva `pares`, adoptada o no.
+  assert.ok(Est.motivoDeCampo(CAMPO, { casillas, pares: [{ etiqueta: 'x', valor: 'y' }] }, { modelos }));
+
+  // Y UNA TABLA ADOPTADA NO LLEVA «anchos»: los pone su parte en el modelo, asi que uno guardado aqui
+  // se guardaria sin imprimirse nunca.
+  for (const anchos of ['basura', [1, 2], [1, 2, 3, 4, 5]]) {
+    const m = Est.motivoDeCampo(CAMPO, { casillas, anchos }, { modelos });
+    assert.ok(m && m.includes('lo dice su parte en el modelo'), JSON.stringify(anchos) + ': ' + m);
+  }
+  // Los de la tabla que NO la ha adoptado se siguen comprobando como siempre.
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, { filas: [[c('x')]], anchos: [1] }, { modelos }), null);
+  assert.ok(Est.motivoDeCampo(CAMPO, { filas: [[c('x')]], anchos: [1, 2] }, { modelos }));
+
+  // Lo mismo en clave y valor.
+  const kvm = mapaDe(modelo({ id: 'm-kv', tipo: 'tabla_clave_valor', sentido: 'filas', partes: [{ id: 'a', etiqueta: 'A' }] }));
+  const kv = { id: 'k', tipo: 'tabla_clave_valor', modelo: 'm-kv' };
+  assert.ok(Est.motivoDeCampo(kv, { casillas: { a: c('1') }, basura: 1 }, { modelos: kvm }));
+  assert.ok(Est.motivoDeCampo(kv, { casillas: { a: c('1') }, anchos: [1] }, { modelos: kvm }));
+  assert.strictEqual(Est.motivoDeCampo(kv, { casillas: { a: c('1') } }, { modelos: kvm }), null);
 });
 
 prueba('una parte sin nada escrito sale con su rotulo y en blanco', () => {
@@ -503,8 +543,12 @@ prueba('mientras no adopte su modelo, el editor no le quita ni un boton', () => 
 prueba('una tabla adoptada se VE tal como se imprime, y el editor dice por que no se cambia aqui', () => {
   const modelos = mapaDe(modelo());
   const valor = { casillas: { 'p-que': [c('Exposicion')], 'p-ses': [c('4')] } };
-  // Se abre, para que se vea: esconderla seria peor que enseñarla con los botones apagados.
-  assert.strictEqual(Edicion.esEditable(CAMPO, valor), true);
+  // Se abre, para que se vea: esconderla seria peor que enseñarla con los botones apagados. Pero solo
+  // si quien pregunta trae los modelos: sin ellos no se sabe que partes tiene, `paraPintar` daria una
+  // tabla vacia y el editor se abriria en blanco con todos los botones muertos, que es peor que no
+  // abrirlo. Hoy los componentes todavia no los pasan, asi que no se abre, y es lo correcto.
+  assert.strictEqual(Edicion.esEditable(CAMPO, valor, modelos), true);
+  assert.strictEqual(Edicion.esEditable(CAMPO, valor), false, 'se ha abierto sin saber que partes tiene');
   const pintada = Edicion.paraPintar(valor, CAMPO, modelos);
   assert.deepStrictEqual(textosDeFilas(pintada.filas), [['Actividad', 'Sesiones'], ['Exposicion', '4']]);
   assert.strictEqual(pintada.cabecera, true);
