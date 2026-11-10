@@ -21,6 +21,7 @@ Fase de pruebas de concepto.
 | [`scripts/`](scripts/) | Órdenes de consola: importar, generar el ejemplo saneado, sanear documentos y las pruebas del motor |
 | [`docs/plan.md`](docs/plan.md) | Plan de construcción de la aplicación: cómo se pasa del motor y del prototipo a la aplicación, por evolutivos |
 | [`docs/api.md`](docs/api.md) | El contrato de la API: las rutas, los errores y el porqué de cada decisión |
+| [`docs/modelos-de-tabla.md`](docs/modelos-de-tabla.md) | Por qué la aplicación deja de saber de «fichas de SA» y sabe de tablas con forma propia: el modelo de datos, la regla única y en qué orden se construye |
 | [`docs/infraestructura.md`](docs/infraestructura.md) | Qué montar para desplegarla —MongoDB en local, Atlas, Vercel, copias—, en qué orden y qué no hace falta |
 | [`docs/interfaz-web.md`](docs/interfaz-web.md) | Arquitectura de la aplicación: modelo de datos, API sobre `motor/`, que ya existe, editores por tipo de campo y roadmap |
 | [`docs/mockups/`](docs/mockups/) | Primer prototipo de la interfaz: fija la forma de la pantalla y el árbol real de los documentos |
