@@ -216,6 +216,50 @@ que en los documentos del departamento hay **dos diseños distintos de ficha**, 
 casan por cabecera son fiables; los que agrupan solo por geometría son los que mezclan, así que la
 pantalla tendrá que marcarlos como débiles y dar por hecho que alguien unirá y partirá a mano.
 
+### Y la medición de la pieza 2: cuántas tablas se pueden adoptar
+
+La adopción tiene la misma clase de riesgo y se mide igual, con `scripts/medir-adopcion.js` sobre los
+mismos doce documentos y sin escribir nada. Son 1.095 tablas, y el modelo contra el que se mide lo
+propone el propio guion con los rótulos que cada tabla ya tiene, que es lo más favorable que se puede
+hacer sin inventar nombres.
+
+| Medición | Se adoptan sin perder un carácter |
+|---|---|
+| Con el modelo de su **grupo**, de las que hoy pueden tener modelo y están en un grupo | **91 de 224** (41 %) |
+| Con un modelo hecho a su medida: el **techo** de las 1.095 | **512** (47 %) |
+| La **ficha de SA** contra el modelo de la ficha de verdad | **0 de 311** |
+
+**El techo, familia por familia, es lo que de verdad decide**: las ponderaciones (290/290), la tabla
+de RA y CE (44/44), competencias y objetivos (37/37) y los contenidos (18/18) se adoptan **todas**,
+así que esos cuatro `if` del importador pueden pasar a ser modelos. Las tablas genéricas se quedan en
+76 de 248 y las de clave y valor en 47 de 59. Y hay tres familias que hoy no pueden: la ficha de SA,
+la identificación del módulo y el resumen de situaciones, que es derivado y no se guarda nunca.
+
+**Por qué se niega, agrupado por motivo** (el techo, 583 tablas): 452 porque la tabla no tiene
+rótulos de los que sacar un modelo, 113 por una celda combinada donde el emparejamiento tiene que ser
+de una celda a una parte, 12 porque el rótulo mide más de 100 caracteres —no es un rótulo, es un
+párrafo que la heurística de cabecera confundió—, 4 por dos rótulos que casan con la misma parte y 2
+por una celda con texto que se quedaría sin sitio. En esas 583 hay 1,55 millones de caracteres que se
+quedan fuera del modelo, y 74 que se perderían si se adoptaran a la fuerza.
+
+**La ficha de SA no la bloquea su cuerpo, sino su cabecera.** Sus doce filas se emparejan sin
+problema; lo que no tiene sitio son las cinco cosas de arriba —número, título, sesiones, evaluación y
+resultados de aprendizaje—, que no son partes a lo alto: son rótulo y valor en la MISMA fila, con un
+`rowspan` para el título. Son 90.467 caracteres de las 311 fichas, y ningún `sentido` de los dos
+actuales sabe colocarlos: `columnas` pone los rótulos arriba y `filas` los pone encima de su
+contenido. La identificación del módulo (44 tablas) falla por lo mismo, y de forma más clara: es
+`rótulo | valor | rótulo | valor` en cada fila. **Es el agujero del modelo de datos**, y la pieza 8 no
+puede salir adelante sin taparlo: hace falta decir que una parte lleva su contenido AL LADO y no
+debajo, que es una tercera forma de colocar, o sacar esos cinco campos del modelo.
+
+**Adoptar puede cambiar el aspecto sin perder un carácter**, y es aceptable pero se avisa (§3.5). De
+las 91 que se adoptan con el modelo de su grupo, 39 cambian lo que se imprime: 32 cambian el reparto
+de las columnas, 9 un rótulo que el modelo reescribe, 7 la negrita o el fondo, 6 pierden el estilo por
+celda que traían del Word y 1 gana la cabecera que se repite al cambiar de página. Y una advertencia
+que salió de medir: si el modelo no lleva el `peso` de cada columna, cambian las **91**, porque una
+tabla adoptada no guarda `anchos` y el reparto pasa a hacerlo el texto. Quien proponga el modelo de un
+grupo tiene que sembrarlo con los anchos del `w:tblGrid` de la tabla representante.
+
 ---
 
 ## 7. Lo que queda sin cerrar
