@@ -24,6 +24,11 @@
 //   3. CON EL MODELO DE SÍ MISMA, que es el TECHO: si una tabla no se puede adoptar ni con un modelo
 //      hecho a su medida, no hay modelo que la salve. Se mide sobre las 1.095, incluidas las de los
 //      tipos cableados, porque de eso depende que los ocho `if` puedan pasar de código a dato.
+//   3 bis. Y DE LAS QUE SE ADOPTAN, EN CUÁNTAS CAMBIA LO QUE SE IMPRIME. Una tabla importada se
+//      imprime como vino, también en el estilo (§3.5 de docs/modelos-de-tabla.md): adoptar es el
+//      momento en que el estilo pasa a ser el del modelo, así que una tabla puede cambiar de aspecto
+//      sin perder ni un carácter. Son dos cifras y van separadas: perder texto es inaceptable y por
+//      eso `adoptar` se niega; cambiar el aspecto es aceptable, pero hay que saber el número.
 //   4. LA FICHA DE SITUACIÓN DE APRENDIZAJE contra el modelo de la ficha de verdad, que es el que la
 //      pieza 8 tendría que usar: `CAMPOS_POR_OMISION` de core/sa.js traducido a un modelo con las
 //      partes a lo alto. Es la medición de si absorber la ficha es viable.
@@ -57,10 +62,20 @@ const partesDe = (rotulos) => rotulos
 
 // EL MODELO A LO ANCHO: los rótulos son la primera fila, y solo si esa fila ES una cabecera
 // (`pareceCabecera` de core/tablas-forma.js, que es el único criterio medido que hay).
+//
+// Y SE LE PONE EL `peso` DE CADA COLUMNA con los anchos que la tabla declara en su `w:tblGrid`. Una
+// tabla adoptada no guarda `anchos` —el ancho de una columna es parte de la forma y la forma la dice
+// el modelo—, así que un modelo sin pesos reparte las columnas por el texto y le cambia la geometría
+// a TODAS las tablas del grupo. Medido: sin esto, las 91 tablas que se adoptan cambian de aspecto;
+// con esto, cambian las que de verdad tenían otras columnas que su representante.
 function modeloEnColumnas(t) {
   if (!Forma.rasgos(t).cab) return null;
   const partes = partesDe(((t.rows || [])[0] || []).map((c) => limpio(c.text)));
   if (!partes.length) return null;
+  const anchos = t.anchos;
+  if (Array.isArray(anchos) && anchos.length === partes.length && anchos.every((a) => Number(a) > 0)) {
+    partes.forEach((p, i) => { p.peso = Number(anchos[i]); });
+  }
   return { id: ID_MODELO, nombre: 'Modelo medido', tipo: MT.TIPO_TABLA, sentido: MT.SENTIDO_COLUMNAS, partes };
 }
 
@@ -143,7 +158,13 @@ function medirUna(t, tipo, modelos) {
 // ---------------------------------------------------------------- las cuentas
 
 function nuevaCuenta() {
-  return { total: 0, adoptadas: 0, casillas: 0, caracteres: 0, motivos: new Map(), enJuego: 0, bloqueados: 0, ejemplos: new Map(), reescritos: 0, sinContenido: 0 };
+  return {
+    total: 0, adoptadas: 0, casillas: 0, caracteres: 0, motivos: new Map(), enJuego: 0, bloqueados: 0,
+    ejemplos: new Map(), reescritos: 0, sinContenido: 0,
+    // LAS DOS COSAS QUE NO SON LO MISMO: adoptar sin perder texto, y de esas, en cuántas cambia lo
+    // que se imprime. Perder texto es inaceptable; cambiar el aspecto es aceptable y hay que avisarlo.
+    aspecto: 0, aspectoPor: new Map(),
+  };
 }
 
 function sumar(cuenta, r, como) {
@@ -154,6 +175,13 @@ function sumar(cuenta, r, como) {
     cuenta.caracteres += r.informe.caracteres;
     cuenta.reescritos += r.informe.rotulos.filter((x) => x.cambia).length;
     cuenta.sinContenido += r.informe.sinContenido.length;
+    const asp = r.informe.aspecto || {};
+    if (asp.cambia) cuenta.aspecto += 1;
+    [['rotulos reescritos', asp.rotulos], ['negrita o fondo', asp.estilo], ['estilo que deja de imprimirse', asp.contenido],
+      ['anchos de columna', asp.anchos ? 1 : 0], ['cabecera que empieza a repetirse', asp.cabecera ? 1 : 0],
+      ['columnas que ocupa una parte', asp.ancho]].forEach(([k, n]) => {
+      if (n) cuenta.aspectoPor.set(k, (cuenta.aspectoPor.get(k) || 0) + 1);
+    });
     return;
   }
   cuenta.motivos.set(r.clave, (cuenta.motivos.get(r.clave) || 0) + 1);
@@ -171,6 +199,9 @@ function imprimirCuenta(nombre, cuenta, opts) {
   if (cuenta.adoptadas) {
     console.log(`      colocan ${cuenta.casillas} casillas y ${cuenta.caracteres} caracteres`
       + `; ${cuenta.reescritos} rótulos los reescribe el modelo; ${cuenta.sinContenido} partes se quedan en blanco`);
+    const como = [...cuenta.aspectoPor].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} x${n}`).join(', ');
+    console.log(`      de esas ${cuenta.adoptadas}, en ${cuenta.aspecto} cambia lo que se imprime sin perder texto`
+      + (como ? `: ${como}` : ''));
   }
   if (cuenta.total - cuenta.adoptadas) {
     console.log(`      se niegan ${cuenta.total - cuenta.adoptadas}: ${cuenta.bloqueados} caracteres se quedan fuera del modelo`
@@ -204,6 +235,9 @@ async function medirDocumento(fichero, opts) {
 
   const cuentas = { grupo: nuevaCuenta(), suelta: nuevaCuenta(), techo: nuevaCuenta(), ficha: nuevaCuenta() };
   const detalle = [];
+  // Para el cruce «familia del importador x por qué no»: es lo que dice si los ocho `if` cableados
+  // pueden pasar de código a dato, familia por familia, en vez de en un porcentaje que lo mezcla todo.
+  const porTipo = [];
   const ficha = modeloDeLaFicha();
 
   tablas.forEach((t, i) => {
@@ -220,11 +254,13 @@ async function medirDocumento(fichero, opts) {
       sumar(cuentas[g ? 'grupo' : 'suelta'], r, g ? `#${i}, ${g.id}` : `#${i}, suelta`);
       if (r.clave) detalle.push({ i, tipo, donde: g ? g.id : 'suelta', clave: r.clave, motivo: r.motivo, enJuego: r.enJuego, filas: t.rows.length });
     }
-    sumar(cuentas.techo, medirUna(t, comoTabla, propias), `#${i} ${tipo}`);
+    const techo = medirUna(t, comoTabla, propias);
+    sumar(cuentas.techo, techo, `#${i} ${tipo}`);
+    porTipo.push({ tipo, clave: techo.clave });
     if (tipo === 'ficha_situacion_aprendizaje') sumar(cuentas.ficha, medirUna(t, MT.TIPO_TABLA, [ficha]), `#${i} ficha`);
   });
 
-  return { fichero, tablas, tipos, conModelo, grupos, sueltas, cuentas, detalle, anchosOk };
+  return { fichero, tablas, tipos, conModelo, grupos, sueltas, cuentas, detalle, porTipo, anchosOk };
 }
 
 function contar(arr) {
@@ -250,12 +286,32 @@ function imprimirDocumento(r, opts) {
   }
 }
 
+// EL TECHO, FAMILIA POR FAMILIA. Un porcentaje sobre las 1.095 mezcla diez familias que no se
+// parecen en nada; lo que hace falta saber es cuál de los ocho `if` del importador puede pasar a ser
+// un modelo y cuál no, y por qué no.
+function imprimirPorTipo(filas) {
+  const tipos = new Map();
+  filas.forEach(({ tipo, clave }) => {
+    if (!tipos.has(tipo)) tipos.set(tipo, { total: 0, ok: 0, motivos: new Map() });
+    const t = tipos.get(tipo);
+    t.total += 1;
+    if (!clave) t.ok += 1;
+    else t.motivos.set(clave, (t.motivos.get(clave) || 0) + 1);
+  });
+  console.log('  el techo, familia por familia del importador:');
+  [...tipos].sort((a, b) => b[1].total - a[1].total).forEach(([tipo, t]) => {
+    const motivos = [...t.motivos].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} x${n}`).join(', ');
+    console.log(`    ${tipo}: ${t.ok}/${t.total}${motivos ? `   ${motivos}` : ''}`);
+  });
+}
+
 function juntar(cuentas) {
   const out = nuevaCuenta();
   for (const c of cuentas) {
     out.total += c.total; out.adoptadas += c.adoptadas; out.casillas += c.casillas;
     out.caracteres += c.caracteres; out.enJuego += c.enJuego; out.bloqueados += c.bloqueados;
-    out.reescritos += c.reescritos; out.sinContenido += c.sinContenido;
+    out.reescritos += c.reescritos; out.sinContenido += c.sinContenido; out.aspecto += c.aspecto;
+    c.aspectoPor.forEach((n, k) => out.aspectoPor.set(k, (out.aspectoPor.get(k) || 0) + n));
     c.motivos.forEach((n, k) => out.motivos.set(k, (out.motivos.get(k) || 0) + n));
     c.ejemplos.forEach((e, k) => { if (!out.ejemplos.has(k)) out.ejemplos.set(k, e); });
   }
@@ -293,6 +349,7 @@ async function principal() {
   imprimirCuenta('sueltas, con el suyo propio', juntar(todos.map((r) => r.cuentas.suelta)), opts);
   imprimirCuenta('TECHO: todas, con el suyo ', juntar(todos.map((r) => r.cuentas.techo)), opts);
   imprimirCuenta('la ficha de SA, con el modelo de la ficha', juntar(todos.map((r) => r.cuentas.ficha)), opts);
+  imprimirPorTipo(todos.flatMap((r) => r.porTipo));
 }
 
 module.exports = { medirDocumento, propuestas, modeloDeLaFicha, medirUna };

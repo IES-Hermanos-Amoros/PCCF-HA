@@ -461,6 +461,22 @@ prueba('avisa de lo que cambia de aspecto aunque no se pierda texto', () => {
   assert.match(r.informe.aviso, /deja de llevar sus anchos de columna/);
 });
 
+prueba('un modelo con los pesos de la tabla no le cambia las columnas', () => {
+  // Los anchos de la tabla y los pesos del modelo son medidas RELATIVAS, asi que lo que cuenta es la
+  // proporcion: un modelo que reparte igual no cambia la geometria, y decir que si la cambia seria un
+  // aviso falso que ensena a no leer los avisos.
+  const m = modelo({ partes: [{ id: 'p1', etiqueta: 'Nombre', peso: 3 }, { id: 'p2', etiqueta: 'Descripción', peso: 7 }] });
+  const valor = { filas: [[neg('Nombre'), neg('Descripción')], [c('Uno'), c('lo uno')]], anchos: [30, 70] };
+  const r = adoptar(campoDe('tabla'), valor, m);
+  assert.equal(r.motivo, null);
+  assert.equal(r.informe.aspecto.anchos, false);
+  assert.equal(r.informe.aspecto.cambia, false);
+  assert.equal(r.informe.aviso, null);
+  // Y con otros pesos si cambia.
+  const otro = adoptar(campoDe('tabla'), valor, modelo({ partes: [{ id: 'p1', etiqueta: 'Nombre', peso: 7 }, { id: 'p2', etiqueta: 'Descripción', peso: 3 }] }));
+  assert.equal(otro.informe.aspecto.anchos, true);
+});
+
 prueba('cuando no cambia nada visible, no hay aviso', () => {
   // Rotulos en negrita (asi la tabla ya tenia cabecera), sin anchos y con los nombres del modelo.
   const valor = { filas: [[neg('Nombre'), neg('Descripción')], [c('Uno'), c('lo uno')]] };

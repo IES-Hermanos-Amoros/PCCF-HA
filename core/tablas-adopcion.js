@@ -388,6 +388,18 @@
     ].join('|');
   }
 
+  // ¿REPARTEN EL ANCHO IGUAL? Los anchos de una tabla y los pesos de un modelo son los dos medidas
+  // RELATIVAS —el motor los normaliza al pintar (`anchos()` de motor/render-generico.js)—, así que
+  // lo que se compara es la proporción y no los números: 30/70 y 3/7 son el mismo reparto.
+  function mismaProporcion(a, b) {
+    const reparto = (xs) => {
+      if (!Array.isArray(xs) || !xs.length) return null;
+      const total = xs.reduce((n, x) => n + (Number(x) || 0), 0);
+      return total > 0 ? xs.map((x) => Math.round(((Number(x) || 0) / total) * 1e6)).join(',') : null;
+    };
+    return reparto(a) === reparto(b);
+  }
+
   // Las celdas de rótulo que el modelo pinta, por el id de su parte: son las que llevan `campo`.
   function rotulosPintados(filas) {
     const out = new Map();
@@ -432,7 +444,12 @@
         if (celdas.some((c) => comoSeVe(c, false) !== 'n|-|-|-')) contenido += 1;
       }
     }
-    const anchos = esObjeto(valor) && valor.anchos !== undefined;
+    // LOS ANCHOS DE COLUMNA CAMBIAN SI LA PROPORCIÓN CAMBIA, y no por el hecho de que los diga el
+    // modelo en lugar de la tabla: un modelo cuyos `peso` reproducen los anchos que la tabla traía
+    // del Word imprime la tabla con las mismas columnas, y decir que ha cambiado sería un aviso
+    // falso. Sin anchos a un lado y con ellos al otro, sí cambia: se pasa de repartir por el texto a
+    // repartir por la proporción, o al revés.
+    const anchos = !mismaProporcion(esObjeto(valor) ? valor.anchos : undefined, porPares ? undefined : pintada.anchos);
     const cabecera = !porPares && cabeceraAntes !== !!pintada.cabecera;
     const rotulos = casados.filter((x) => x.texto.trim() !== etiquetaDe(x.parte).trim()).length;
     return {
