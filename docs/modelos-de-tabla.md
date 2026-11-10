@@ -211,10 +211,15 @@ a los ocho que no son programaciones didácticas. Si el agrupamiento da disparat
 cambiar es el plan, no la pantalla.
 
 Medido ya: el agrupamiento acierta de pleno en seis de las nueve familias que el importador etiqueta
-en una programación, y se queda en el 80 % en las fichas de situación de aprendizaje, cuyo techo es
-que en los documentos del departamento hay **dos diseños distintos de ficha**, no uno. Los grupos que
+en una programación, y se queda en el 80 % en las fichas de situación de aprendizaje. Los grupos que
 casan por cabecera son fiables; los que agrupan solo por geometría son los que mezclan, así que la
 pantalla tendrá que marcarlos como débiles y dar por hecho que alguien unirá y partirá a mano.
+
+Lo que **no** es el techo de las fichas: durante un tiempo se dio por hecho que en los documentos
+había dos diseños distintos de ficha. Es falso, y se midió: las **311** fichas que el importador
+reconoce en los doce documentos son **todas de cuatro columnas** —248 de 18 filas, y el resto de 24,
+17 o 22—, así que `COLUMNAS = 4` sigue siendo la única maquetación. Lo que le cuesta al agrupamiento
+es la negrita escrita de forma irregular y los anchos que difieren por redondeo, no dos familias.
 
 ---
 
