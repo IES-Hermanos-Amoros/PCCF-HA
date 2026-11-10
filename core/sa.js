@@ -320,12 +320,28 @@
     });
     if (actual.length) filasDeCampos.push(actual);
 
-    let grupoPuesto = false;
+    // EL RÓTULO DE UN GRUPO SE ESCRIBE CADA VEZ QUE EL GRUPO CAMBIA.
+    //
+    // `grupo` lo pone la plantilla y la jefatura puede llamarlo como quiera
+    // (`anadir_campo_ficha` acepta cualquier texto), así que compararlo con un nombre fijo dejaba
+    // sin rótulo a cualquier grupo que no fuera el de siempre: sus filas se agrupaban y el nombre
+    // del grupo no se imprimía en ninguna parte, ni en el PDF ni en el Word.
+    //
+    // Y se compara con el grupo de la fila ANTERIOR, en vez de llevar una marca de «ya puesto»,
+    // porque así un grupo que reaparece después de otro se vuelve a rotular en lugar de parecer la
+    // continuación del de arriba.
+    //
+    // `actividades` es el id del grupo de la ficha de siempre y su rótulo es otro texto: el id no
+    // es el nombre, igual que en el resto de la plantilla.
+    let grupoAnterior = null;
     filasDeCampos.forEach((fila) => {
       const imprime = !fila.every((c) => c.solo_si_hay) || fila.some((c) => deLineas(s[c.id]).trim());
-      if (imprime && fila[0].grupo === 'actividades' && !grupoPuesto) {
-        out.push([celda(CABECERA_ACTIVIDADES, { colspan: COLUMNAS, bold: true })]);
-        grupoPuesto = true;
+      const g = fila[0].grupo || null;
+      if (imprime) {
+        if (g && g !== grupoAnterior) {
+          out.push([celda(g === 'actividades' ? CABECERA_ACTIVIDADES : g, { colspan: COLUMNAS, bold: true })]);
+        }
+        grupoAnterior = g;
       }
       bloque(fila);
     });

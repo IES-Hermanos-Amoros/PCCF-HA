@@ -421,6 +421,41 @@ prueba('core/sa: un campo retirado ni se imprime ni se lee', () => {
   assert.strictEqual(S.esSemantica({ ampliacion: ['x'] }, A_MEDIDA), false);
 });
 
+prueba('core/sa: el rótulo de un grupo se imprime, se llame como se llame', () => {
+  // `anadir_campo_ficha` acepta cualquier texto como grupo, así que comparar con «actividades»
+  // dejaba sin rótulo a cualquier otro: las filas se agrupaban y el nombre del grupo no salía
+  // impreso en ninguna parte. Un grupo que no se ve es peor que no tenerlo.
+  const propio = [
+    { id: 'ce', etiqueta: 'Criterios de evaluación', ancho: 4 },
+    { id: 'uno', etiqueta: 'Uno', ancho: 2, grupo: 'Mis actividades' },
+    { id: 'dos', etiqueta: 'Dos', ancho: 2, grupo: 'Mis actividades' },
+  ];
+  const f = Object.assign(S.fichaVacia(1, null, propio), { ce: ['x'], uno: ['a'], dos: ['b'] });
+  // El rótulo de un grupo es la única celda a todo lo ancho, en negrita, que NO es la etiqueta de
+  // ninguna parte: no lleva `campo`. Una parte de ancho 4 también ocupa la fila entera.
+  const rotulos = (filas) => filas
+    .filter((r) => r.length === 1 && r[0].colspan === S.COLUMNAS && r[0].bold && !r[0].campo)
+    .map((r) => r[0].text);
+  assert.deepStrictEqual(rotulos(S.filasDeFicha(f, propio)), ['Mis actividades']);
+
+  // El id NO es el nombre: el grupo de la ficha de siempre se llama «actividades» y su rótulo es otro.
+  const deSiempre = propio.map((c) => (c.grupo ? { ...c, grupo: 'actividades' } : c));
+  const g = Object.assign(S.fichaVacia(1, null, deSiempre), { ce: ['x'], uno: ['a'], dos: ['b'] });
+  assert.deepStrictEqual(rotulos(S.filasDeFicha(g, deSiempre)), [S.CABECERA_ACTIVIDADES]);
+
+  // Un grupo que reaparece después de otro se vuelve a rotular: si no, parecería la continuación.
+  const vuelve = [
+    { id: 'uno', etiqueta: 'Uno', ancho: 4, grupo: 'A' },
+    { id: 'dos', etiqueta: 'Dos', ancho: 4, grupo: 'B' },
+    { id: 'tres', etiqueta: 'Tres', ancho: 4, grupo: 'A' },
+  ];
+  const v = Object.assign(S.fichaVacia(1, null, vuelve), { uno: ['1'], dos: ['2'], tres: ['3'] });
+  assert.deepStrictEqual(rotulos(S.filasDeFicha(v, vuelve)), ['A', 'B', 'A']);
+
+  // Y la ficha de siempre no cambia: un solo rótulo, el de las actividades.
+  assert.deepStrictEqual(rotulos(S.filasDeFicha(S.fichaVacia(1))), [S.CABECERA_ACTIVIDADES]);
+});
+
 prueba('core/sa: filasDeFicha marca `campo` en las etiquetas y en nada más', () => {
   const filas = S.filasDeFicha(S.fichaVacia(1));
   const conCampo = [];
