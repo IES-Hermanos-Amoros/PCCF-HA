@@ -234,10 +234,42 @@ function valoresDe(campos, sec, vistos) {
 const RE_ITEM = /^([a-zñ ]+?)\s*(\d+)\b/;
 const prefijoDeItem = (titulo) => (norm(titulo).match(RE_ITEM) || [])[1];
 
+// UN ÍTEM DE UNA SERIE NO CONTIENE OTRO ÍTEM DE LA MISMA SERIE.
+//
+// «Situación de aprendizaje 1», «... 2», «... 3» son hermanas: una serie de ítems bajo el mismo
+// apartado. Si en el Word una de ellas lleva un nivel de título más alto que las siguientes —un
+// «Título 4» donde las demás llevan «Título 5»—, Word las mete DENTRO de ella, y entonces la serie
+// que se ve en el documento impreso (seis situaciones seguidas) no es la que tiene el árbol (una
+// situación con cinco dentro). Eso no es una estructura: es un nivel mal puesto, y nadie escribe una
+// situación de aprendizaje dentro de otra.
+//
+// Así que los ítems de una serie se recogen atravesando los ítems de esa misma serie, en el orden
+// del documento. Se atraviesan SOLO los ítems: una sección que no es de la serie no se abre, porque
+// entonces esto dejaría de corregir un nivel mal puesto y empezaría a adivinar qué cuelga de qué.
+//
+// Medido en los documentos del departamento: esto solo cambia algo en la PD de SMR de 2025-26, donde
+// el módulo de Seguridad informática escribe la SA 1 con un nivel y las SA 2 a 6 con el siguiente, y
+// por eso solo llegaba una de las seis.
+function itemsDeSerie(sec, esItem) {
+  const out = [];
+  const recoger = (padre) => {
+    for (const h of padre.hijos) {
+      if (!esItem(h)) continue;
+      out.push(h);
+      recoger(h);
+    }
+  };
+  recoger(sec);
+  return out;
+}
 // LAS SECCIONES QUE SON ÍTEMS DE UN REPETIDOR, dentro de una sección concreta: las que `fusionar`
 // apuntó al crearlo (`_items`) y las que llevan su mismo prefijo («Situación de aprendizaje 7» en un
-// módulo que no estaba cuando se dedujo la plantilla).
-const itemsDelRepetidor = (repet, sec) => sec.hijos.filter((x) => repet._items.includes(norm(x.titulo)) || prefijoDeItem(x.titulo) === norm(repet.titulo));
+// módulo que no estaba cuando se dedujo la plantilla). Anidadas incluidas, por lo de arriba.
+const esItemDe = (repet) => {
+  const p = repet._prefijo || norm(repet.titulo);
+  return (x) => repet._items.includes(norm(x.titulo)) || prefijoDeItem(x.titulo) === p;
+};
+const itemsDelRepetidor = (repet, sec) => itemsDeSerie(sec, esItemDe(repet));
 function fusionar(secs, idPadre) {
   // secs: la misma sección lógica en varias instancias (la base primero)
   const base = secs[0];
@@ -253,9 +285,15 @@ function fusionar(secs, idPadre) {
     const m = k.match(RE_ITEM); const p = m && m[1].trim();
     if (p && prefijos.get(p).length >= 2) {
       const claves = prefijos.get(p); claves.forEach((x) => consumidos.add(x));
-      const items = claves.flatMap((x) => porClave.get(x));
+      const directos = claves.flatMap((x) => porClave.get(x));
+      // Los ítems que el Word dejó DENTRO de otro ítem (ver «un ítem de una serie no contiene otro
+      // ítem de la misma serie»). Van detrás de los directos y no entre ellos: lo que decide el
+      // orden y el nombre de los campos de la plantilla es la serie tal como se lee en el
+      // documento, y un nivel mal puesto en un módulo no tiene por qué reordenar la de todos.
+      const anidados = directos.flatMap((s) => itemsDeSerie(s, (x) => prefijoDeItem(x.titulo) === p));
+      const items = directos.concat(anidados);
       const etiqueta = porClave.get(claves[0])[0].titulo.replace(/\s*\d+.*$/, '').trim();
-      hijos.push({ id: id + '/' + slug(etiqueta), titulo: etiqueta, repetidor: true, nivel: items[0].nivel, campos: [{ id: 'titulo', tipo: 'texto', etiqueta: 'Título', origen: 'titulo' }, ...camposDe(items)], hijos: [], presencia: secs.length, _items: claves });
+      hijos.push({ id: id + '/' + slug(etiqueta), titulo: etiqueta, repetidor: true, nivel: directos[0].nivel, campos: [{ id: 'titulo', tipo: 'texto', etiqueta: 'Título', origen: 'titulo' }, ...camposDe(items)], hijos: [], presencia: secs.length, _prefijo: p, _items: [...new Set(items.map((x) => norm(x.titulo)))] });
     } else { consumidos.add(k); hijos.push(fusionar(porClave.get(k), id)); }
   }
   return { id, titulo: base.titulo, num: base.num, nivel: base.nivel, campos: camposDe(secs), hijos, presencia: secs.length, _clave: norm(base.titulo) };

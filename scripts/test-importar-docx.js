@@ -344,6 +344,33 @@ prueba('una tabla reconocida que no llega a ningún campo se NOMBRA en el inform
   assert.ok(/1 bloque de texto/.test(aviso), `y el texto que se va con ella: ${aviso}`);
 });
 
+prueba('una situación con un nivel de título más alto no se traga a las siguientes', async () => {
+  // EL FALLO QUE ESTA PRUEBA EXISTE PARA QUE NO VUELVA. En la PD de SMR de 2025-26 el módulo de
+  // Seguridad informática escribe la SA 1 con un nivel de título y las SA 2 a 6 con el siguiente:
+  // Word las mete DENTRO de la primera, y de las seis llegaba una. Aquí, la 2 cuelga de la 1 y la 3
+  // vuelve al nivel de la 1: las tres son la misma serie y las tres tienen que llegar, en el orden
+  // del documento.
+  const { plantilla, datos, informe } = await importarDocx({
+    buffer: await docx({
+      estilos: ESTILOS_NIVELES,
+      parrafos: [
+        ['T1', '1. Situaciones de aprendizaje'],
+        ['T2', 'Situación de aprendizaje 1: Uno'], FICHA(1, 'Uno'),
+        ['T3', 'Situación de aprendizaje 2: Dos'], FICHA(2, 'Dos'),
+        ['T2', 'Situación de aprendizaje 3: Tres'], FICHA(3, 'Tres'),
+      ],
+    }),
+  });
+
+  const items = itemsDe(plantilla, datos);
+  assert.deepStrictEqual(items.map((i) => i.titulo), ['Uno', 'Dos', 'Tres'],
+    'las tres situaciones, en el orden del documento');
+  assert.deepStrictEqual(items.map((i) => i.ficha.filas[0][1].text), ['Uno', 'Dos', 'Tres'],
+    'y cada una con su ficha, no con la de la de al lado');
+  assert.deepStrictEqual(informe.tablasSinCampo, [], 'ninguna ficha se queda fuera');
+  assert.ok(!informe.avisos.some((a) => AVISO.test(a)));
+});
+
 (async () => {
   for (const { nombre, fn } of pendientes) {
     try { await fn(); console.log(`ok   ${nombre}`); } catch (e) { fallos += 1; console.log(`FALLO ${nombre}\n     ${e.message}`); }
