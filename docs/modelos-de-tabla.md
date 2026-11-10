@@ -103,7 +103,27 @@ plantilla.modelos['modelo-xxx'] = {
 ```
 
 Un campo apunta a su modelo con `campo.modelo`; sin esa clave, no usa modelo. Una tabla que ha
-divergido guarda su estructura junto a su contenido, en `valor.estructura`.
+divergido guarda su estructura junto a su contenido, en `valor.estructura`, **con su `sentido`
+dentro**: si el sentido lo siguiera diciendo el modelo del que se desengancho, cambiarlo alli
+reinterpretaria girada noventa grados una tabla que precisamente habia dejado de seguirlo. Divergir
+tiene que proteger de eso o no protege de nada.
+
+### El contenido va por id de parte, no por posicion
+
+Con estructura, lo guardado es **solo el contenido**: los rotulos los pone la estructura al pintar.
+Y cada casilla se guarda bajo el id de su parte. Con `sentido: 'filas'` cada parte guarda una
+casilla; con `sentido: 'columnas'`, la lista de las suyas hacia abajo.
+
+| | Por posicion | Por id de parte |
+|---|---|---|
+| Anadir, mover o retirar una parte | Hay que reescribir todas las tablas del grupo | No toca ninguna |
+| Una tabla a medio rellenar | Imposible a lo alto: la fila *i* es la parte *i*, asi que o ninguna o todas | Natural |
+| Partes retiradas | Tienen que seguir contando para que el emparejamiento cuadre | Dejan de contar |
+| La ficha de SA | Se parecerian | Es el mismo mecanismo: ya guarda `ficha[id]` |
+
+La ultima fila es la decisiva. La ficha es el unico precedente que funciona y guarda por id desde
+el principio; con contenido posicional, absorberla en la pieza 7 habria sido una reescritura y no
+una absorcion.
 
 Tres reglas vienen de lo ya aprendido con la estructura de la ficha y no se vuelven a discutir:
 
@@ -135,12 +155,24 @@ departamento tiene escrito está así.
 ## 6. El orden
 
 1. El modelo en la plantilla y la regla de qué estructura manda, en `core/`, sin pantalla
-2. Las operaciones sobre el modelo, con ruta, permisos, versión y 409
-3. Divergir y volver a enganchar, con el estado visible
-4. El doble aviso: números antes de aceptar, aviso al docente después
-5. La pantalla: los gestos sobre la tabla misma
-6. La confirmación de la importación: la aplicación propone los grupos y el jefe confirma
-7. Absorber la ficha de SA y remontar las fichas escritas
+2. **Adoptar un modelo para una tabla ya escrita**: soltarle la fila de rótulos y emparejarla con
+   las partes
+3. Las operaciones sobre el modelo, con ruta, permisos, versión y 409
+4. Divergir y volver a enganchar, con el estado visible
+5. El doble aviso: números antes de aceptar, aviso al docente después
+6. La pantalla: los gestos sobre la tabla misma
+7. La confirmación de la importación: la aplicación propone los grupos y el jefe confirma
+8. Absorber la ficha de SA y remontar las fichas escritas
+
+### Por qué adoptar es una pieza y no un detalle
+
+Porque sin ella el modelo **no sirve para nada de lo que ya hay**. Una tabla escrita hoy lleva su
+fila de rótulos *entre* sus celdas; en cuanto su campo gana un modelo, esa fila pasa a ser
+contenido y la tabla imprimiría los rótulos dos veces, o no cuadraría con la estructura y dejaría
+de guardarse. Sin adopción, el modelo solo vale para tablas nuevas, que son cero.
+
+Es el mismo problema que `completarDesdeFilas` resuelve para una ficha importada —rescatar lo que
+solo está en la rejilla antes de que la rejilla se vaya—, y aquí no había equivalente.
 
 ### Por qué la ficha de SA va al final
 
