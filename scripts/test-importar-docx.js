@@ -33,7 +33,8 @@ const prueba = (nombre, fn) => pendientes.push({ nombre, fn });
 // ---------------------------------------------------------------- un .docx mínimo armado a mano
 // `estilos`: { id, nombre, nivel (el outlineLvl, 0 = primer nivel), porDefecto }.
 // `parrafos`: [idDeEstilo, texto]; un tabulador en el texto se escribe como el
-// <w:tab/> que pone Word entre el título y el número de página en el índice.
+// <w:tab/> que pone Word entre el título y el número de página en el índice. Una
+// entrada `{ tabla: [[celda, ...], ...] }` pone una tabla en ese sitio.
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 
 async function docx({ estilos, parrafos }) {
@@ -60,12 +61,15 @@ async function docx({ estilos, parrafos }) {
       + (e.nivel === undefined ? '' : '<w:pPr><w:outlineLvl w:val="' + e.nivel + '"/></w:pPr>')
       + '</w:style>').join('')
     + '</w:styles>');
-  const p = ([estilo, texto]) => '<w:p><w:pPr><w:pStyle w:val="' + esc(estilo) + '"/></w:pPr>'
-    + String(texto).split('\t').map((trozo) => '<w:r><w:t xml:space="preserve">' + esc(trozo) + '</w:t></w:r>').join('<w:r><w:tab/></w:r>')
-    + '</w:p>';
+  const texto = (t) => String(t).split('\t').map((trozo) => '<w:r><w:t xml:space="preserve">' + esc(trozo) + '</w:t></w:r>').join('<w:r><w:tab/></w:r>');
+  const p = ([estilo, t]) => '<w:p><w:pPr><w:pStyle w:val="' + esc(estilo) + '"/></w:pPr>' + texto(t) + '</w:p>';
+  const tbl = (filas) => '<w:tbl>'
+    + filas.map((fila) => '<w:tr>' + fila.map((celda) => '<w:tc><w:p>' + texto(celda) + '</w:p></w:tc>').join('') + '</w:tr>').join('')
+    + '</w:tbl>';
+  const bloque = (b) => (Array.isArray(b) ? p(b) : tbl(b.tabla));
   zip.file('word/document.xml', '<?xml version="1.0" encoding="UTF-8"?>'
     + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
-    + parrafos.map(p).join('')
+    + parrafos.map(bloque).join('')
     + '</w:body></w:document>');
   return zip.generateAsync({ type: 'nodebuffer' });
 }
@@ -247,6 +251,97 @@ prueba('el texto normal no se promueve aunque el índice case con él', async ()
   const { plantilla, informe } = await importarDocx({ buffer: await docx({ estilos, parrafos: indice.concat(cuerpo) }) });
   assert.strictEqual(informe.indice, null, 'el estilo base del documento no se puede promover a título');
   assert.deepStrictEqual(plantilla.secciones, []);
+});
+
+// ================================================================ LO QUE NO LLEGA A NINGÚN CAMPO
+//
+// La plantilla se deduce fusionando las instancias y los datos se sacan sección por sección: son
+// dos recorridos del mismo árbol, y hay sitios por los que el segundo no pasa. Lo que se quedaba
+// ahí no se importaba y no se decía. Estas pruebas vigilan las dos mitades del arreglo: que la
+// pérdida se NOMBRE cuando la hay, y que un nivel de título mal puesto deje de producirla.
+
+// Tres niveles de título, cada uno declarando su nivel de esquema, que es el camino normal del
+// importador. Nombres propios para no depender de los estilos que mammoth ya conoce.
+const ESTILOS_NIVELES = [
+  { id: 'Normal', porDefecto: true },
+  { id: 'T1', nombre: 'Apartado', nivel: 0 },
+  { id: 'T2', nombre: 'Subapartado', nivel: 1 },
+  { id: 'T3', nombre: 'Subsubapartado', nivel: 2 },
+];
+// Una ficha de situación de aprendizaje como las del departamento: cuatro columnas y la cabecera por
+// la que `clasificarTabla` la reconoce.
+const FICHA = (n, titulo) => ({
+  tabla: [
+    [`Situación de aprendizaje ${n}`, titulo, 'Sesiones', '10'],
+    ['Criterios de evaluación', `a) Lo de ${titulo}`, '', ''],
+    ['Materiales y recursos didácticos disponibles', 'Aula de informática', '', ''],
+  ],
+});
+// El id del único repetidor de la plantilla, para no escribirlo a mano en cada prueba.
+function idDelRepetidor(secs) {
+  for (const s of secs) {
+    if (s.repetidor) return s.id;
+    const hondo = idDelRepetidor(s.hijos || []);
+    if (hondo) return hondo;
+  }
+  return null;
+}
+const itemsDe = (plantilla, datos) => ((datos.documento[idDelRepetidor(plantilla.secciones)] || {}).items || []);
+const AVISO = /no llega(?:n)? a ningún campo de la plantilla/;
+
+prueba('una serie de situaciones bien escrita no pierde nada y no avisa de nada', async () => {
+  // La referencia de las dos pruebas siguientes: dos situaciones al mismo nivel. Las dos llegan y el
+  // informe no tiene nada que decir. Un aviso que saliera también aquí no avisaría de nada.
+  const { plantilla, datos, informe } = await importarDocx({
+    buffer: await docx({
+      estilos: ESTILOS_NIVELES,
+      parrafos: [
+        ['T1', '1. Situaciones de aprendizaje'],
+        ['T2', 'Situación de aprendizaje 1: Uno'], FICHA(1, 'Uno'),
+        ['T2', 'Situación de aprendizaje 2: Dos'], FICHA(2, 'Dos'),
+      ],
+    }),
+  });
+
+  assert.deepStrictEqual(itemsDe(plantilla, datos).map((i) => i.titulo), ['Uno', 'Dos']);
+  assert.deepStrictEqual(informe.tablasSinCampo, []);
+  assert.deepStrictEqual(informe.textosSinCampo, []);
+  assert.ok(!informe.avisos.some((a) => AVISO.test(a)), `no debería avisar: ${JSON.stringify(informe.avisos)}`);
+});
+
+prueba('una tabla reconocida que no llega a ningún campo se NOMBRA en el informe', async () => {
+  // Un apartado colgado de una situación de aprendizaje: no es otra situación, así que no es un ítem
+  // del repetidor, y el repetidor no tiene subapartados. Su tabla no se importa, y eso es lo que el
+  // informe tiene que decir —con su etiqueta, su tamaño y su sitio— en lugar de callarse.
+  const { plantilla, datos, informe } = await importarDocx({
+    buffer: await docx({
+      estilos: ESTILOS_NIVELES,
+      parrafos: [
+        ['T1', '1. Situaciones de aprendizaje'],
+        ['T2', 'Situación de aprendizaje 1: Uno'], FICHA(1, 'Uno'),
+        ['T2', 'Situación de aprendizaje 2: Dos'], FICHA(2, 'Dos'),
+        ['T3', 'Anexo con una tabla'], FICHA(9, 'La que se pierde'),
+        ['Normal', 'Y un párrafo que se pierde con ella.'],
+      ],
+    }),
+  });
+
+  assert.deepStrictEqual(itemsDe(plantilla, datos).map((i) => i.titulo), ['Uno', 'Dos'],
+    'el anexo no es una situación de aprendizaje y no puede convertirse en un ítem');
+
+  assert.strictEqual(informe.tablasSinCampo.length, 1);
+  const t = informe.tablasSinCampo[0];
+  assert.strictEqual(t.etiqueta, 'Ficha de situación de aprendizaje');
+  assert.strictEqual(t.reconocida, true, 'esta tabla el importador la reconoce: perderla es grave');
+  assert.deepStrictEqual([t.filas, t.columnas], [3, 4]);
+  assert.strictEqual(t.ruta, 'Situaciones de aprendizaje › Situación de aprendizaje 2: Dos › Anexo con una tabla');
+  assert.deepStrictEqual(informe.textosSinCampo.map((x) => x.inicio), ['Y un párrafo que se pierde con ella.']);
+
+  const aviso = informe.avisos.find((a) => AVISO.test(a));
+  assert.ok(aviso, `tiene que haber un aviso: ${JSON.stringify(informe.avisos)}`);
+  assert.ok(aviso.includes('Anexo con una tabla'), `el aviso tiene que nombrar dónde está: ${aviso}`);
+  assert.ok(aviso.includes('Ficha de situación de aprendizaje'), `y qué es: ${aviso}`);
+  assert.ok(/1 bloque de texto/.test(aviso), `y el texto que se va con ella: ${aviso}`);
 });
 
 (async () => {

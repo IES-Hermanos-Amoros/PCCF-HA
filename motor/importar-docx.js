@@ -142,6 +142,11 @@ function clasificarTabla(t) {
   return { tipo: 'tabla', id: 'tabla-' + slug(c.join(' ')).slice(0, 40), etiqueta: 'Tabla', columnas: cabecera ? t.rows[0].map((x) => x.text) : null };
 }
 const claveTabla = (cls) => `${cls.tipo}|${cls.id}`;
+// Una tabla está RECONOCIDA cuando el importador sabe QUÉ es y no solo qué forma tiene: los dos
+// últimos casos de `clasificarTabla` —`tabla_clave_valor` y `tabla`— son el cajón de sastre al que
+// cae cualquier rejilla, y por eso no cuentan como reconocimiento.
+const GENERICOS = new Set(['tabla', 'tabla_clave_valor']);
+const esReconocida = (cls) => !GENERICOS.has(cls.tipo);
 
 // ---------------------------------------------------------------- extracción estructurada de tablas conocidas
 const numPct = (t) => { const m = String(t || '').replace(',', '.').match(/-?\d+(?:\.\d+)?/); return m ? Number(m[0]) : null; };
@@ -204,18 +209,35 @@ function reasignarIds(sec, de, a) {
   if (sec.id && (sec.id === de || sec.id.startsWith(de + '/'))) sec.id = a + sec.id.slice(de.length);
   sec.hijos.forEach((h) => reasignarIds(h, de, a));
 }
-function valoresDe(campos, sec) {
+// `vistos` es el registro de bloques que SÍ han llegado a un campo (ver «lo que no llega a ningún
+// campo», abajo). Es opcional: sin él los valores salen igual, solo no se puede auditar la pérdida.
+function valoresDe(campos, sec, vistos) {
   const v = {};
   for (const c of campos) {
-    if (c.tipo === 'texto_largo') { const bl = sec.bloques.filter((b) => b.type !== 'table').map((b) => (b.type === 'list' ? { type: 'list', items: b.items } : { type: 'p', text: b.text })); if (bl.length) v[c.id] = bl; }
-    else {
-      const tablas = sec.bloques.filter((b) => b.type === 'table' && claveTabla(clasificarTabla(b)) === claveTabla(c)).map((t) => valorTabla(c, t));
-      if (tablas.length) v[c.id] = c.multiple ? tablas : tablas[0];
+    if (c.tipo === 'texto_largo') {
+      const nodos = sec.bloques.filter((b) => b.type !== 'table');
+      const bl = nodos.map((b) => (b.type === 'list' ? { type: 'list', items: b.items } : { type: 'p', text: b.text }));
+      if (bl.length) { v[c.id] = bl; if (vistos) nodos.forEach((b) => vistos.add(b)); }
+    } else {
+      // Un campo que no es `multiple` se queda con la PRIMERA tabla de su clase: las demás no
+      // llegan a ningún sitio, y por eso solo se apunta la que se usa.
+      const nodos = sec.bloques.filter((b) => b.type === 'table' && claveTabla(clasificarTabla(b)) === claveTabla(c));
+      if (!nodos.length) continue;
+      const usados = c.multiple ? nodos : nodos.slice(0, 1);
+      if (vistos) usados.forEach((b) => vistos.add(b));
+      const tablas = usados.map((t) => valorTabla(c, t));
+      v[c.id] = c.multiple ? tablas : tablas[0];
     }
   }
   return v;
 }
 const RE_ITEM = /^([a-zñ ]+?)\s*(\d+)\b/;
+const prefijoDeItem = (titulo) => (norm(titulo).match(RE_ITEM) || [])[1];
+
+// LAS SECCIONES QUE SON ÍTEMS DE UN REPETIDOR, dentro de una sección concreta: las que `fusionar`
+// apuntó al crearlo (`_items`) y las que llevan su mismo prefijo («Situación de aprendizaje 7» en un
+// módulo que no estaba cuando se dedujo la plantilla).
+const itemsDelRepetidor = (repet, sec) => sec.hijos.filter((x) => repet._items.includes(norm(x.titulo)) || prefijoDeItem(x.titulo) === norm(repet.titulo));
 function fusionar(secs, idPadre) {
   // secs: la misma sección lógica en varias instancias (la base primero)
   const base = secs[0];
@@ -238,21 +260,21 @@ function fusionar(secs, idPadre) {
   }
   return { id, titulo: base.titulo, num: base.num, nivel: base.nivel, campos: camposDe(secs), hijos, presencia: secs.length, _clave: norm(base.titulo) };
 }
-function extraer(plantillaSec, sec) {
+function extraer(plantillaSec, sec, vistos) {
   // valores de una sección concreta (instancia) según la sección canónica
   const out = {};
-  const v = valoresDe(plantillaSec.campos, sec);
+  const v = valoresDe(plantillaSec.campos, sec, vistos);
   if (Object.keys(v).length) out[plantillaSec.id] = v;
   for (const h of plantillaSec.hijos) {
     if (h.repetidor) {
-      const items = sec.hijos.filter((x) => h._items.includes(norm(x.titulo)) || (norm(x.titulo).match(RE_ITEM) || [])[1] === norm(h.titulo)).map((x) => {
+      const items = itemsDelRepetidor(h, sec).map((x) => {
         const m = x.titulo.match(/\d+\s*[:.\-]?\s*(.*)$/s);
-        return { titulo: m ? m[1].trim() : x.titulo, ...valoresDe(h.campos.filter((c) => c.origen !== 'titulo'), x) };
+        return { titulo: m ? m[1].trim() : x.titulo, ...valoresDe(h.campos.filter((c) => c.origen !== 'titulo'), x, vistos) };
       });
       if (items.length) out[h.id] = { items };
     } else {
       const real = sec.hijos.find((x) => norm(x.titulo) === h._clave);
-      if (real) Object.assign(out, extraer(h, real));
+      if (real) Object.assign(out, extraer(h, real, vistos));
     }
   }
   return out;
@@ -264,6 +286,109 @@ const limpiarPlantilla = (s) => ({
   ...(s.presencia !== undefined ? { presencia: s.presencia } : {}),
   campos: s.campos.map(({ origen, ...c }) => c), hijos: s.hijos.map(limpiarPlantilla),
 });
+
+// ---------------------------------------------------------------- lo que no llega a ningún campo
+//
+// La deducción de la plantilla y la extracción de los datos son dos recorridos del MISMO árbol que
+// no tienen por qué cuadrar: la plantilla se deduce fusionando las instancias y los datos se sacan
+// sección por sección, así que hay sitios del documento por los que la extracción no pasa. Lo que
+// hay ahí dentro no se importa y hasta ahora no se decía: una tabla que el importador RECONOCE
+// —clasifica y sabe leer— podía quedarse fuera de `datos` sin una sola línea en el informe.
+//
+// Esto lo cuenta. Es el patrón de `filasSinCampo` e `informeDeFilas` de core/sa.js —contar con
+// números y NOMBRAR lo que se pierde— pero al nivel del documento: allí son las filas de una ficha
+// que no van a ningún campo de la ficha; aquí, los bloques del Word que no van a ningún campo de la
+// plantilla. El motivo es el mismo: la lista de sitios por los que la extracción pasa siempre irá
+// por detrás de lo que alguien escriba en su Word, y lo que no puede pasar es que la pérdida sea
+// muda. Un aviso no arregla el documento, pero lo pone donde se ve en abril y no en junio.
+//
+// NO ENTRA EL CONTENIDO ANTERIOR AL PRIMER TÍTULO: se ignora a propósito —es portada e índice— y ya
+// tiene su aviso, que dice cuántos bloques son y cuántas tablas reconocidas hay entre ellos.
+const RECORTE_TABLA = 60;
+const corta = (t) => (t.length > RECORTE_TABLA ? t.slice(0, RECORTE_TABLA - 1).trim() + '…' : t);
+const cabeceraDe = (t) => corta(limpiar(t.rows[0].map((c) => c.text).join(' | ')).replace(/\n/g, ' '));
+
+// Las tablas y los bloques de texto del árbol de secciones, cada uno con la ruta de títulos en la
+// que está: sin la ruta, nombrar una tabla no sirve para encontrarla en el Word.
+function bloquesDelArbol(raiz, incluirInicial) {
+  const out = [];
+  const visitar = (sec, ruta) => {
+    for (const b of sec.bloques) out.push({ nodo: b, ruta });
+    for (const h of sec.hijos) visitar(h, ruta.concat(h.titulo));
+  };
+  if (incluirInicial) for (const b of raiz.bloques) out.push({ nodo: b, ruta: ['Contenido inicial'] });
+  for (const h of raiz.hijos) visitar(h, [h.titulo]);
+  return out;
+}
+
+// CÓMO SE NOMBRA UNA TABLA PERDIDA: con la etiqueta con la que el importador la ha reconocido, su
+// tamaño —que es lo que distingue dos tablas seguidas con la misma cabecera—, su cabecera y la ruta
+// de títulos donde está. Sin la ruta, nombrarla no sirve para encontrarla en el Word.
+function nombraTabla(x) {
+  const cls = clasificarTabla(x.nodo);
+  const filas = x.nodo.rows.length;
+  const columnas = Math.max(...x.nodo.rows.map((r) => r.length));
+  const cabecera = cabeceraDe(x.nodo);
+  const ruta = x.ruta.join(' › ');
+  return {
+    tipo: cls.tipo,
+    etiqueta: cls.etiqueta,
+    reconocida: esReconocida(cls),
+    cabecera,
+    filas,
+    columnas,
+    ruta,
+    nombre: `«${cls.etiqueta}» (${filas}×${columnas}, «${cabecera}») en «${ruta}»`,
+  };
+}
+
+// Y UN BLOQUE DE TEXTO, por su sitio y su comienzo: no tiene cabecera con la que nombrarlo.
+const nombraTexto = (x) => ({
+  tipo: x.nodo.type,
+  ruta: x.ruta.join(' › '),
+  inicio: corta(limpiar(x.nodo.type === 'list' ? (x.nodo.items[0] || {}).text || '' : x.nodo.text).replace(/\n/g, ' ')),
+});
+
+// «la 13, la 14 y la 15»: la coma hasta el último, que va con «y». Igual que en core/sa.js.
+function enLista(partes) {
+  if (!partes.length) return '';
+  if (partes.length === 1) return partes[0];
+  return partes.slice(0, -1).join(', ') + ' y ' + partes[partes.length - 1];
+}
+
+// Cuántas se nombran en el aviso. Las listas enteras están siempre en `informe.tablasSinCampo` y
+// `informe.textosSinCampo`: el tope es para que un documento con cien tablas descolocadas no deje un
+// aviso que nadie va a leer.
+const TOPE_NOMBRADAS = 12;
+const cuantos = (n, uno, varios) => (n === 1 ? '1 ' + uno : n + ' ' + varios);
+const topado = (lista, pie) => enLista(lista.slice(0, TOPE_NOMBRADAS))
+  + (lista.length > TOPE_NOMBRADAS ? `, y ${lista.length - TOPE_NOMBRADAS} ${pie}` : '');
+
+// EL AVISO. Dice el número y nombra: las tablas una por una, y el texto por los sitios en los que
+// está, que es lo único con lo que se puede buscar un párrafo. Se cuentan las tablas RECONOCIDAS
+// aparte porque son las que el importador sabía leer: perder una de esas no es que el documento
+// traiga una rejilla rara, es que se ha quedado fuera contenido que la herramienta entiende.
+function avisoSinCampo(tablas, textos) {
+  if (!tablas.length && !textos.length) return null;
+  const sujeto = [];
+  if (tablas.length) sujeto.push(cuantos(tablas.length, 'tabla', 'tablas'));
+  if (textos.length) sujeto.push(cuantos(textos.length, 'bloque de texto', 'bloques de texto'));
+  let aviso = enLista(sujeto) + (tablas.length + textos.length === 1 ? ' no llega' : ' no llegan')
+    + ' a ningún campo de la plantilla, así que su contenido NO está en los datos.';
+  if (tablas.length) {
+    const n = tablas.filter((t) => t.reconocida).length;
+    const cuales = n === 0 ? 'ninguna reconocida por su cabecera'
+      : n === tablas.length ? (tablas.length === 1 ? 'reconocida por su cabecera' : 'todas reconocidas por su cabecera')
+        : `${n} de ellas reconocidas por su cabecera`;
+    aviso += ` ${tablas.length === 1 ? 'La tabla' : 'Las tablas'} (${cuales}): `
+      + topado(tablas.map((t) => t.nombre), 'más') + '.';
+  }
+  if (textos.length) {
+    const rutas = [...new Set(textos.map((x) => x.ruta))];
+    aviso += ` El texto está en ${topado(rutas.map((r) => `«${r}»`), 'sitios más')}.`;
+  }
+  return aviso;
+}
 
 // ------------------------------------------------- títulos por nivel de esquema
 // mammoth reconoce los títulos por el NOMBRE del estilo («heading 1»), y eso
@@ -556,7 +681,18 @@ async function importarDocx(input, opts = {}) {
   const { messages, nodos } = leido;
   const raiz = construirArbol(nodos);
   const avisos = [];
-  if (raiz.bloques.length && !opts.incluirInicial) avisos.push(`${raiz.bloques.length} bloques antes del primer título (portada o índice); se ignoran.`);
+  if (raiz.bloques.length && !opts.incluirInicial) {
+    // Cuántas de esas tablas RECONOCE el importador, y no solo cuántos bloques son: una tabla
+    // reconocida antes del primer título es contenido real escrito fuera de todo apartado, y que se
+    // ignore a propósito no quita que haya que decirlo.
+    const reconocidas = raiz.bloques.filter((b) => b.type === 'table' && esReconocida(clasificarTabla(b)));
+    avisos.push(`${raiz.bloques.length} bloques antes del primer título (portada o índice); se ignoran.`
+      + (reconocidas.length
+        ? ` Entre ellos ${reconocidas.length === 1 ? 'hay 1 tabla reconocida' : 'hay ' + reconocidas.length + ' tablas reconocidas'}`
+          + `, que tampoco se importan: ${enLista(reconocidas.slice(0, TOPE_NOMBRADAS).map((b) => `«${clasificarTabla(b).etiqueta}» («${cabeceraDe(b)}»)`))}`
+          + `${reconocidas.length > TOPE_NOMBRADAS ? ', y ' + (reconocidas.length - TOPE_NOMBRADAS) + ' más' : ''}.`
+        : ''));
+  }
   // Que la estructura venga del índice y no de los estilos no es un error, pero
   // sí algo que quien sube el fichero tiene que saber: lo que se ha importado
   // depende de que el índice del Word esté al día.
@@ -578,6 +714,9 @@ async function importarDocx(input, opts = {}) {
   }
 
   const secciones = []; const documento = {}; const instanciasOut = [];
+  // Los bloques del Word que han llegado a un campo, para saber al final cuáles no (ver «lo que no
+  // llega a ningún campo»).
+  const vistos = new Set();
   // Contenido anterior al primer título. En la PD es portada e índice y se
   // ignora, pero hay documentos (los PCCF) en los que el cuerpo entero va antes
   // del primer título porque los apartados están escritos como párrafos
@@ -590,14 +729,14 @@ async function importarDocx(input, opts = {}) {
     can.id = 'contenido-inicial';
     can.titulo = 'Contenido inicial';
     secciones.push(can);
-    Object.assign(documento, extraer(can, inicial));
+    Object.assign(documento, extraer(can, inicial, vistos));
   }
   for (const s of raiz.hijos) {
     const fam = familias.find((f) => f.grupos.some((g) => g.seccion === s));
     if (!fam) {
       const can = fusionar([s]);
       secciones.push(can);
-      Object.assign(documento, extraer(can, s));
+      Object.assign(documento, extraer(can, s, vistos));
       continue;
     }
     if (fam.emitida) continue;
@@ -611,10 +750,19 @@ async function importarDocx(input, opts = {}) {
     reasignarIds(can, can.id, repetId);
     const repet = { id: repetId, titulo: etiqueta, nivel: s.nivel, instancias: true, etiqueta_instancia: 'módulo', grupos: fam.grupos.map((g) => g.seccion.titulo), campos: [], hijos: can.hijos, presencia: instancias.length };
     secciones.push(repet);
-    for (const { sec, grupo } of instancias) instanciasOut.push({ titulo: sec.titulo, num: sec.num, grupo, docentes: [], valores: extraer({ ...can, id: repetId, campos: [] }, sec) });
+    for (const { sec, grupo } of instancias) instanciasOut.push({ titulo: sec.titulo, num: sec.num, grupo, docentes: [], valores: extraer({ ...can, id: repetId, campos: [] }, sec, vistos) });
     // secciones del grupo no instanciadas (hijos sin subsecciones) se avisan
     for (const g of fam.grupos) for (const h of g.seccion.hijos) if (!g.instancias.includes(h)) avisos.push(`"${h.titulo}" dentro de "${g.seccion.titulo}" no tiene la estructura de módulo y se ha ignorado.`);
   }
+
+  // LO QUE SE HA QUEDADO FUERA. Se mide aquí, cuando ya está extraído todo, comparando los bloques
+  // del árbol con los que han llegado a un campo. El aviso va con los demás: quien sube el fichero
+  // lee una sola lista.
+  const fuera = bloquesDelArbol(raiz, opts.incluirInicial).filter((x) => !vistos.has(x.nodo));
+  const tablasSinCampo = fuera.filter((x) => x.nodo.type === 'table').map(nombraTabla);
+  const textosSinCampo = fuera.filter((x) => x.nodo.type !== 'table').map(nombraTexto);
+  const aviso = avisoSinCampo(tablasSinCampo, textosSinCampo);
+  if (aviso) avisos.push(aviso);
 
   // informe
   const cuenta = { secciones: 0, campos: {}, repetidores: 0 };
@@ -630,6 +778,9 @@ async function importarDocx(input, opts = {}) {
     nodos: nodos.length, titulos: nodos.filter((n) => n.type === 'h').length, tablas: nodos.filter((n) => n.type === 'table').length,
     secciones: cuenta.secciones, repetidores: cuenta.repetidores, camposPorTipo: cuenta.campos,
     instancias: instanciasOut.map((i) => `${i.grupo} › ${i.titulo}`), compartidos, avisos, mensajesMammoth: messages.length,
+    // Las tablas del documento que no han llegado a ningún campo, con nombre y sitio, y cuántos
+    // bloques de texto se han quedado fuera con ellas. La lista va entera aunque el aviso tope.
+    tablasSinCampo, textosSinCampo,
     // null salvo cuando ha hecho falta el respaldo del índice; entonces, de dónde
     // ha salido la estructura y con cuánto apoyo.
     indice: indice ? { entradas: indice.entradas, casadas: indice.casadas, estilos: indice.estilos.map(({ regla, ...e }) => e) } : null,
