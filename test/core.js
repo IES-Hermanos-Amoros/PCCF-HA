@@ -821,6 +821,61 @@ prueba('el informe no escribe «undefined» cuando el cambio no dice el sitio', 
   assert.ok(conSitio.estado.indexOf('7.ª de 12') > 0, conSitio.estado);
 });
 
+prueba('el recuento dice de que modulo es: el ambito entra en todas las frases', () => {
+  const donde = 'de este módulo';
+  const ficha = (rej) => (rej ? { filas: [[{ text: 'x' }]], ce: ['a'] } : { ce: ['a'] });
+  const todas = FE.recuento([ficha(1), ficha(1), ficha(1)], CAMPOS_FE);
+  assert.strictEqual(FE.fraseDeTablaPropia(todas, donde).indexOf('Las 3 fichas de este módulo conservan la tabla tal como vino del Word'), 0);
+  assert.ok(FE.fraseDeTablaPropia(FE.recuento([ficha(1)], CAMPOS_FE), donde).indexOf('La única ficha de este módulo conserva') === 0);
+  assert.ok(FE.fraseDeTablaPropia(FE.recuento([], CAMPOS_FE), donde).indexOf('ninguna ficha escrita de este módulo') > 0);
+  const ret = FE.informeDeCambio({ tipo: 'campo_ficha_retirado', campoFicha: 'ce', etiqueta: 'Criterios' }, todas, donde);
+  assert.ok(ret.alerta.indexOf('«Criterios» en 3 de las 3 fichas de este módulo') >= 0, ret.alerta);
+  const uno = FE.recuento([ficha(0)], CAMPOS_FE);
+  assert.ok(FE.avisoAntesDeRetirar(CAMPOS_FE[0], uno, donde).indexOf('en la única ficha de este módulo') >= 0);
+});
+
+prueba('el bloque de la ficha solo se ofrece a quien puede cambiar la estructura y en un apartado con fichas', () => {
+  const conFichas = [{ id: 'f', tipo: 'ficha_situacion_aprendizaje' }];
+  assert.strictEqual(FE.seOfrece(true, conFichas), true);
+  assert.strictEqual(FE.seOfrece(false, conFichas), false, 'un docente no lo ve');
+  assert.strictEqual(FE.seOfrece(true, [{ id: 't', tipo: 'texto_largo' }]), false);
+  assert.strictEqual(FE.seOfrece(true, undefined), false);
+  assert.strictEqual(P.puedeCambiarEstructura({ rol: 'docente', departamento: 'x' }, { departamento: 'x' }), false);
+});
+
+prueba('cada gesto manda su operacion con el id de la fila, y nada mas', () => {
+  assert.deepStrictEqual(FE.peticionDeGesto('renombrar', { campoFicha: 'ce', etiqueta: 'Nuevo' }),
+    { tipo: 'renombrar_campo_ficha', campoFicha: 'ce', etiqueta: 'Nuevo' });
+  assert.deepStrictEqual(FE.peticionDeGesto('subir', { campoFicha: 'ce' }), { tipo: 'mover_campo_ficha', campoFicha: 'ce', delta: -1 });
+  assert.deepStrictEqual(FE.peticionDeGesto('bajar', { campoFicha: 'ce' }), { tipo: 'mover_campo_ficha', campoFicha: 'ce', delta: 1 });
+  assert.deepStrictEqual(FE.peticionDeGesto('retirar', { campoFicha: 'ce' }), { tipo: 'retirar_campo_ficha', campoFicha: 'ce' });
+  assert.deepStrictEqual(FE.peticionDeGesto('restaurar', { campoFicha: 'ce' }), { tipo: 'restaurar_campo_ficha', campoFicha: 'ce' });
+  assert.deepStrictEqual(FE.peticionDeGesto('anadir', { etiqueta: 'Nueva', posicion: 3 }),
+    { tipo: 'anadir_campo_ficha', etiqueta: 'Nueva', posicion: 3 });
+  assert.deepStrictEqual(FE.peticionDeGesto('anadir', { etiqueta: 'Nueva' }), { tipo: 'anadir_campo_ficha', etiqueta: 'Nueva' }, 'sin posicion va al final');
+  assert.strictEqual(FE.peticionDeGesto('borrar', { campoFicha: 'ce' }), null, 'no hay gesto de borrar');
+});
+
+prueba('el id de una celda sale de su clave campo y no de su texto', () => {
+  const est = S.CAMPOS_POR_OMISION.map((c) => ({ ...c }));
+  est[0].retirado = true;
+  assert.strictEqual(FE.campoDeCelda({ text: 'Objetivos de aprendizaje', campo: 'objetivos' }, est), 'objetivos');
+  assert.strictEqual(FE.campoDeCelda({ text: 'Objetivos de aprendizaje' }, est), null, 'sin campo no hay gesto, aunque el texto coincida');
+  assert.strictEqual(FE.campoDeCelda({ text: 'x', campo: 'inventado' }, est), null);
+  assert.strictEqual(FE.campoDeCelda({ text: 'x', campo: est[0].id }, est), null, 'una fila retirada no se ofrece');
+  assert.strictEqual(FE.campoDeCelda(null, est), null);
+});
+
+prueba('el esqueleto de la pantalla trae todas las filas, tambien las que solo salen si alguien las escribe', () => {
+  const est = S.CAMPOS_POR_OMISION.map((c) => ({ ...c }));
+  const sin = S.filasDeFicha(S.fichaVacia(1), est);
+  const con = S.filasDeFicha(S.fichaVacia(1), FE.camposDelEsqueleto(est));
+  const ids = (filas) => filas.flatMap((f) => f.map((c) => c.campo)).filter(Boolean);
+  assert.ok(!ids(sin).includes('intermodular'));
+  assert.deepStrictEqual(ids(con).sort(), est.map((c) => c.id).sort());
+  assert.ok(est.some((c) => c.solo_si_hay), 'la estructura original no se toca');
+});
+
 // ----------------------------------------------------------------- resumen
 
 console.log(fallos ? `\n${fallos} prueba(s) con fallos` : '\nTodas las pruebas correctas');

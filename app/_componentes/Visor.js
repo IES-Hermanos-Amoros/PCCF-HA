@@ -496,7 +496,7 @@ export default function Visor({
     }
 
     // Un campo nuevo cambia lo que trae el apartado abierto (`campos`): se vuelve a pedir.
-    if (['anadir_campo', 'retirar_campo', 'restaurar_campo', 'renombrar_campo', 'mover_campo'].includes(accion)) recargarApartado();
+    if (['anadir_campo', 'retirar_campo', 'restaurar_campo', 'renombrar_campo', 'mover_campo', 'ficha'].includes(accion)) recargarApartado();
 
     // Y si ha nacido o ha vuelto, se enseña: el id lo dice la respuesta, no esta pantalla. Al
     // retirarlo no se enseña nada, porque lo que había que ver es que ya no está.
@@ -744,6 +744,7 @@ export default function Visor({
       unidades={estructura ? estructura.unidades : 0}
       tiposDeCampo={estructura ? estructura.tiposDeCampo : null}
       limites={estructura ? estructura.limites : null}
+      apartado={apartado}
       onCambiado={alCambiarEstructura}
       onIr={irAApartado}
     />

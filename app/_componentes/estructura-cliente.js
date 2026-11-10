@@ -42,6 +42,7 @@
 //   DELETE .../estructura/apartado?seccion=            borrar un apartado ya retirado
 //   DELETE .../estructura/apartado/campo?seccion=&campo=  borrar un campo ya retirado
 //   PATCH  .../estructura/apartado/campo?seccion=&campo=  renombrar un campo  { etiqueta }
+//   POST   .../estructura/ficha                        una fila de la tabla de la ficha  { tipo, campoFicha, … }
 //   POST   .../estructura/apartado/campo/mover?seccion=&campo=  subir o bajar un campo  { delta: -1 | 1 }
 //
 // Retirar no es un `DELETE` y la razón está en la ruta: un DELETE que no borra
@@ -81,6 +82,10 @@ const CAMBIOS = {
   // Cambiar la etiqueta de un campo ({ etiqueta }) y subirlo o bajarlo entre los de su apartado ({ delta }).
   renombrar_campo: { metodo: 'PATCH', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo`, s, c) },
   mover_campo: { metodo: 'POST', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo/mover`, s, c) },
+  // Una fila de la tabla de la ficha de situación de aprendizaje: la operación va en el cuerpo
+  // ({ tipo, campoFicha, … }, core/ficha-estructura.js → `peticionDeGesto`) y no en la URL, porque
+  // ninguna es de un apartado.
+  ficha: { metodo: 'POST', url: (b) => `${b}/estructura/ficha` },
   // Borrar de verdad lo que ya estaba retirado: un apartado, o un campo de un apartado.
   borrar: { metodo: 'DELETE', url: (b, s) => conSeccion(`${b}/estructura/apartado`, s) },
   borrar_campo: { metodo: 'DELETE', url: (b, s, c) => conSeccion(`${b}/estructura/apartado/campo`, s, c) },

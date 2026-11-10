@@ -60,6 +60,8 @@ import useConfirmacion from './confirmar-cliente';
 import { BorrarApartado } from './BorrarDefinitivo';
 import { QuitarCampos } from './QuitarCampo';
 import { CamposDelApartadoNuevo } from './NuevoCampo';
+import EstructuraFicha from './EstructuraFicha';
+import FichaEstructura from '../../core/ficha-estructura';
 
 // El mensaje del servidor se enseña tal cual: ya está redactado y en castellano
 // (docs/api.md, «Errores»). Lo único que se le añade delante es que no se ha
@@ -76,7 +78,7 @@ const cuantos = (n) => (n === 1 ? '1 apartado' : `${n} apartados`);
 
 export default function Estructura({
   documentoId, nodo, camino, fila, plantillaVersion, unidades, onCambiado, onIr,
-  tiposDeCampo, limites,
+  tiposDeCampo, limites, apartado,
 }) {
   const [titulo, setTitulo] = useState(nodo && nodo.titulo ? nodo.titulo : '');
   const [nuevo, setNuevo] = useState('');
@@ -386,6 +388,22 @@ export default function Estructura({
         enTodas={enTodas}
         onCambiado={onCambiado}
       />
+
+      {/* LA TABLA DE LA FICHA, solo en un apartado que tiene fichas. Esta tarjeta ya es de quien puede
+          cambiar la estructura, así que la pregunta de si se ofrece se reduce a si el apartado abierto
+          —y no el anterior, mientras llega— lleva un campo de fichas. */}
+      {apartado && apartado.seccion === nodo.seccion
+        && (apartado.unidadId || null) === (nodo.unidadId || null)
+        && FichaEstructura.seOfrece(true, apartado.campos) ? (
+          <EstructuraFicha
+            documentoId={documentoId}
+            apartado={apartado}
+            plantillaVersion={plantillaVersion}
+            enTodas={enTodas}
+            comoSeLlaman={comoSeLlaman}
+            onCambiado={onCambiado}
+          />
+        ) : null}
 
       <div className="linea-estructura">
         <span className="suave">Orden y retirada</span>
