@@ -36,6 +36,7 @@ const JSZip = require('jszip');
 const { resolverCompartidos, plano } = require('./compartidos');
 const { filasDeFicha, esSemantica } = require('./ficha-sa');
 const Est = require('../core/estructurados');
+const MT = require('../core/modelos-tabla');
 
 const ANCHO_TABLA = 9638; // A4 (11906 twips) menos márgenes de 2 cm
 const MAX_NIVEL_LISTA = 8;
@@ -216,48 +217,66 @@ function filasPonderacion(p) {
 const filasParejas = (v) => v.pares.map((p) => [celda(p.etiqueta, { bold: true }), celda(p.valor)]);
 
 // ---------------------------------------------------------------- campos
-function campo(c, valor, estructuraFicha) {
+// `ctx` es lo que la plantilla dice y el valor no: la estructura de la ficha de situacion de
+// aprendizaje y los modelos de tabla. Viaja junto por lo mismo que en el PDF, donde ya era un
+// contexto: son datos del documento entero y `campo` esta a varias llamadas de la plantilla.
+function campo(c, valor, ctx = {}) {
   if (valor === undefined || valor === null) return '';
-  if (Array.isArray(valor) && c.tipo !== 'texto_largo') return valor.map((v) => campo(c, v, estructuraFicha)).join('');
+  if (Array.isArray(valor) && c.tipo !== 'texto_largo') return valor.map((v) => campo(c, v, ctx)).join('');
   switch (c.tipo) {
     case 'texto_largo': return bloques(valor);
     case 'auto.tabla_ra_ce': return tabla(Est.queSeImprime(c, valor) === 'ra' ? filasRaCe(valor) : valor.filas);
     case 'ponderacion_ra_ce': return tabla(valor.ra !== null && valor.ra !== undefined && valor.ce ? filasPonderacion(valor) : valor.filas);
-    case 'ficha_situacion_aprendizaje': return tabla(valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor, estructuraFicha) ? filasDeFicha(valor, estructuraFicha) : null));
+    case 'ficha_situacion_aprendizaje': return tabla(valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor, ctx.estructuraFicha) ? filasDeFicha(valor, ctx.estructuraFicha) : null));
     case 'auto.ficha_modulo': case 'tabla_clave_valor': {
+      // Cual de las dos mitades se imprime lo dice `queSeImprime`; que forma sigue la que se imprima,
+      // la regla de core/modelos-tabla.js, la misma que el PDF y el editor.
       const que = Est.queSeImprime(c, valor);
-      if (que === 'filas') return tabla(valor.filas, valor.anchos, Est.cabeceraDeTabla(c, valor));
-      return tabla(que === 'pares' ? filasParejas(valor) : null);
+      if (que === 'filas') {
+        const t = MT.tablaVigente(c, valor, ctx.modelos, Est.cabeceraDeTabla(c, valor));
+        return tabla(t.filas, t.anchos, t.cabecera);
+      }
+      if (que !== 'pares') return tabla(null);
+      return tabla(filasParejas(MT.paresVigentes(c, valor, ctx.modelos)));
     }
     // Incluye derivado.resumen_situaciones: se escribe tal como se importó. Y es el caso de la
-    // tabla genérica editable, la única que puede traer sus propios anchos de columna.
-    default: return tabla(valor.filas, valor.anchos, Est.cabeceraDeTabla(c, valor));
+    // tabla genérica editable, la única que puede traer sus propios anchos de columna y la unica
+    // que puede seguir el modelo de un grupo de tablas.
+    default: {
+      const t = MT.tablaVigente(c, valor, ctx.modelos, Est.cabeceraDeTabla(c, valor));
+      return tabla(t.filas, t.anchos, t.cabecera);
+    }
   }
 }
 
 // ---------------------------------------------------------------- recorrido de la plantilla
 // `nivel` es la profundidad de título en el Word que se escribe (no el nivel del
 // original: ese puede saltarse niveles).
-function seccion(sec, valores, numero, nivel, estructuraFicha) {
+function seccion(sec, valores, numero, nivel, ctx) {
   if (sec.repetidor) {
     // los ítems repetidos cuelgan del padre, sin número propio: "Situación de aprendizaje 2: título"
     const v = (valores[sec.id] || {}).items || [];
     return v.map((it, i) => titulo(`${sec.titulo} ${i + 1}: ${it.titulo}`, nivel)
-      + sec.campos.filter((c) => c.id !== 'titulo').map((c) => campo(c, it[c.id], estructuraFicha)).join('')).join('');
+      + sec.campos.filter((c) => c.id !== 'titulo').map((c) => campo(c, it[c.id], ctx)).join('')).join('');
   }
   const v = valores[sec.id] || {};
   return titulo(`${numero}. ${sec.titulo}`, nivel)
-    + sec.campos.map((c) => campo(c, v[c.id], estructuraFicha)).join('')
-    + (sec.hijos || []).map((h, i) => seccion(h, valores, `${numero}.${i + 1}`, nivel + 1, estructuraFicha)).join('');
+    + sec.campos.map((c) => campo(c, v[c.id], ctx)).join('')
+    + (sec.hijos || []).map((h, i) => seccion(h, valores, `${numero}.${i + 1}`, nivel + 1, ctx)).join('');
 }
 
+// Lo que la plantilla dice y el valor no, de una vez por documento: la estructura de la ficha de
+// situacion de aprendizaje y los modelos de tabla. Es el `ctx` del PDF, con lo mismo dentro.
+const contexto = (plantilla) => ({ estructuraFicha: plantilla.estructuraFicha, modelos: plantilla.modelos });
+
 function cuerpo({ plantilla, datos, instancias }) {
+  const ctx = contexto(plantilla);
   const todas = datos.instancias || [];
   const sel = instancias === undefined || instancias === 'todas' ? todas
     : todas.filter((x, i) => (instancias || []).includes(i) || (instancias || []).includes(x.titulo));
   return plantilla.secciones.map((sec, i) => {
     const numero = String(i + 1);
-    if (!sec.instancias) return seccion(sec, datos.documento || {}, numero, 1, plantilla.estructuraFicha);
+    if (!sec.instancias) return seccion(sec, datos.documento || {}, numero, 1, ctx);
     // un título de primer nivel por grupo ("Módulos del primer curso"); solo el
     // primero lleva el número de la sección, que es único en la plantilla
     const grupos = [];
@@ -269,7 +288,7 @@ function cuerpo({ plantilla, datos, instancias }) {
       + sel.filter((inst) => (inst.grupo || sec.titulo) === g).map((inst) => {
         const n = `${numero}.${todas.indexOf(inst) + 1}`;
         return titulo(`${n}. ${inst.titulo}`, 2)
-          + (sec.hijos || []).map((h, j) => seccion(h, inst.valores || {}, `${n}.${j + 1}`, 3, plantilla.estructuraFicha)).join('');
+          + (sec.hijos || []).map((h, j) => seccion(h, inst.valores || {}, `${n}.${j + 1}`, 3, ctx)).join('');
       }).join('')).join('');
   }).join('');
 }

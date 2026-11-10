@@ -5,6 +5,7 @@ const { resolverCompartidos } = require('./compartidos');
 const { filasDeFicha, esSemantica } = require('./ficha-sa');
 const Val = require('../core/validaciones');
 const Est = require('../core/estructurados');
+const MT = require('../core/modelos-tabla');
 
 // El convenio con el que se imprime SI NADIE DICE OTRO. Es el estricto: los criterios de un RA
 // reparten su peso (ver core/validaciones.js).
@@ -153,11 +154,19 @@ function pintarPonderaciones(lista, avisos, convenioCe) {
   if (estructurado && tablas.length > 1) out.unshift(para(`Suma de las ponderaciones de los RA: ${pct(sumaRA)}.`, { color: Val.sumaRaCuadra(sumaRA) ? VERDE : ROJO }));
   return out;
 }
-function pintarClaveValor(campo, v) {
+// Cual de las dos mitades se imprime lo sigue diciendo `queSeImprime`; que FORMA sigue la que se
+// imprima lo dice la regla de core/modelos-tabla.js. Sin modelo y sin estructura propia las dos
+// devuelven lo mismo que habia aqui escrito a mano, y por identidad: la tabla sale igual.
+function pintarClaveValor(campo, v, modelos) {
   const que = Est.queSeImprime(campo, v);
-  if (que === 'filas') return tablaGenerica(v.filas, { cabecera: Est.cabeceraDeTabla(campo, v), anchos: v.anchos });
-  if (que !== 'pares' || !v.pares.length) return tablaGenerica(v && v.filas);
-  return { table: { widths: [150, '*'], body: v.pares.map((p) => [label(p.etiqueta), { text: p.valor || '' }]) }, layout, margin: [0, 0, 0, 10] };
+  if (que === 'filas') {
+    const t = MT.tablaVigente(campo, v, modelos, Est.cabeceraDeTabla(campo, v));
+    return tablaGenerica(t.filas, { cabecera: t.cabecera, anchos: t.anchos });
+  }
+  if (que !== 'pares') return tablaGenerica(v && v.filas);
+  const { pares } = MT.paresVigentes(campo, v, modelos);
+  if (!pares.length) return tablaGenerica(v && v.filas);
+  return { table: { widths: [150, '*'], body: pares.map((p) => [label(p.etiqueta), { text: p.valor || '' }]) }, layout, margin: [0, 0, 0, 10] };
 }
 function resumenSituaciones(items) {
   const fichas = items.map((it) => (Array.isArray(it.ficha) ? it.ficha[0] : it.ficha)).filter((f) => f && f.num);
@@ -185,7 +194,7 @@ function pintarCampo(campo, valor, ctx) {
     case 'texto_largo': return bloques(valor);
     case 'auto.tabla_ra_ce': return [pintarRaCe(campo, valor)];
     case 'ponderacion_ra_ce': return pintarPonderaciones(valor, ctx.avisos, ctx.convenioCe);
-    case 'auto.ficha_modulo': case 'tabla_clave_valor': return [pintarClaveValor(campo, valor)];
+    case 'auto.ficha_modulo': case 'tabla_clave_valor': return [pintarClaveValor(campo, valor, ctx.modelos)];
     case 'derivado.resumen_situaciones': return ctx.resumenCalculado ? [para('Tabla resumen calculada a partir de las fichas de situación de aprendizaje.', { italics: true, color: GRIS, fontSize: 8.5 }), ctx.resumenCalculado] : [tablaGenerica(valor.filas)];
     // Una SA creada o editada en la aplicación no tiene tabla importada: se
     // monta a partir de sus campos, con la maquetación del documento.
@@ -193,8 +202,14 @@ function pintarCampo(campo, valor, ctx) {
       valor.filas && valor.filas.length ? valor.filas : (esSemantica(valor, ctx.estructuraFicha) ? filasDeFicha(valor, ctx.estructuraFicha) : null),
       { cabecera: false, fontSize: 8.5 },
     )];
-    // La cabecera la decide `Est.cabeceraDeTabla`, la misma regla que usan el Word y el editor.
-    default: return [tablaGenerica(valor.filas, { cabecera: Est.cabeceraDeTabla(campo, valor), anchos: valor.anchos })];
+    // Que filas, que anchos y que cabecera lleva la tabla lo decide la regla de
+    // core/modelos-tabla.js, la misma que usan el Word y el editor. La cabecera de la tabla que no
+    // sigue ninguna estructura la sigue decidiendo `Est.cabeceraDeTabla`, que es quien sabe de
+    // `campo.columnas` y de la negrita, y se le pasa hecha.
+    default: {
+      const t = MT.tablaVigente(campo, valor, ctx.modelos, Est.cabeceraDeTabla(campo, valor));
+      return [tablaGenerica(t.filas, { cabecera: t.cabecera, anchos: t.anchos })];
+    }
   }
 }
 
@@ -238,7 +253,10 @@ function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo
   // La estructura de la tabla de la ficha es de la plantilla, no de cada ficha: viaja en el contexto
   // porque `pintarCampo` está a varias llamadas de aquí. Sin ella (`undefined`) las funciones de
   // core/sa.js usan la de siempre, y el documento sale byte a byte como antes.
-  const ctx = { avisos: [], convenioCe, estructuraFicha: plantilla.estructuraFicha };
+  // Los modelos de tabla viajan en el contexto por lo mismo que la estructura de la ficha: la regla
+  // se pregunta en `pintarCampo`, que esta a varias llamadas de aqui. Sin ellos (`undefined`) ninguna
+  // tabla sigue estructura y el documento sale byte a byte como antes.
+  const ctx = { avisos: [], convenioCe, estructuraFicha: plantilla.estructuraFicha, modelos: plantilla.modelos };
   const cuerpo = [];
   plantilla.secciones.forEach((sec, i) => {
     const numero = String(i + 1);
