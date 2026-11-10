@@ -139,68 +139,128 @@
   //   sinRotulo  [{ donde }]                columnas o celdas sin rótulo y sin nada escrito
   //   combinada  { donde, cuantas, que }    la primera celda combinada donde no puede haberla
   //   bandas     cuántas filas de rótulo de grupo se descartan (la estructura las vuelve a imprimir)
-  const nuevaLectura = () => ({ rotulos: [], contenido: [], sueltas: [], sinRotulo: [], combinada: null, bandas: 0 });
+  const nuevaLectura = () => ({ rotulos: [], contenido: [], sueltas: [], sinRotulo: [], combinada: null, combinadas: 0, bandas: 0 });
 
   // La celda de una parte, tal como se guarda: la misma celda SIN las claves que una casilla no
   // admite (`CLAVES_CASILLA` de core/estructurados.js). `colspan` y `rowspan` se van porque una
   // casilla es de una parte y de una sola, y `campo` porque es de la ficha; el estilo —la negrita, el
   // fondo, la alineación, el tamaño— se queda, que adoptar no puede costarle a nadie lo que eligió.
-  function casillaDeCelda(celda) {
+  //
+  // EN UNA TABLA DE CLAVE Y VALOR SOLO SE QUEDA EL TEXTO, porque es lo único que se imprime: un par
+  // es su rótulo y su texto (`CLAVES_CASILLA_PAR`). Guardar ahí la negrita sería guardarla para que no
+  // se viera nunca, y eso acaba leyéndolo alguien. Se dice en el informe, con el número de partes a
+  // las que les pasa, antes de que nadie acepte nada.
+  function casillaDeCelda(celda, claves) {
     const out = { text: texto(celda) };
     if (!esObjeto(celda)) return out;
-    for (const clave of Est().CLAVES_CASILLA) {
+    for (const clave of claves) {
       if (clave !== 'text' && celda[clave] !== undefined) out[clave] = celda[clave];
     }
     return out;
   }
 
-  // La primera celda combinada de la rejilla, o null. `colspan` se admite solo donde ES la forma —el
-  // `ancho` de una parte que va a lo alto—, y `rowspan` en ningún sitio: una celda de dos filas
-  // pertenecería a dos partes.
-  function combinadaEn(filas, { colspan }) {
-    for (let i = 0; i < filas.length; i += 1) {
-      const celdas = fila(filas, i);
-      for (let j = 0; j < celdas.length; j += 1) {
-        const donde = `la celda ${j + 1} de la fila ${i + 1}`;
-        if (span(celdas[j], 'rowspan') > 1) return { donde, cuantas: span(celdas[j], 'rowspan'), que: 'filas' };
-        if (colspan && span(celdas[j], 'colspan') > 1) return { donde, cuantas: span(celdas[j], 'colspan'), que: 'columnas' };
+  // LA REJILLA DE VERDAD QUE HAY DETRÁS DE LAS CELDAS COMBINADAS.
+  //
+  // Una celda con `rowspan` o `colspan` aparece UNA VEZ, en su esquina, así que las filas de debajo
+  // traen menos celdas y la celda j de una de ellas NO está en la columna j. Trabajar sobre eso le
+  // daría a una parte el texto de otra, que es la media correspondencia que esta pieza existe para no
+  // hacer. Así que lo primero es desplegar la rejilla como la pinta un navegador: cada celda en su
+  // esquina y las posiciones que cubre marcadas como cubiertas, sin texto propio.
+  //
+  // Y ES LO QUE HACE ADOPTABLE LA FORMA MAYORITARIA DE LOS DOCUMENTOS QUE NO SON PROGRAMACIONES: una
+  // primera columna fusionada que agrupa tres, cuatro o cinco filas. Desplegada, su texto queda en la
+  // primera de esas filas y las demás quedan en blanco, así que no se pierde un carácter —el texto
+  // está entero y bajo la parte que le toca—, pero la tabla deja de salir con la celda alta y sale
+  // con una celda escrita y las demás vacías. Eso es un cambio de aspecto y se cuenta como tal, que
+  // es lo que hay que avisar antes de aceptar.
+  //
+  // Devuelve `{ matriz, combinadas, columnas }`; cada posición es `{ celda, w, h, cubierta }`, y la
+  // cubierta no lleva celda porque no es de nadie: la pinta la de su esquina.
+  function expandir(filas) {
+    const matriz = [];
+    const sitio = (i) => {
+      while (matriz.length <= i) matriz.push([]);
+      return matriz[i];
+    };
+    let combinadas = 0;
+    let columnas = 0;
+    filas.forEach((f, i) => {
+      const celdas = lista(f);
+      sitio(i);
+      let j = 0;
+      for (const celda of celdas) {
+        while (matriz[i][j] !== undefined) j += 1;
+        const w = span(celda, 'colspan');
+        const h = span(celda, 'rowspan');
+        if (w > 1 || h > 1) combinadas += 1;
+        for (let di = 0; di < h && i + di < filas.length; di += 1) {
+          sitio(i + di);
+          for (let dj = 0; dj < w; dj += 1) {
+            matriz[i + di][j + dj] = di === 0 && dj === 0
+              ? { celda, w, h }
+              : { celda: null, w: 1, h: 1, cubierta: true };
+          }
+        }
+        j += w;
+        columnas = Math.max(columnas, j);
       }
+    });
+    // Los huecos que deja una fila más corta que las demás: una posición sin celda y sin cubrir.
+    for (let i = 0; i < matriz.length; i += 1) {
+      for (let j = 0; j < columnas; j += 1) if (matriz[i][j] === undefined) matriz[i][j] = null;
     }
-    return null;
+    return { matriz, combinadas, columnas };
   }
 
-  // CUÁNTAS CELDAS DE LAS FILAS DE ARRIBA SIGUEN TAPANDO CADA FILA. Una celda con `rowspan` aparece
-  // UNA VEZ, en su primera fila, así que las de debajo traen una celda menos y la celda j de una de
-  // ellas no está en la columna j. Donde el emparejamiento es por posición —el rótulo j con el
-  // contenido j—, trabajar sobre una fila tapada le daría a una parte el texto de otra, que es
-  // exactamente la media correspondencia que esto existe para no hacer.
-  function tapadas(filas) {
-    const cuenta = filas.map(() => 0);
-    filas.forEach((f, i) => lista(f).forEach((celda) => {
-      const alto = span(celda, 'rowspan');
-      for (let k = i + 1; k < i + alto && k < filas.length; k += 1) cuenta[k] += 1;
-    }));
-    return cuenta;
-  }
+  const VACIA = { text: '' };
+  // La celda que hay en una posición de la rejilla desplegada: la suya, o una vacía si está cubierta
+  // por otra o si la fila no llegaba hasta ahí.
+  const enPos = (matriz, i, j) => {
+    const x = matriz[i] ? matriz[i][j] : undefined;
+    return x && x.celda ? x.celda : VACIA;
+  };
+  const combinadaEnPos = (matriz, i, j) => {
+    const x = matriz[i] ? matriz[i][j] : undefined;
+    return !!(x && x.celda && (x.w > 1 || x.h > 1));
+  };
 
   // A LO ANCHO: la fila 1 son los rótulos y cada parte es una columna. La celda i de la columna j es
   // la casilla i de la parte del rótulo j, así que todas las columnas acaban con tantas casillas como
   // filas de contenido tiene la tabla, que es lo que la puerta exige (`motivoDeContenido`: «una fila
   // de la tabla es una casilla de cada columna»).
-  function porColumnas(filas, casa) {
+  //
+  // LA CABECERA NO ADMITE CELDAS COMBINADAS, y es la única parte de la tabla donde no se admiten: un
+  // rótulo que cubre dos columnas del modelo no dice de qué parte es, y uno que cubre dos filas es
+  // rótulo y contenido a la vez. En el cuerpo sí, porque ahí la rejilla desplegada dice sin ninguna
+  // duda a qué columna pertenece cada texto.
+  function porColumnas(filas, casa, casilla) {
     const r = nuevaLectura();
-    r.combinada = combinadaEn(filas, { colspan: true });
-    if (r.combinada) return r;
-    const cabecera = fila(filas, 0);
-    const cuerpo = filas.slice(1).map(lista);
-    cabecera.forEach((celda, j) => {
-      const columna = cuerpo.map((f) => f[j]);
+    const { matriz, columnas } = expandir(filas);
+    for (let j = 0; j < columnas; j += 1) {
+      if (!combinadaEnPos(matriz, 0, j)) continue;
+      const x = matriz[0][j];
+      r.combinada = {
+        donde: `la celda ${j + 1} de la fila 1`,
+        cuantas: x.w > 1 ? x.w : x.h,
+        que: x.w > 1 ? 'columnas' : 'filas',
+        rotulo: true,
+      };
+      return r;
+    }
+    const alto = matriz.length;
+    for (let j = 0; j < columnas; j += 1) {
+      const columna = [];
+      for (let i = 1; i < alto; i += 1) {
+        columna.push(enPos(matriz, i, j));
+        if (combinadaEnPos(matriz, i, j)) r.combinadas += 1;
+      }
+      const celda = enPos(matriz, 0, j);
       const rotulo = texto(celda);
       const parte = casa(rotulo);
       if (parte) {
         r.rotulos.push({ texto: rotulo, donde: `la columna ${j + 1}`, parte, celda, fila: 0, colspan: 1 });
-        r.contenido.push({ parte, celdas: columna.map(casillaDeCelda) });
-        return;
+        r.contenido.push({ parte, celdas: columna.map(casilla) });
+        continue;
       }
       // Sin parte: el rótulo que no casa lo dice `rotulos`, y lo que se queda sin sitio es su columna.
       if (rotulo.trim()) r.rotulos.push({ texto: rotulo, donde: `la columna ${j + 1}`, parte: null });
@@ -209,41 +269,39 @@
       columna.forEach((c, i) => {
         if (limpio(c)) r.sueltas.push({ donde: `la celda ${j + 1} de la fila ${i + 2}`, texto: limpio(c) });
       });
-    });
-    // Las celdas de más a la derecha de la cabecera: no hay rótulo que las nombre.
-    cuerpo.forEach((f, i) => f.forEach((celda, j) => {
-      if (j < cabecera.length || !limpio(celda)) return;
-      r.sueltas.push({ donde: `la celda ${j + 1} de la fila ${i + 2}`, texto: limpio(celda) });
-    }));
+    }
     return r;
   }
 
   // A LO ALTO EN DOS COLUMNAS: cada fila es «rótulo | contenido», que es como está escrita una tabla
   // de clave y valor que vino del Word. Es la rejilla de la que `parseClaveValor` del importador monta
   // los pares, con la diferencia de que al adoptar los rótulos pasan a ser los de la estructura.
-  function porFilasDeDos(filas, casa) {
+  function porFilasDeDos(filas, casa, casilla) {
     const r = nuevaLectura();
-    r.combinada = combinadaEn(filas, { colspan: true });
-    if (r.combinada) return r;
-    filas.forEach((f, i) => {
-      const celdas = lista(f);
-      const rotulo = texto(celdas[0]);
+    const { matriz, columnas } = expandir(filas);
+    for (let i = 0; i < matriz.length; i += 1) {
+      const celda = enPos(matriz, i, 0);
+      const valor = enPos(matriz, i, 1);
+      const rotulo = texto(celda);
       const parte = casa(rotulo);
+      if (combinadaEnPos(matriz, i, 0) || combinadaEnPos(matriz, i, 1)) r.combinadas += 1;
       if (parte) {
-        r.rotulos.push({ texto: rotulo, donde: `la fila ${i + 1}`, parte, celda: celdas[0], fila: i, colspan: 1 });
-        r.contenido.push({ parte, celdas: [casillaDeCelda(celdas[1])] });
+        r.rotulos.push({ texto: rotulo, donde: `la fila ${i + 1}`, parte, celda, fila: i, colspan: 1 });
+        // `original` es la celda tal como está escrita: la casilla de una tabla de clave y valor no
+        // guarda su estilo, así que es ahí donde se ve lo que se pierde al adoptar.
+        r.contenido.push({ parte, celdas: [casilla(valor)], original: valor });
       } else {
         if (rotulo.trim()) r.rotulos.push({ texto: rotulo, donde: `la fila ${i + 1}`, parte: null });
-        else if (!limpio(celdas[1])) r.sinRotulo.push({ donde: `la fila ${i + 1}` });
-        if (limpio(celdas[1])) r.sueltas.push({ donde: `la celda 2 de la fila ${i + 1}`, texto: limpio(celdas[1]) });
+        else if (!limpio(valor)) r.sinRotulo.push({ donde: `la fila ${i + 1}` });
+        if (limpio(valor)) r.sueltas.push({ donde: `la celda 2 de la fila ${i + 1}`, texto: limpio(valor) });
       }
       // Una tabla de clave y valor son dos columnas: de la tercera en adelante no hay dónde ponerlo,
       // porque la parte de un rótulo guarda UNA casilla.
-      celdas.forEach((celda, j) => {
-        if (j < 2 || !limpio(celda)) return;
-        r.sueltas.push({ donde: `la celda ${j + 1} de la fila ${i + 1}`, texto: limpio(celda) });
-      });
-    });
+      for (let j = 2; j < columnas; j += 1) {
+        const x = enPos(matriz, i, j);
+        if (limpio(x)) r.sueltas.push({ donde: `la celda ${j + 1} de la fila ${i + 1}`, texto: limpio(x) });
+      }
+    }
     return r;
   }
 
@@ -268,69 +326,107 @@
     return r;
   }
 
-  // A LO ALTO CON LA MAQUETACIÓN DE LA FICHA: una fila de rótulos y debajo la de sus contenidos, con
-  // la banda del grupo encima. Es la inversa de `aLoAlto` de core/modelos-tabla.js y la misma lectura
-  // que la del lector de la ficha (`leerFilas` de core/sa.js, «etiquetas con el valor debajo»): una
-  // fila es de rótulos cuando TODAS sus celdas con texto casan con una parte.
+  // A LO ALTO: LA MAQUETACIÓN DE LA FICHA. Es la inversa de `aLoAlto` de core/modelos-tabla.js, y la
+  // misma lectura que la del lector de la ficha (`leerFilas` de core/sa.js). Cada fila de la rejilla
+  // desplegada es una de estas tres cosas, y se reconoce por LO QUE EL MODELO DICE DE SUS PARTES:
   //
-  // LA BANDA DE UN GRUPO SE DESCARTA porque la estructura la vuelve a imprimir igual, que es la misma
-  // excepción que `filasSinCampo` hace con la cabecera de las actividades: sin ella, toda ficha del
-  // documento parecería perder algo, y un aviso que sale siempre no avisa de nada. Se descarta SOLO
-  // si su texto es el rótulo de un grupo de la estructura; cualquier otra fila que no sea de rótulos
-  // ni de contenido es texto que se quedaría sin sitio.
+  //   · UNA FILA DE PARES, si lleva el rótulo de una parte `al_lado`: entonces su casilla es la
+  //     posición siguiente, en la misma fila. Es la cabecera de una ficha («Sesiones | 10 |
+  //     Evaluación | 1ª») y la identificación de un módulo, que lleva dos pares por fila.
+  //   · UNA FILA DE RÓTULOS, si todas sus celdas con texto son rótulos de partes que NO van al lado:
+  //     entonces la fila de DEBAJO son sus contenidos, columna por columna.
+  //   · LA BANDA DE UN GRUPO, si es una sola celda con el rótulo de un grupo de la estructura: se
+  //     descarta porque la estructura la vuelve a imprimir igual, que es la misma excepción que
+  //     `filasSinCampo` hace con la cabecera de las actividades. Sin ella, toda ficha del documento
+  //     parecería perder algo, y un aviso que sale siempre no avisa de nada.
   //
-  // EL `rowspan` SOLO ESTORBA EN LAS FILAS QUE SE LEEN. Aquí el `colspan` es la forma —el `ancho` de
-  // cada parte—, y la cabecera de la ficha, que es la que trae el `rowspan` en los documentos del
-  // departamento, no es ninguna parte: su texto se queda sin sitio y eso se dice como lo que es, en
-  // lugar de esconderlo detrás de un «tiene celdas combinadas». Lo que no se puede leer es una fila
-  // TAPADA por una celda de arriba, porque entonces sus celdas no están donde parecen.
-  function apiladas(filas, casa, estructura) {
+  // Cualquier otra fila con texto es texto que se quedaría sin sitio, y entonces se niega: es lo que
+  // pasa con las dos celdas de arriba de una ficha —«Situación de aprendizaje 3» y su título—, que no
+  // llevan rótulo propio y por eso ninguna parte las reclama.
+  function apiladas(filas, casa, estructura, casilla) {
     const r = nuevaLectura();
-    const tapa = tapadas(filas);
+    const mt = MT();
+    const { matriz, combinadas, columnas } = expandir(filas);
+    r.combinadas = combinadas;
     const grupos = new Set(estructura.vigentes
-      .map((p) => MT().grupoDe(p))
+      .map((p) => mt.grupoDe(p))
       .filter(Boolean)
       .map((g) => Sa().norm(g.etiqueta)));
-    const esRotulos = (celdas) => {
-      const conTexto = celdas.filter((c) => limpio(c));
-      return conTexto.length > 0 && conTexto.every((c) => casa(texto(c)));
+    const parteEn = (i, j) => {
+      const t = texto(enPos(matriz, i, j));
+      return t.trim() ? casa(t) : null;
     };
-    for (let i = 0; i < filas.length; i += 1) {
-      const celdas = fila(filas, i);
-      if (esRotulos(celdas)) {
-        if (tapa[i] || tapa[i + 1]) {
-          const cual = tapa[i] ? i : i + 1;
-          r.combinada = { donde: `la fila ${cual + 1}`, cuantas: 2, que: 'tapada' };
-          return r;
-        }
-        // La fila siguiente es la de los contenidos, y solo si NO es a su vez una fila de rótulos:
-        // dos filas de rótulos seguidas son dos filas sin contenido, no una con el de la otra.
-        const siguiente = fila(filas, i + 1);
-        const contenido = esRotulos(siguiente) ? [] : siguiente;
-        celdas.forEach((celda, j) => {
-          const rotulo = texto(celda);
-          const parte = rotulo.trim() ? casa(rotulo) : null;
-          if (parte) {
-            r.rotulos.push({ texto: rotulo, donde: `la celda ${j + 1} de la fila ${i + 1}`, parte, celda, fila: i, colspan: span(celda, 'colspan') });
-            r.contenido.push({ parte, celdas: [casillaDeCelda(contenido[j])] });
-          } else if (limpio(contenido[j])) {
-            r.sueltas.push({ donde: `la celda ${j + 1} de la fila ${i + 2}`, texto: limpio(contenido[j]) });
-          } else {
-            r.sinRotulo.push({ donde: `la celda ${j + 1} de la fila ${i + 1}` });
+    const esRotulos = (i) => {
+      let hay = false;
+      for (let j = 0; j < columnas; j += 1) {
+        const x = enPos(matriz, i, j);
+        if (!limpio(x)) continue;
+        const parte = parteEn(i, j);
+        if (!parte || mt.alLado(parte)) return false;
+        hay = true;
+      }
+      return hay;
+    };
+    const hayPares = (i) => {
+      for (let j = 0; j < columnas; j += 1) {
+        const parte = parteEn(i, j);
+        if (parte && mt.alLado(parte)) return true;
+      }
+      return false;
+    };
+    const sueltaEn = (i, j) => {
+      const x = enPos(matriz, i, j);
+      if (limpio(x)) r.sueltas.push({ donde: `la celda ${j + 1} de la fila ${i + 1}`, texto: limpio(x) });
+    };
+
+    for (let i = 0; i < matriz.length; i += 1) {
+      if (hayPares(i)) {
+        for (let j = 0; j < columnas; j += 1) {
+          const parte = parteEn(i, j);
+          if (parte && mt.alLado(parte)) {
+            const celda = enPos(matriz, i, j);
+            r.rotulos.push({
+              texto: texto(celda), donde: `la celda ${j + 1} de la fila ${i + 1}`, parte, celda, fila: i,
+              // El par ocupa `ancho` columnas: una el rótulo y el resto la casilla.
+              colspan: 1,
+            });
+            r.contenido.push({ parte, celdas: [casilla(enPos(matriz, i, j + 1))], original: enPos(matriz, i, j + 1) });
+            j += 1;
+            continue;
           }
-        });
-        // Las celdas de la fila de contenido que no tienen ningún rótulo encima.
-        contenido.forEach((celda, j) => {
-          if (j < celdas.length || !limpio(celda)) return;
-          r.sueltas.push({ donde: `la celda ${j + 1} de la fila ${i + 2}`, texto: limpio(celda) });
-        });
-        if (contenido.length) i += 1;
+          sueltaEn(i, j);
+        }
         continue;
       }
-      const textos = celdas.filter((c) => limpio(c)).map((c) => limpio(c));
+      if (esRotulos(i)) {
+        // La fila siguiente es la de los contenidos, y solo si NO es a su vez una fila de rótulos ni
+        // de pares: dos filas de rótulos seguidas son dos filas sin contenido, no una con el de la
+        // otra.
+        const hayDebajo = i + 1 < matriz.length && !esRotulos(i + 1) && !hayPares(i + 1);
+        for (let j = 0; j < columnas; j += 1) {
+          const parte = parteEn(i, j);
+          const abajo = hayDebajo ? enPos(matriz, i + 1, j) : VACIA;
+          if (parte) {
+            const celda = enPos(matriz, i, j);
+            r.rotulos.push({
+              texto: texto(celda), donde: `la celda ${j + 1} de la fila ${i + 1}`, parte, celda, fila: i,
+              colspan: matriz[i][j] ? matriz[i][j].w : 1,
+            });
+            r.contenido.push({ parte, celdas: [casilla(abajo)], original: abajo });
+            continue;
+          }
+          if (limpio(enPos(matriz, i, j))) { sueltaEn(i, j); continue; }
+          if (hayDebajo && limpio(abajo)) sueltaEn(i + 1, j);
+          else if (!matriz[i][j] || !matriz[i][j].cubierta) r.sinRotulo.push({ donde: `la celda ${j + 1} de la fila ${i + 1}` });
+        }
+        if (hayDebajo) i += 1;
+        continue;
+      }
+      const textos = [];
+      for (let j = 0; j < columnas; j += 1) if (limpio(enPos(matriz, i, j))) textos.push({ j, texto: limpio(enPos(matriz, i, j)) });
       if (!textos.length) continue;
-      if (textos.length === 1 && grupos.has(Sa().norm(textos[0]))) { r.bandas += 1; continue; }
-      textos.forEach((t, j) => r.sueltas.push({ donde: `la celda ${j + 1} de la fila ${i + 1}`, texto: t }));
+      if (textos.length === 1 && grupos.has(Sa().norm(textos[0].texto))) { r.bandas += 1; continue; }
+      textos.forEach((x) => sueltaEn(i, x.j));
     }
     return r;
   }
@@ -342,10 +438,14 @@
   // y pueden decir otra cosa que la tabla —es para lo que existe el modelo—; lo que no puede cambiar
   // es el CONTENIDO, y eso es lo que se compara.
   //
-  // Una fila de rótulos es la que lleva `campo` en todas sus celdas, que es la marca que `aLoAlto` y
-  // `tablaVigente` les ponen, y la de debajo es la de sus contenidos. La banda de un grupo no lleva
-  // `campo` —es una celda sola a todo lo ancho— y tampoco es contenido, así que se reconoce por ser
-  // el rótulo de un grupo de la estructura, igual que al leerla (`apiladas`).
+  // LA MARCA CON LA QUE SE SABE QUÉ CELDA ES UN RÓTULO ES `campo`, el id de su parte, que es lo que
+  // `aLoAlto` y `tablaVigente` les ponen. De ahí salen las tres clases de fila impresa:
+  //
+  //   todas con `campo`    una fila de rótulos: su contenido es la fila de DEBAJO
+  //   algunas con `campo`  una fila de pares: el contenido son las celdas que NO lo llevan
+  //   ninguna con `campo`  contenido, o la banda de un grupo, que no lleva `campo` y tampoco es
+  //                        contenido: se reconoce por ser el rótulo de un grupo de la estructura,
+  //                        igual que al leerla (`apiladas`)
   function contenidoImpreso(campo, valor, modelos) {
     const mt = MT();
     // Qué mitad de una tabla de clave y valor se imprime no lo decide esta pieza: una tabla de clave
@@ -359,14 +459,16 @@
       .map((p) => mt.grupoDe(p)).filter(Boolean).map((g) => Sa().norm(g.etiqueta)));
     const filas = lista(mt.tablaVigente(campo, valor, modelos, false).filas);
     const out = [];
+    const esRotulo = (c) => esObjeto(c) && typeof c.campo === 'string';
     const mete = (celdas) => celdas.forEach((c) => out.push(texto(c)));
     for (let i = 0; i < filas.length; i += 1) {
       const celdas = fila(filas, i);
-      const rotulos = celdas.length > 0 && celdas.every((c) => esObjeto(c) && typeof c.campo === 'string');
-      if (rotulos) {
+      const rotulos = celdas.filter(esRotulo).length;
+      if (rotulos && rotulos === celdas.length) {
         if (Array.isArray(filas[i + 1])) { mete(fila(filas, i + 1)); i += 1; }
         continue;
       }
+      if (rotulos) { mete(celdas.filter((c) => !esRotulo(c))); continue; }
       if (celdas.length === 1 && grupos.has(Sa().norm(texto(celdas[0])))) continue;
       mete(celdas);
     }
@@ -441,8 +543,10 @@
     }
     let contenido = 0;
     if (porPares) {
-      for (const { celdas } of lectura.contenido) {
-        if (celdas.some((c) => comoSeVe(c, false) !== 'n|-|-|-')) contenido += 1;
+      // La casilla de una tabla de clave y valor guarda solo su texto, así que el estilo que se
+      // pierde se cuenta sobre la celda ORIGINAL y no sobre lo que se ha guardado.
+      for (const x of lectura.contenido) {
+        if (x.original && comoSeVe(x.original, false) !== 'n|-|-|-') contenido += 1;
       }
     }
     // LOS ANCHOS DE COLUMNA CAMBIAN SI LA PROPORCIÓN CAMBIA, y no por el hecho de que los diga el
@@ -453,9 +557,12 @@
     const anchos = !mismaProporcion(esObjeto(valor) ? valor.anchos : undefined, porPares ? undefined : pintada.anchos);
     const cabecera = !porPares && cabeceraAntes !== !!pintada.cabecera;
     const rotulos = casados.filter((x) => x.texto.trim() !== etiquetaDe(x.parte).trim()).length;
+    // Las celdas que dejan de estar combinadas: su texto está entero y bajo la parte que le toca,
+    // pero la tabla ya no sale con la celda alta o ancha, sino con una escrita y las demás vacías.
+    const combinadas = lectura.combinadas;
     return {
-      cambia: !!(rotulos || estilo || ancho || contenido || anchos || cabecera),
-      rotulos, estilo, ancho, contenido, anchos, cabecera,
+      cambia: !!(rotulos || estilo || ancho || contenido || anchos || cabecera || combinadas),
+      rotulos, estilo, ancho, contenido, anchos, cabecera, combinadas,
     };
   }
 
@@ -555,6 +662,11 @@
       if (aspecto.cabecera) comos.push('la fila de los rótulos pasa a ser la cabecera que se repite al cambiar de página');
       partes.push(`${mayuscula(enLista(comos))}: la tabla seguirá diciendo lo mismo, pero no se imprimirá igual.`);
     }
+    if (aspecto.combinadas) {
+      partes.push(`${plural(aspecto.combinadas, 'celda', 'celdas')} `
+        + `${aspecto.combinadas === 1 ? 'deja de estar combinada' : 'dejan de estar combinadas'}: su texto queda en la `
+        + `${aspecto.combinadas === 1 ? 'primera fila que ocupaba' : 'primera fila que ocupaban'} y el resto en blanco.`);
+    }
     if (aspecto.ancho) {
       partes.push(`${plural(aspecto.ancho, 'parte ocupa', 'partes ocupan')} en el modelo un número de columnas distinto del que ocupaba en la tabla.`);
     }
@@ -630,12 +742,15 @@
 
     const casa = emparejador(estructura.partes);
     const porFilas = estructura.sentido === mt.SENTIDO_FILAS;
+    const esPar = campo.tipo === mt.TIPO_CLAVE_VALOR;
+    const claves = esPar ? Est().CLAVES_CASILLA_PAR : Est().CLAVES_CASILLA;
+    const casilla = (celda) => casillaDeCelda(celda, claves);
     let lectura;
     if (que === 'ninguno') lectura = nuevaLectura();
     else if (que === 'pares') lectura = dePares(valor.pares, casa);
-    else if (!porFilas) lectura = porColumnas(lista(valor.filas), casa);
-    else if (campo.tipo === mt.TIPO_CLAVE_VALOR) lectura = porFilasDeDos(lista(valor.filas), casa);
-    else lectura = apiladas(lista(valor.filas), casa, estructura);
+    else if (!porFilas) lectura = porColumnas(lista(valor.filas), casa, casilla);
+    else if (esPar) lectura = porFilasDeDos(lista(valor.filas), casa, casilla);
+    else lectura = apiladas(lista(valor.filas), casa, estructura, casilla);
 
     const informe = informeDe(estructura, lectura, que);
 
@@ -685,7 +800,8 @@
 
     // --- las dos redes de seguridad: la puerta, y que lo impreso siga diciendo lo mismo
 
-    const puerta = Est().motivoDeCasillas(nuevo, 'la tabla') || mt.motivoDeContenido(campo, nuevo, modelos, 'la tabla');
+    const puerta = Est().motivoDeCasillas(nuevo, 'la tabla', campo.tipo)
+      || mt.motivoDeContenido(campo, nuevo, modelos, 'la tabla');
     if (puerta) {
       return negar('no-pasa-la-puerta', `Lo que saldría de adoptar el modelo no se podría guardar: ${puerta} Hay que arreglar eso antes de adoptarlo.`, informe);
     }
