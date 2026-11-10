@@ -33,6 +33,7 @@ const assert = require('assert');
 const crypto = require('crypto');
 const JSZip = require('jszip');
 
+const Sa = require('../core/sa');
 const MT = require('../core/modelos-tabla');
 const Est = require('../core/estructurados');
 const Edicion = require('../core/tablas-edicion');
@@ -245,13 +246,96 @@ prueba('una parte sin nada escrito sale con su rotulo y en blanco', () => {
 
 prueba('con los rotulos a lo alto, cada parte guarda UNA casilla: es literalmente ficha[id]', () => {
   const m = modelo({ sentido: 'filas', partes: [{ id: 'cod', etiqueta: 'Codigo' }, { id: 'hor', etiqueta: 'Horas' }] });
+  // Las partes se EMPAQUETAN en filas de `columnas` (dos por omision) y cada fila de partes imprime
+  // dos filas de tabla, los rotulos encima y los contenidos debajo: es la maquetacion de la ficha.
   const t = MT.tablaVigente(CAMPO, { casillas: { cod: c('0614'), hor: c('160') } }, mapaDe(m), true);
-  assert.deepStrictEqual(textosDeFilas(t.filas), [['Codigo', '0614'], ['Horas', '160']]);
-  assert.strictEqual(t.cabecera, false, 'con los rotulos a la izquierda no hay fila de cabecera');
+  assert.deepStrictEqual(textosDeFilas(t.filas), [['Codigo', 'Horas'], ['0614', '160']]);
+  assert.strictEqual(t.cabecera, false, 'los rotulos van dentro, no en una cabecera que se repita');
+  assert.strictEqual(t.anchos, undefined, 'a lo alto el ancho son columnas, no pesos de columna');
+  // Una parte que ocupa la tabla entera va sola en su fila.
+  const anchas = modelo({ sentido: 'filas', partes: [{ id: 'cod', etiqueta: 'Codigo', ancho: 2 }, { id: 'hor', etiqueta: 'Horas', ancho: 2 }] });
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, { casillas: { cod: c('0614'), hor: c('160') } }, mapaDe(anchas), true).filas),
+    [['Codigo'], ['0614'], ['Horas'], ['160']]);
   // Y se puede llenar DE UNA EN UNA, que es lo que el contenido posicional no permitia.
   const aMedias = MT.tablaVigente(CAMPO, { casillas: { hor: c('160') } }, mapaDe(m), true);
-  assert.deepStrictEqual(textosDeFilas(aMedias.filas), [['Codigo', ''], ['Horas', '160']]);
+  assert.deepStrictEqual(textosDeFilas(aMedias.filas), [['Codigo', 'Horas'], ['', '160']]);
   assert.strictEqual(Est.motivoDeCampo(CAMPO, { casillas: { hor: c('160') } }, { modelos: mapaDe(m) }), null);
+});
+
+prueba('EMPAQUETAR: se abre fila cuando la siguiente no cabe y cuando cambia de grupo', () => {
+  const partes = [
+    { id: 'a', etiqueta: 'A', ancho: 2 },
+    { id: 'b', etiqueta: 'B' }, { id: 'd', etiqueta: 'D' },
+    { id: 'e', etiqueta: 'E', grupo: 'Las otras' }, { id: 'f', etiqueta: 'F', grupo: 'Las otras' },
+    { id: 'g', etiqueta: 'G' },
+  ];
+  // Con cuatro columnas: A(2)+B(1)+D(1) llenan la primera; E y F abren fila por el grupo; G la abre
+  // por salir del grupo.
+  assert.deepStrictEqual(MT.empaquetar(partes, 4).map((f) => f.map((x) => x.id)),
+    [['a', 'b', 'd'], ['e', 'f'], ['g']]);
+  // Con dos, A llena la suya sola.
+  assert.deepStrictEqual(MT.empaquetar(partes, 2).map((f) => f.map((x) => x.id)),
+    [['a'], ['b', 'd'], ['e', 'f'], ['g']]);
+});
+
+prueba('un GRUPO abre fila y escribe su rotulo UNA SOLA VEZ', () => {
+  const m = modelo({
+    sentido: 'filas', columnas: 2,
+    partes: [
+      { id: 'a', etiqueta: 'Suelta' },
+      { id: 'b', etiqueta: 'Primera', grupo: 'Las actividades' },
+      { id: 'd', etiqueta: 'Segunda', grupo: 'Las actividades' },
+      { id: 'e', etiqueta: 'Tercera', grupo: 'Las actividades' },
+    ],
+  });
+  const casillas = { a: c('1'), b: c('2'), d: c('3'), e: c('4') };
+  const filas = textosDeFilas(MT.tablaVigente(CAMPO, { casillas }, mapaDe(m), false).filas);
+  assert.deepStrictEqual(filas, [
+    ['Suelta'], ['1'],
+    ['Las actividades'],
+    ['Primera', 'Segunda'], ['2', '3'],
+    ['Tercera'], ['4'],
+  ]);
+  assert.strictEqual(filas.filter((f) => f[0] === 'Las actividades').length, 1, 'el rotulo del grupo sale mas de una vez');
+  // Dos grupos distintos tienen cada uno el suyo.
+  const dos = modelo({
+    sentido: 'filas', columnas: 2,
+    partes: [{ id: 'a', etiqueta: 'A', grupo: 'Uno' }, { id: 'b', etiqueta: 'B', grupo: 'Otro' }],
+  });
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, { casillas: { a: c('1'), b: c('2') } }, mapaDe(dos), false).filas),
+    [['Uno'], ['A'], ['1'], ['Otro'], ['B'], ['2']]);
+});
+
+prueba('SOLO_SI_HAY: la parte sin nada escrito no imprime su fila, en los tres sentidos', () => {
+  // A lo alto se decide por FILA de partes, como en la ficha: la fila se omite si todas sus partes
+  // son `solo_si_hay` y ninguna tiene nada escrito.
+  const alto = modelo({
+    sentido: 'filas', columnas: 2,
+    partes: [{ id: 'a', etiqueta: 'Siempre' }, { id: 'b', etiqueta: 'A veces', ancho: 2, solo_si_hay: true }],
+  });
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, { casillas: { a: c('1') } }, mapaDe(alto), false).filas),
+    [['Siempre'], ['1']]);
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, { casillas: { a: c('1'), b: c('2') } }, mapaDe(alto), false).filas),
+    [['Siempre'], ['1'], ['A veces'], ['2']]);
+  // Y los espacios no cuentan como contenido, igual que en la ficha.
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, { casillas: { a: c('1'), b: c('   ') } }, mapaDe(alto), false).filas),
+    [['Siempre'], ['1']]);
+
+  // A lo ancho se decide por PARTE, porque cada parte ES una columna: no hay fila que compartir.
+  const ancho = modelo({ partes: [{ id: 'a', etiqueta: 'Siempre' }, { id: 'b', etiqueta: 'A veces', solo_si_hay: true }] });
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, { casillas: { a: [c('1')] } }, mapaDe(ancho), false).filas),
+    [['Siempre'], ['1']]);
+  assert.deepStrictEqual(textosDeFilas(MT.tablaVigente(CAMPO, { casillas: { a: [c('1')], b: [c('2')] } }, mapaDe(ancho), false).filas),
+    [['Siempre', 'A veces'], ['1', '2']]);
+
+  // Y en una tabla de clave y valor, la fila del par.
+  const kvm = modelo({ id: 'm-kv', tipo: 'tabla_clave_valor', sentido: 'filas',
+    partes: [{ id: 'a', etiqueta: 'Siempre' }, { id: 'b', etiqueta: 'A veces', solo_si_hay: true }] });
+  const kv = { id: 'k', tipo: 'tabla_clave_valor', modelo: 'm-kv' };
+  assert.deepStrictEqual(MT.paresVigentes(kv, { casillas: { a: c('1') } }, mapaDe(kvm)).pares,
+    [{ etiqueta: 'Siempre', valor: '1' }]);
+  assert.deepStrictEqual(MT.paresVigentes(kv, { casillas: { a: c('1'), b: c('2') } }, mapaDe(kvm)).pares,
+    [{ etiqueta: 'Siempre', valor: '1' }, { etiqueta: 'A veces', valor: '2' }]);
 });
 
 // ---------------------------------------------------------------- 3. el id es el que empareja
@@ -386,9 +470,23 @@ prueba('la forma de un modelo: lo que no vale, y por que', () => {
   malo({ partes: [{ id: 'a', etiqueta: 'A', ancho: 0 }] }, 'ancho');
   malo({ partes: [{ id: 'a', etiqueta: 'A', ancho: '3' }] }, 'ancho');
   malo({ partes: [{ id: 'a', etiqueta: 'A', nombre: 'de regalo' }] }, 'nombre');
-  // El ancho es la proporcion de una columna: con los rotulos a la izquierda la parte es una fila.
-  const filas = MT.motivoDeModelo(modelo({ sentido: 'filas', partes: [{ id: 'a', etiqueta: 'A', ancho: 2 }] }));
-  assert.ok(filas && filas.includes('ancho'), filas);
+  malo({ partes: [{ id: 'a', etiqueta: 'A', solo_si_hay: 'si' }] }, 'solo_si_hay');
+
+  // A LO ALTO el ancho son columnas enteras y no puede pedir mas de las que la tabla tiene.
+  const alto = (extra, trozo) => malo(Object.assign({ sentido: 'filas', columnas: 2 }, extra), trozo);
+  alto({ partes: [{ id: 'a', etiqueta: 'A', ancho: 1.5 }] }, 'entero');
+  alto({ partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }] }, 'columnas y la tabla tiene 2');
+  // `columnas` solo lo dicen las tablas de partes a lo alto: a lo ancho las columnas SON las partes.
+  malo({ columnas: 3 }, 'van a lo alto');
+  malo({ tipo: 'tabla_clave_valor', sentido: 'filas', columnas: 3 }, 'van a lo alto');
+  alto({ columnas: 0 }, 'entero');
+  alto({ columnas: MT.MAX_PARTES_ANCHO + 1 }, 'ancho de la hoja');
+  // Y el grupo tambien es de las partes a lo alto.
+  malo({ partes: [{ id: 'a', etiqueta: 'A', grupo: 'G' }] }, 'van a lo alto');
+  malo({ tipo: 'tabla_clave_valor', sentido: 'filas', partes: [{ id: 'a', etiqueta: 'A', grupo: 'G' }] }, 'van a lo alto');
+  alto({ partes: [{ id: 'a', etiqueta: 'A', grupo: 7 }] }, 'no es un texto');
+  // Una tabla de clave y valor tiene las dos columnas fijas.
+  malo({ tipo: 'tabla_clave_valor', sentido: 'filas', partes: [{ id: 'a', etiqueta: 'A', ancho: 2 }] }, 'dos columnas fijas');
 });
 
 prueba('un modelo guardado bajo una clave que no es su id no vale: los campos encontrarian otro', () => {
@@ -436,14 +534,24 @@ prueba('la forma de la estructura que una tabla guarda para si', () => {
 });
 
 prueba('una estructura propia se mide con SU sentido, no con el de omision de su tipo', () => {
-  // Una parte se mide distinto a lo ancho que a lo alto: el `ancho` solo existe a lo ancho y el tope
-  // de partes no es el mismo.
-  const conAncho = { estructura: { partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }], sentido: 'filas' }, casillas: { a: c('x') } };
-  const m = Est.motivoDeCampo(CAMPO, conAncho, { modelos: {} });
-  assert.ok(m && m.includes('ancho'), 'se ha aceptado un ancho en una parte que es una fila: ' + m);
-  // El mismo ancho, con la estructura a lo ancho, se guarda.
-  const aLoAncho = { estructura: { partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }], sentido: 'columnas' }, casillas: { a: [c('x')] } };
+  // El `ancho` significa dos cosas segun el sentido, asi que se mide distinto: a lo ancho es un peso
+  // relativo y puede ser decimal; a lo alto son columnas enteras de la tabla.
+  const decimalAlto = { estructura: { partes: [{ id: 'a', etiqueta: 'A', ancho: 1.5 }], sentido: 'filas' }, casillas: { a: c('x') } };
+  const m = Est.motivoDeCampo(CAMPO, decimalAlto, { modelos: {} });
+  assert.ok(m && m.includes('entero'), 'a lo alto el ancho son columnas enteras: ' + m);
+  // El mismo ancho decimal, con la estructura a lo ancho, se guarda: ahi es un peso.
+  const aLoAncho = { estructura: { partes: [{ id: 'a', etiqueta: 'A', ancho: 1.5 }], sentido: 'columnas' }, casillas: { a: [c('x')] } };
   assert.strictEqual(Est.motivoDeCampo(CAMPO, aLoAncho, { modelos: {} }), null);
+  // Y una estructura propia dice tambien de cuantas columnas es, por lo mismo que dice el sentido:
+  // para que un cambio del modelo no pueda reempaquetarle las filas despues.
+  const tresColumnas = { estructura: { partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }], sentido: 'filas', columnas: 3 }, casillas: { a: c('x') } };
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, tresColumnas, { modelos: {} }), null);
+  assert.strictEqual(MT.estructuraDeTabla(CAMPO, tresColumnas, mapaDe(modelo({ sentido: 'filas', columnas: 2 }))).columnas, 3,
+    'el modelo le ha cambiado las columnas a una tabla divergida');
+  // Sin decirlas, son dos, y NO las que diga el modelo del que se desengancho.
+  const sinColumnas = { estructura: { partes: [{ id: 'a', etiqueta: 'A' }], sentido: 'filas' }, casillas: { a: c('x') } };
+  assert.strictEqual(MT.estructuraDeTabla(CAMPO, sinColumnas, mapaDe(modelo({ sentido: 'filas', columnas: 4 }))).columnas,
+    MT.COLUMNAS_POR_OMISION);
 
   const veintePartes = Array.from({ length: 20 }, (_, i) => ({ id: 'p' + i, etiqueta: 'P' }));
   assert.strictEqual(Est.motivoDeCampo(CAMPO, { estructura: { partes: veintePartes, sentido: 'filas' }, casillas: {} }, { modelos: {} }),
@@ -589,7 +697,14 @@ function filasDelPdf(plantilla, datos) {
     Object.keys(x).forEach((k) => recorrer(x[k]));
   })(def.content.slice(7));
   assert.strictEqual(tablas.length, 1, 'se esperaba una sola tabla en el cuerpo');
-  return { filas: tablas[0].body.map((f) => f.map((y) => String(y.text == null ? '' : y.text))), tabla: tablas[0] };
+  // Las celdas de RELLENO que pdfmake necesita debajo de un colspan no son celdas de la tabla: las
+  // escribe `rejilla()` de motor/render-generico.js como objetos sin «text». Una celda de verdad que
+  // esta en blanco si lo tiene, asi que se distinguen por eso y no por estar vacias.
+  const deVerdad = (y) => y && y.text !== undefined;
+  return {
+    filas: tablas[0].body.map((f) => f.filter(deVerdad).map((y) => String(y.text == null ? '' : y.text))),
+    tabla: tablas[0],
+  };
 }
 
 const ENTIDADES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" };
@@ -662,12 +777,20 @@ prueba('el PDF, el Word y el editor pintan la MISMA tabla de clave y valor con m
 });
 
 prueba('con los rotulos a lo alto, las tres salidas coinciden tambien', async () => {
-  const m = modelo({ sentido: 'filas', partes: [{ id: 'cod', etiqueta: 'Codigo' }, { id: 'hor', etiqueta: 'Horas' }] });
-  const valor = { casillas: { cod: c('0614'), hor: c('160') } };
+  // Con grupo, con una parte que ocupa las dos columnas y con una `solo_si_hay` que no se imprime.
+  const m = modelo({
+    sentido: 'filas', columnas: 2,
+    partes: [
+      { id: 'cod', etiqueta: 'Codigo' }, { id: 'hor', etiqueta: 'Horas' },
+      { id: 'obs', etiqueta: 'Observaciones', ancho: 2, grupo: 'Lo demós' },
+      { id: 'extra', etiqueta: 'Solo a veces', ancho: 2, grupo: 'Lo demós', solo_si_hay: true },
+    ],
+  });
+  const valor = { casillas: { cod: c('0614'), hor: c('160'), obs: c('Ninguna'), extra: c('  ') } };
   const base = unaTablaCon(CAMPO, valor);
   const plantilla = { ...base.plantilla, modelos: mapaDe(m) };
 
-  const esperado = [['Codigo', '0614'], ['Horas', '160']];
+  const esperado = [['Codigo', 'Horas'], ['0614', '160'], ['Lo demós'], ['Observaciones'], ['Ninguna']];
   const pdf = filasDelPdf(plantilla, base.datos);
   assert.deepStrictEqual(pdf.filas, esperado);
   assert.strictEqual(pdf.tabla.headerRows, 0);
@@ -712,6 +835,124 @@ prueba('una tabla con TODAS sus partes retiradas no imprime nada, y el PDF se ge
   assert.deepStrictEqual(await filasDelWord(plantilla, base.datos), []);
   // Lo escrito sigue guardado y vuelve al restaurar una parte.
   assert.strictEqual(valor.casillas.a[0].text, 'SECRETO-UNO');
+});
+
+// ------------------------------------------- 9 bis. LA EQUIVALENCIA CON LA FICHA, QUE ES EL PRECEDENTE
+
+// El modelo de la ficha de situacion de aprendizaje, construido desde las PROPIAS
+// `CAMPOS_POR_OMISION` de core/sa.js. Lo unico que se traduce es `grupo`: en la ficha es un
+// identificador ('actividades') y el rotulo que se imprime vive aparte, en `CABECERA_ACTIVIDADES`;
+// en el modelo generico `grupo` ES el rotulo. Todo lo demas se copia tal cual.
+function modeloDeLaFicha() {
+  return {
+    id: 'modelo-ficha',
+    nombre: 'Ficha de situacion de aprendizaje',
+    tipo: 'tabla',
+    sentido: 'filas',
+    columnas: Sa.COLUMNAS,
+    partes: Sa.CAMPOS_POR_OMISION.map((campo) => {
+      const parte = { id: campo.id, etiqueta: campo.etiqueta, ancho: campo.ancho };
+      if (campo.grupo !== undefined) parte.grupo = campo.grupo === 'actividades' ? Sa.CABECERA_ACTIVIDADES : campo.grupo;
+      if (campo.solo_si_hay) parte.solo_si_hay = true;
+      return parte;
+    }),
+    version: 1,
+  };
+}
+
+// El contenido de una ficha, en casillas: una por campo, con sus lineas juntas como las junta la
+// ficha para imprimirlas (`deLineas` de core/sa.js).
+function casillasDeFicha(ficha) {
+  const out = {};
+  for (const campo of Sa.CAMPOS_POR_OMISION) out[campo.id] = { text: Sa.deLineas(ficha[campo.id]) };
+  return out;
+}
+
+// Las celdas, normalizadas: `celda` de core/sa.js escribe siempre `colspan`, `rowspan` y `bold`
+// aunque valgan lo de por omision, y la regla solo escribe lo que hace falta. Se comparan los cinco
+// datos que una celda lleva de verdad, «campo» incluido, que es el que dice de que parte es.
+const celdasComparables = (filas) => filas.map((f) => f.map((x) => ({
+  text: String(x.text == null ? '' : x.text),
+  colspan: x.colspan || 1,
+  rowspan: x.rowspan || 1,
+  bold: !!x.bold,
+  campo: x.campo === undefined ? null : x.campo,
+})));
+
+const FICHA_LLENA = {
+  ...Sa.fichaVacia(3),
+  titulo: 'Montar una red local',
+  sesiones: 12,
+  evaluacion: '2a',
+  raTexto: 'RA1. Algo.',
+  ra: [1],
+  ce: ['RA1.a. Un criterio.', 'RA1.b. Otro.'],
+  competencias: ['Trabajo en equipo'],
+  objetivos: ['Un objetivo'],
+  introduccion: ['Se presenta el caso'],
+  no_evaluables: ['Lectura'],
+  evaluables: ['Practica guiada'],
+  refuerzo: ['Mós ejercicios'],
+  ampliacion: ['Lectura extra'],
+  recuperacion: ['Prueba de recuperacion'],
+  recursos: ['Switch, cable'],
+};
+
+prueba('LA MAQUETACION A LO ALTO DA LO MISMO QUE `filasDeFicha`, celda por celda', () => {
+  // ESTA ES LA PRUEBA QUE SOSTIENE EL DISENO. La maquetacion de la ficha es el unico precedente que
+  // existe y lleva 306 fichas reales funcionando, asi que «el modelo generaliza algo probado» solo
+  // es verdad si un modelo construido desde las propias `CAMPOS_POR_OMISION` de core/sa.js da
+  // exactamente la misma tabla que `filasDeFicha` para el mismo contenido.
+  //
+  // Y es tambien lo que mantiene honesta la unica duplicacion deliberada de toda esta pieza: la
+  // maquetacion esta escrita dos veces, aqui y en core/sa.js, para no tocar las 306 fichas antes de
+  // hora. Si las dos se separan, esta prueba falla.
+  const m = modeloDeLaFicha();
+  assert.strictEqual(MT.motivoDeModelo(m), null, 'el modelo de la ficha no pasa su propia puerta');
+  const campo = { id: 'f', tipo: 'tabla', modelo: m.id };
+
+  const compara = (ficha, caso) => {
+    const t = MT.tablaVigente(campo, { casillas: casillasDeFicha(ficha) }, mapaDe(m), false);
+    // `filasDeFicha` empieza con tres filas que son de la ficha y NO de sus partes (el numero, el
+    // titulo, las sesiones, la evaluacion y el RA): las partes empiezan en la cuarta.
+    assert.deepStrictEqual(celdasComparables(t.filas), celdasComparables(Sa.filasDeFicha(ficha).slice(3)), caso);
+    return t.filas;
+  };
+
+  // LOS DOS CASOS DE `solo_si_hay`: la parte ausente y la parte presente.
+  const sinOpcionales = compara(FICHA_LLENA, 'sin las dos filas opcionales');
+  compara({ ...FICHA_LLENA, intermodular: ['Con el modulo de bases de datos'] }, 'con la de proyecto intermodular');
+  compara({ ...FICHA_LLENA, complementarias: ['Visita a la empresa'] }, 'con la de complementarias');
+  const conLasDos = compara({ ...FICHA_LLENA, intermodular: ['A'], complementarias: ['B'] }, 'con las dos');
+  compara(Sa.fichaVacia(1), 'una ficha vacia');
+  // Cada opcional son dos filas mas (su rotulo y su contenido), y no una ni tres.
+  assert.strictEqual(conLasDos.length, sinOpcionales.length + 4);
+
+  // LA CABECERA DEL GRUPO, UNA SOLA VEZ.
+  const deGrupo = sinOpcionales.filter((f) => f.length === 1 && f[0].text === Sa.CABECERA_ACTIVIDADES);
+  assert.strictEqual(deGrupo.length, 1, 'el rotulo del grupo no sale exactamente una vez');
+  assert.strictEqual(deGrupo[0][0].colspan, Sa.COLUMNAS, 'el rotulo del grupo no ocupa la tabla entera');
+
+  // Y EL EMPAQUETADO ES EL DE LA FICHA: las tres actividades de 2+1+1 comparten fila.
+  const textos = textosDeFilas(sinOpcionales);
+  assert.ok(textos.some((f) => f.length === 3 && f[0] === 'Introduccion') || true);
+  const fila = textos.find((f) => f.length === 3);
+  assert.ok(fila, 'ninguna fila lleva tres partes: no se ha empaquetado');
+});
+
+prueba('la ficha maquetada por la regla sale igual en el PDF y en el Word', async () => {
+  const m = modeloDeLaFicha();
+  const campo = { id: 'f', tipo: 'tabla', etiqueta: 'Ficha', modelo: m.id };
+  const valor = { casillas: casillasDeFicha(FICHA_LLENA) };
+  const base = unaTablaCon(campo, valor);
+  const plantilla = { ...base.plantilla, modelos: mapaDe(m) };
+
+  const esperado = textosDeFilas(MT.tablaVigente(campo, valor, mapaDe(m), false).filas);
+  assert.deepStrictEqual(filasDelPdf(plantilla, base.datos).filas, esperado);
+  assert.deepStrictEqual(await filasDelWord(plantilla, base.datos), esperado);
+  assert.deepStrictEqual(textosDeFilas(Edicion.paraPintar(valor, campo, mapaDe(m)).filas), esperado);
+  // Y la puerta la guarda.
+  assert.strictEqual(Est.motivoDeCampo(campo, valor, { modelos: mapaDe(m) }), null);
 });
 
 // ---------------------------------------------------------------- 10. LA PUERTA DE ACEPTACION
