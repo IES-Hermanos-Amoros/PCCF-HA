@@ -650,8 +650,14 @@
         + `${comillas(informe.sinContenido.map((p) => p.etiqueta || p.id))}.`);
     }
     if (informe.sinRotulo.length) {
-      partes.push(`${mayuscula(enLista(informe.sinRotulo.map((x) => x.donde)))} `
-        + `${informe.sinRotulo.length === 1 ? 'no tiene rótulo ni nada escrito, así que desaparece' : 'no tienen rótulo ni nada escrito, así que desaparecen'} de la tabla.`);
+      // Se nombran las tres primeras y se cuentan las demás: una lista de treinta sitios no la lee
+      // nadie, y lo que hace falta saber es cuántas son y dónde mirar.
+      const sitios = informe.sinRotulo.map((x) => x.donde);
+      const nombradas = sitios.length > 3
+        ? `${enLista(sitios.slice(0, 3))} y ${plural(sitios.length - 3, 'sitio más', 'sitios más')}`
+        : enLista(sitios);
+      partes.push(`${mayuscula(nombradas)} `
+        + `${sitios.length === 1 ? 'no tiene rótulo ni nada escrito, así que desaparece' : 'no tienen rótulo ni nada escrito, así que desaparecen'} de la tabla.`);
     }
     // EL ASPECTO IMPRESO, que no es lo mismo que el texto. Una tabla importada se imprime como vino,
     // también en el estilo; adoptar es el momento en que el estilo pasa a ser el del modelo.
