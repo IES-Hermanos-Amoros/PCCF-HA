@@ -1,0 +1,190 @@
+# Modelos de tabla
+
+Por qué la aplicación va a dejar de saber de «fichas de situación de aprendizaje» y va a saber de
+**tablas con forma propia**, y qué se decidió exactamente.
+
+Este documento fija el diseño. Lo que se construye y en qué orden está en la sección 6; el estado de
+cada pieza se lleva en [`plan.md`](plan.md).
+
+---
+
+## 1. El problema
+
+Hay dos clases de tabla en la aplicación, y las dos están mal para lo que el departamento necesita.
+
+**Una tabla genérica no tiene forma.** En un campo de tipo `tabla` o `tabla_clave_valor`, la forma
+**son** las celdas: `valor.filas`. No existe ningún sitio donde escribir «esta tabla tiene estas
+columnas». Por eso no se puede pedir «cambia la forma de estas tablas»: no hay nada que cambiar
+aparte del contenido de cada una, una por una.
+
+**La ficha de SA sí tiene forma, pero cableada.** `ficha_situacion_aprendizaje` es un tipo de campo
+escrito a mano con doce campos con nombre propio —criterios, objetivos, actividades evaluables…—, que
+son los del Word de este departamento. Para otro departamento o otro centro no significan nada.
+
+Y el reconocimiento está en el mismo sitio: `clasificarTabla`, en `motor/importar-docx.js`, es una
+cascada de ocho `if` escritos contra el Word de este departamento, con dos salidas genéricas debajo.
+El estilo de un departamento vive dentro del importador. Eso es lo que impide que la herramienta
+sirva a quien escribe sus documentos de otra forma.
+
+El propio repositorio tiene la prueba a mano: de los doce documentos de `docs/entrada_ej/`, la
+aplicación se ha ejercitado en serio contra cuatro —las programaciones didácticas—. Los otros ocho
+—dos PCCF, dos memorias y cuatro propuestas pedagógicas de ESO y Bachillerato— son el otro estilo, y
+las cuatro propuestas no tienen fichas de SA en absoluto.
+
+## 2. Lo que se pide
+
+Que la aplicación encuentre las tablas de cualquier Word, **proponga** qué tablas son la misma,
+permita a quien manda definir su forma —y elegir si el cambio va a todo el grupo o solo a una—, y que
+el docente rellene lo que esa forma le pida.
+
+## 3. Las decisiones
+
+### 3.1 El cambio va al grupo, y una tabla puede divergir
+
+Lo normal es que el jefe de departamento cambie la forma de un grupo entero de tablas iguales. Pero
+una tabla concreta puede empezar a separarse del resto, y entonces sigue su camino.
+
+**Divergir es un estado, y tiene que verse en pantalla.** Si una tabla se desengancha de su modelo y
+nada lo dice, el día que alguien cambie el modelo esa tabla no cambiará, y nadie relacionará lo uno
+con lo otro. Es la misma clase de defecto que una ficha que se imprime desde la rejilla del Word en
+vez de desde su modelo: algo que no sale de donde quien lo mira cree. Así que una tabla divergida lo
+dice, con desde cuándo, y se puede volver a enganchar.
+
+### 3.2 Un cambio avisa dos veces
+
+Primero **a quien lo hace**, con números y antes de aceptar: cuántas tablas ya rellenas cambia y a
+cuánta gente afecta. Después **a quien le afecta**, en su apartado, cuando entre: qué le han
+cambiado, quién y cuándo, y con forma de quitárselo de encima una vez leído.
+
+El aviso es dentro de la aplicación porque **no hay correo**: existen invitaciones, pero ningún SMTP.
+Si algún día se quiere por correo, se añade encima de esto; al revés no.
+
+### 3.3 La aplicación propone los grupos y una persona confirma
+
+Al importar, la aplicación agrupa las tablas que se parecen y enseña su propuesta: «he encontrado 37
+tablas y creo que son 9 modelos». El jefe de departamento acepta, renombra o separa.
+
+Ni adivinar sin preguntar ni obligar a empezar de cero. Y es la pieza que hace que un centro nuevo le
+enseñe a la herramienta sus documentos **sin que nadie toque el código**: cada modelo lleva su propia
+regla de reconocimiento, y los ocho `if` del importador pasan de código a dato.
+
+### 3.4 El modelo vive en el documento, y se sube después
+
+Un modelo se guarda en `documento.plantilla`, igual que el resto de la plantilla. Las tablas que
+comparten forma dentro de ese documento cambian juntas.
+
+No se empieza por una colección compartida entre documentos, aunque a la larga haga falta para que un
+departamento o un centro tenga su estilo. El motivo es concreto: dentro del documento se reaprovechan
+el control de versiones y el aviso de conflicto que ya funcionan (`plantillaVersion`, el 409), y
+subirlo después a departamento **no obliga a rehacer el editor**, solo a mover dónde se guarda. Al
+revés sí: empezar por la colección compartida obliga a resolver versiones entre documentos, permisos
+propios y avisos a documentos que otra gente tiene abiertos, antes de que nada funcione.
+
+### 3.5 Sin peticiones dentro de la aplicación
+
+Que el docente le pida una casilla al jefe de departamento **se habla fuera de la aplicación**. Solo
+hay permisos: el docente no cambia la forma, quien manda sí.
+
+Se consideró hacerlo dentro, con petición, respuesta y aviso. Se deja fuera porque es la parte que
+menos se sabe cómo tiene que ser hasta haber usado lo demás, y porque añade una cosa que mantener sin
+la que el resto funciona igual.
+
+## 4. El modelo de datos
+
+```
+plantilla.modelos['modelo-xxx'] = {
+  id,        // se acuña UNA VEZ y NO sigue al nombre nunca
+  nombre,    // lo que se enseña: «Ficha de actividad»
+  tipo,      // 'tabla' | 'tabla_clave_valor'
+  sentido,   // 'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
+  partes: [ { id, etiqueta, ancho?, retirado? } ],
+  version
+}
+```
+
+Un campo apunta a su modelo con `campo.modelo`; sin esa clave, no usa modelo. Una tabla que ha
+divergido guarda su estructura junto a su contenido, en `valor.estructura`, **con su `sentido`
+dentro**: si el sentido lo siguiera diciendo el modelo del que se desengancho, cambiarlo alli
+reinterpretaria girada noventa grados una tabla que precisamente habia dejado de seguirlo. Divergir
+tiene que proteger de eso o no protege de nada.
+
+### El contenido va por id de parte, no por posicion
+
+Con estructura, lo guardado es **solo el contenido**: los rotulos los pone la estructura al pintar.
+Y cada casilla se guarda bajo el id de su parte. Con `sentido: 'filas'` cada parte guarda una
+casilla; con `sentido: 'columnas'`, la lista de las suyas hacia abajo.
+
+| | Por posicion | Por id de parte |
+|---|---|---|
+| Anadir, mover o retirar una parte | Hay que reescribir todas las tablas del grupo | No toca ninguna |
+| Una tabla a medio rellenar | Imposible a lo alto: la fila *i* es la parte *i*, asi que o ninguna o todas | Natural |
+| Partes retiradas | Tienen que seguir contando para que el emparejamiento cuadre | Dejan de contar |
+| La ficha de SA | Se parecerian | Es el mismo mecanismo: ya guarda `ficha[id]` |
+
+La ultima fila es la decisiva. La ficha es el unico precedente que funciona y guarda por id desde
+el principio; con contenido posicional, absorberla en la pieza 7 habria sido una reescritura y no
+una absorcion.
+
+Tres reglas vienen de lo ya aprendido con la estructura de la ficha y no se vuelven a discutir:
+
+| Regla | Por qué |
+|---|---|
+| El `id` se acuña una vez y no sigue a la etiqueta | El contenido se guarda por id. Un id que siguiera al nombre dejaría huérfano lo escrito en cuanto alguien corrigiera una tilde |
+| Retirar no borra | Una parte retirada deja de imprimirse y su contenido sigue ahí. Borrar es otra cosa, se pide aparte y dice cuánto se pierde |
+| Dos partes no pueden llamarse igual | El lector de una tabla importada reconoce las partes por el texto de su etiqueta. Con dos iguales se queda con una, y el texto de la otra se pierde al releerse |
+
+## 5. La regla única
+
+> Una tabla sigue **su propia** estructura mientras la tenga, y la del **modelo** cuando no la tenga.
+> Si no hay ninguna de las dos, se deduce de las celdas guardadas.
+
+Vive en `core/`, en un solo sitio, y la llaman los tres consumidores: el PDF
+(`motor/render-generico.js`), el Word (`motor/exportar-docx.js`) y el editor con la puerta de guardado
+(`core/tablas-edicion.js` y `core/estructurados.js`). Que estuviera escrita dos veces es el defecto
+que esta regla existe para evitar: dos caminos de validación divergen, y la divergencia se descubre
+con un 400 delante de alguien que está escribiendo.
+
+No es una mecánica nueva. Es la generalización de la que ya gobierna las fichas importadas en
+`core/sa.js`: una ficha se imprime desde `filas` mientras las tenga y desde su modelo en cuanto deja
+de tenerlas. Misma forma y mismo motivo.
+
+**La puerta de aceptación de la primera pieza es que nada cambie**: un campo sin `modelo` y un valor
+sin `estructura` tienen que dar el mismo PDF y el mismo Word, byte a byte. Todo lo que el
+departamento tiene escrito está así.
+
+## 6. El orden
+
+1. El modelo en la plantilla y la regla de qué estructura manda, en `core/`, sin pantalla
+2. **Adoptar un modelo para una tabla ya escrita**: soltarle la fila de rótulos y emparejarla con
+   las partes
+3. Las operaciones sobre el modelo, con ruta, permisos, versión y 409
+4. Divergir y volver a enganchar, con el estado visible
+5. El doble aviso: números antes de aceptar, aviso al docente después
+6. La pantalla: los gestos sobre la tabla misma
+7. La confirmación de la importación: la aplicación propone los grupos y el jefe confirma
+8. Absorber la ficha de SA y remontar las fichas escritas
+
+### Por qué adoptar es una pieza y no un detalle
+
+Porque sin ella el modelo **no sirve para nada de lo que ya hay**. Una tabla escrita hoy lleva su
+fila de rótulos *entre* sus celdas; en cuanto su campo gana un modelo, esa fila pasa a ser
+contenido y la tabla imprimiría los rótulos dos veces, o no cuadraría con la estructura y dejaría
+de guardarse. Sin adopción, el modelo solo vale para tablas nuevas, que son cero.
+
+Es el mismo problema que `completarDesdeFilas` resuelve para una ficha importada —rescatar lo que
+solo está en la rejilla antes de que la rejilla se vaya—, y aquí no había equivalente.
+
+### Por qué la ficha de SA va al final
+
+Porque `sentido: 'filas'` con `ancho` **es** la ficha: doce partes a lo alto, cada una ocupando su
+fracción de la fila. Encaja sin forzar nada, así que no hay prisa por absorberla, y absorberla toca
+los documentos reales del departamento: convierte doce campos de código a dato y reescribe contenido
+escrito por personas. Eso se hace una vez, medido aparte y con permiso, cuando la maquinaria
+genérica ya funciona contra tablas de ejemplo.
+
+### La medición que puede tumbar el plan
+
+La pieza 6 depende de que agrupar tablas por forma dé grupos sensatos en documentos de verdad. Se
+mide antes de construir la pantalla, sobre los doce documentos de `docs/entrada_ej/`, y con atención
+a los ocho que no son programaciones didácticas. Si el agrupamiento da disparates, lo que hay que
+cambiar es el plan, no la pantalla.
