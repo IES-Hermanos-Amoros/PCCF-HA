@@ -331,6 +331,16 @@ son dos, y **no** las que diga el modelo del que se desengachó.
 > `filasDeFicha`, con los dos casos de `solo_si_hay` y con la cabecera del grupo escrita una vez. Si
 > las dos se separan, esa prueba falla.
 
+**Y hay una celda en la que las dos difieren, a propósito y medida.** `filasDeFicha` tiene el nombre
+del grupo **cableado**: escribe su cabecera solo cuando el grupo es, literalmente, `'actividades'`. La
+regla la escribe para cualquier grupo, que es lo que `grupo` promete y lo que un modelo genérico tiene
+que hacer. No es teórico: `anadir_campo_ficha` de `core/plantilla.js` acepta hoy cualquier texto como
+grupo, así que un documento real puede tener una fila con `grupo: 'Mis actividades'`, y hoy esa fila
+**se agrupa pero no se rotula**. La diferencia es exactamente **una fila**, la del rótulo, y
+`test/modelos-tabla.js` la mide: quitándola, las dos salidas son idénticas celda por celda. El
+cableado lo tiene que quitar la pieza que absorba la ficha, y hasta entonces esa prueba dice qué va a
+cambiar y dónde.
+
 Por id y no por posición, y los motivos son tres:
 
 1. **Añadir, mover, renombrar o retirar una parte toca cero tablas guardadas**, que es justo lo que
