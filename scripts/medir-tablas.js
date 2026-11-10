@@ -119,7 +119,14 @@ function imprimir(r, detalle) {
   console.log("  familias (mayor grupo/total): " + fam.join(", "));
 }
 
-(async () => {
+// LOS DOS LECTORES QUE NO SON DE ESTE GUION sino de cualquiera que recorra los .docx del
+// departamento -que ficheros hay y que anchos declara cada rejilla- se exportan para que el
+// siguiente no los vuelva a escribir: leer `w:tblGrid` saltando las tablas anidadas es una regla,
+// y escrita dos veces acabaria midiendo dos cosas distintas. La medicion arranca solo cuando este
+// fichero es el que se ejecuta, para que requerirlo no mida nada.
+module.exports = { ficheros, leerAnchos, anchosDelXml, medir, imprimir };
+
+async function principal() {
   const args = process.argv.slice(2);
   const opts = { anchos: !args.includes('--sin-anchos'), filas: args.includes('--filas') };
   const detalle = args.includes('--detalle');
@@ -137,4 +144,6 @@ function imprimir(r, detalle) {
     mezclas: a.mezclas + r.res.grupos.filter((g) => new Set(g.indices.map((i) => r.tipos[i])).size > 1).length,
   }), { docs: 0, tablas: 0, grupos: 0, agrupadas: 0, sueltas: 0, mezclas: 0 });
   console.log(`\n=== TOTAL: ${tot.docs} documentos, ${tot.tablas} tablas, ${tot.grupos} grupos con ${tot.agrupadas} tablas, ${tot.sueltas} sueltas, ${tot.mezclas} grupos que mezclan tipos del importador`);
-})();
+}
+
+if (require.main === module) principal();
