@@ -118,6 +118,7 @@
 const C = require('../../../core/permisos');
 const Estructurados = require('../../../core/estructurados');
 const CamposCore = require('../../../core/campos');
+const ModelosTabla = require('../../../core/modelos-tabla');
 const RaCe = require('../../../core/ra-ce');
 const { listasDeTexto } = require('../../../motor/compartidos');
 const {
@@ -426,7 +427,12 @@ function conflictoDeEscritura(e) {
 // siempre): decide qué claves puede llevar una ficha. Las puertas de core/estructurados.js que
 // validan un campo suelto o un repetidor entero todavía no la reciben, así que aquí se miran las
 // fichas con `motivoFicha` y la estructura, y al resto de la puerta se le deja lo demás.
-function revisarValores(valores, { seccion, info, contexto, guardados = {}, estructuraFicha }) {
+//
+// `modelos` son los modelos de tabla de la plantilla (`plantilla.modelos`, o `undefined`, y entonces
+// ninguna tabla sigue modelo y todo se comprueba como siempre). Van en el contexto de la puerta
+// porque la regla que decide qué forma sigue una tabla —`estructuraDeTabla` de
+// core/modelos-tabla.js— necesita el modelo al que apunta el campo, y el campo solo guarda su id.
+function revisarValores(valores, { seccion, info, contexto, guardados = {}, estructuraFicha, modelos }) {
   if (valores === undefined) {
     return { fallo: malaPeticion('Falta «valores»: los campos que se guardan, en forma { idDeCampo: valor }.') };
   }
@@ -437,6 +443,20 @@ function revisarValores(valores, { seccion, info, contexto, guardados = {}, estr
   const entradas = Object.entries(valores);
   if (!entradas.length) {
     return { fallo: malaPeticion('«valores» no trae ningún campo: no hay nada que guardar.') };
+  }
+
+  // LOS MODELOS DE TABLA DE LA PLANTILLA SE COMPRUEBAN ANTES DE ESCRIBIR EN EL DOCUMENTO. Un modelo
+  // torcido no es un defecto del campo que se guarda, pero sí de lo que se va a poder hacer con él:
+  // las tablas que lo siguen dejarían de pintarse y de imprimirse, y nadie relacionaría el documento
+  // que falta con el modelo que alguien dejó a medias. Se dice aquí, que es donde hay a quién
+  // decírselo, en lugar de descubrirse al generar el tomo en junio.
+  const malModelo = ModelosTabla.motivoDeModelos(modelos);
+  if (malModelo) {
+    return {
+      fallo: fallo(400, 'peticion',
+        `Los modelos de tabla de este documento no se pueden usar: ${malModelo} No se ha guardado nada.`,
+        { motivo: malModelo }),
+    };
   }
 
   // Un repetidor no es `{ campo: valor }` como los demás apartados: su valor es `{ items: [...] }`,
@@ -466,7 +486,7 @@ function revisarValores(valores, { seccion, info, contexto, guardados = {}, estr
     if (!campo) {
       return { fallo: fallo(400, 'peticion', `El apartado «${seccion}» no tiene ningún campo «${id}». No se ha guardado nada.`, { campo: id }) };
     }
-    const motivo = Estructurados.motivoDeCampo(campo, valor, { ...contexto, guardado: guardados[id], estructuraFicha });
+    const motivo = Estructurados.motivoDeCampo(campo, valor, { ...contexto, guardado: guardados[id], estructuraFicha, modelos });
     if (motivo) {
       return {
         fallo: fallo(400, 'peticion',
@@ -543,7 +563,9 @@ const PATCH = conErrores(async (peticion, parametros) => {
   const guardados = (fila && fila.valores) || {};
 
   const { fallo: falloValores } = revisarValores(cuerpo.valores, {
-    seccion, info, contexto, guardados, estructuraFicha: documento.plantilla && documento.plantilla.estructuraFicha,
+    seccion, info, contexto, guardados,
+    estructuraFicha: documento.plantilla && documento.plantilla.estructuraFicha,
+    modelos: ModelosTabla.modelosDe(documento.plantilla),
   });
   if (falloValores) return falloValores;
   const valores = { ...guardados, ...alGuardar(cuerpo.valores, { info, guardados }) };

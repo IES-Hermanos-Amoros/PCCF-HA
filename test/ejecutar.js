@@ -65,6 +65,7 @@ const SUITES = [
   { archivo: 'test/estructura-ficha.js', nombre: 'estructura de la ficha: PDF, Word y validacion' },
   { archivo: 'test/tablas.js', nombre: 'tablas y campos creados en la aplicación' },
   { archivo: 'test/editor-tablas.js', nombre: 'editor de tablas y alta de campos' },
+  { archivo: 'test/modelos-tabla.js', nombre: 'modelos de tabla: la regla, el PDF, el Word y la puerta' },
 
   // --- E7: aprobar, coordinar y los otros documentos ----------------------
   { archivo: 'test/estados.js', nombre: 'estados del documento, PCCF y memoria' },
