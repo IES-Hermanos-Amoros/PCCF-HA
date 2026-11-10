@@ -265,52 +265,91 @@ plantilla.modelos['modelo-xxx'] = {
 ```
 
 Un campo apunta al suyo con `campo.modelo`. Una tabla concreta que ha **divergido** guarda su
-forma junto a su contenido, en `valor.estructura = { partes: [...] }`.
+forma junto a su contenido, en `valor.estructura = { partes: [...], sentido }`.
 
-**La regla, en un solo sitio.** Una tabla sigue **su propia** estructura mientras la tenga, y la
-del **modelo** cuando no la tenga; si no tiene ninguna de las dos, su forma se deduce de las
-celdas guardadas, que es lo que le pasa a todo lo que hay escrito hoy. Es la misma regla que ya
-gobierna la ficha —«se imprime desde `filas` mientras las tenga y desde el modelo en cuanto deja
-de tenerlas», `completarDesdeFilas` de `core/sa.js`— y por el mismo motivo: lo que alguien tiene
-delante manda sobre lo que diga el grupo, porque si no, el primer cambio del departamento al
-modelo reescribiría por la espalda tablas que nadie ha tocado, y nadie relacionaría lo que
-cambió con lo que hizo.
+**La regla, en un solo sitio, y son dos preguntas.** *Qué estructura sigue* una tabla: **su propia**
+estructura mientras la tenga, y la del **modelo** cuando no la tenga; si no tiene ninguna de las dos,
+su forma se deduce de las celdas guardadas, que es lo que le pasa a todo lo que hay escrito hoy. Y
+*de dónde sale su contenido*: de su **rejilla** (`filas`) mientras la tenga, y de sus **casillas** en
+cuanto deja de tenerla.
 
-Vive en `estructuraDeTabla` de `core/modelos-tabla.js` y la llaman los **tres** consumidores: el
-PDF (`motor/render-generico.js`), el Word (`motor/exportar-docx.js`) y el editor con la puerta de
-guardado (`core/tablas-edicion.js` y `core/estructurados.js`). Escrita en cada uno, la pantalla
-acabaría pintando una tabla distinta de la que sale impresa, que es la avería del E0 otra vez.
+La segunda no es nueva: es, literalmente, la de la ficha de situación de aprendizaje —«se imprime
+desde `filas` mientras las tenga y desde el modelo en cuanto deja de tenerlas», `completarDesdeFilas`
+de `core/sa.js`— y la misma que ya decide entre `filas` y `pares` en `queSeImprime`. El motivo es el
+de siempre: lo que alguien tiene delante manda sobre lo que diga el grupo, porque si no, el primer
+cambio del departamento al modelo reescribiría por la espalda tablas que nadie ha tocado, y nadie
+relacionaría lo que cambió con lo que hizo.
 
-**Por qué el contenido se empareja con TODAS las partes, retiradas incluidas.** Retirar no borra,
-igual que con un apartado o un campo: la parte se queda con `retirado: true`, deja de imprimirse
-y su hueco **sigue** en el contenido de cada tabla. Si el contenido se emparejara solo con las
-vigentes, retirar la segunda de cuatro columnas correría las otras dos un sitio a la izquierda y
-cada tabla del grupo quedaría con su texto bajo otro rótulo sin que nada lo dijera. Restaurarla
-devuelve la columna con lo que tenía escrito.
+Lo que se sigue de las dos juntas: **ponerle un modelo a una tabla ya escrita no le hace nada**.
+Conserva su rejilla, y mientras la conserve se imprime y se edita exactamente como hoy. Adoptar el
+modelo —soltarle la fila de rótulos que lleva entre las celdas y emparejarla con las partes— es una
+pieza aparte (ver más abajo).
 
-**Por qué los rótulos no están entre las celdas.** Con estructura, lo guardado es solo el
-contenido y los rótulos los pone la estructura al pintar. Es lo que hace que el modelo valga para
-algo: renombrar una columna en la plantilla la renombra en las once tablas a la vez. La
-consecuencia es que una tabla con estructura no tiene cabecera propia y que el editor se niega a
-lo que cambiaría su forma —añadirle o quitarle partes, combinar celdas, repartir los anchos a
-mano o tocar su cabecera—; escribir y dar estilo se puede siempre.
+Todo esto vive en `estructuraDeTabla` de `core/modelos-tabla.js` y lo llaman los **tres**
+consumidores: el PDF (`motor/render-generico.js`), el Word (`motor/exportar-docx.js`) y el editor con
+la puerta de guardado (`core/tablas-edicion.js` y `core/estructurados.js`). Escrito en cada uno, la
+pantalla acabaría pintando una tabla distinta de la que sale impresa, que es la avería del E0 otra vez.
 
-**Lo que esta pieza no trae.** No hay operaciones para crear ni cambiar un modelo, ni pantalla
-desde la que hacerlo, ni manera de ponerle un modelo a un campo que ya tiene contenido —eso
-último es una migración: habría que soltar la fila de rótulos que ya está entre las celdas y
-emparejarla con las partes—. Y la ficha de situación de aprendizaje sigue con su mecánica aparte
-(`core/sa.js`, `core/ficha-estructura.js`): se absorbe al final, a propósito y medida aparte.
+### El contenido va por id de parte
 
-**Dos costuras conocidas del modelo de datos**, por si el día que molesten no se busque dos veces:
+`valor.casillas` es un mapa del id de la parte a lo que esa parte guarda:
 
-- `valor.estructura` guarda las partes y **no el sentido**, así que el sentido de una tabla
-  divergida lo sigue diciendo el modelo del que salió. El departamento puede girarle la tabla
-  noventa grados a algo que ya había divergido, que es justo lo que divergir tenía que evitar.
-- Con `sentido: 'filas'` el contenido es **posicional** contra las partes, así que una tabla solo
-  puede tener cero filas o todas: no hay estado intermedio y el editor no puede llenarla de una en
-  una. La ficha, que es el mismo problema resuelto antes, guarda el contenido **por id de parte**
-  (`ficha[id]`) justamente por esto. Si las tablas a lo alto se usan de verdad, esa es la forma a
-  la que hay que pasarlas.
+| `sentido` | la parte es | y guarda |
+|---|---|---|
+| `'filas'` | una fila | **una casilla**. Es literalmente `ficha[id]` de `core/sa.js` |
+| `'columnas'` | una columna | **la lista de sus casillas** hacia abajo |
+
+Por id y no por posición, y los motivos son tres:
+
+1. **Añadir, mover, renombrar o retirar una parte toca cero tablas guardadas**, que es justo lo que
+   el departamento pidió: que el cambio vaya al grupo. Con el contenido posicional, añadir una
+   columna obligaría a reescribir todas las filas de todas las tablas del grupo.
+2. **No hay estados intermedios imposibles.** Con el contenido posicional, una tabla de rótulos a lo
+   alto solo podía tener cero filas o todas, y no se podía llenar de una en una.
+3. **La ficha de situación de aprendizaje se absorbe de verdad y no por parecido**: ya guarda por id,
+   así que es el mismo modelo de datos y no uno que se le dé la mano.
+
+**Retirar una parte no borra su contenido**, igual que con un apartado o un campo: la parte se queda
+con `retirado: true`, deja de imprimirse, y su casilla sigue en `valor.casillas` bajo su id.
+Restaurarla devuelve la columna con todo lo que tenía. Por id no hay nada que correr —empareja el id
+y no el sitio—, así que retirar la segunda de cuatro columnas deja a las otras dos donde estaban.
+
+**Los rótulos no están entre las celdas.** Con el modelo adoptado, lo guardado es solo el contenido y
+los rótulos los pone la estructura al pintar. Es lo que hace que el modelo valga para algo: renombrar
+una columna en la plantilla la renombra en las once tablas a la vez. La consecuencia es que una tabla
+adoptada no tiene cabecera propia, que todas sus columnas con contenido miden lo mismo (una fila es
+una casilla de cada columna), y que no lleva celdas combinadas: cada casilla es de una parte y de una
+sola.
+
+**El sentido lo guarda también la estructura propia**, no solo las partes. Si lo siguiera diciendo el
+modelo del que la tabla se desengachó, el departamento podría girarle la tabla noventa grados a algo
+que ya había divergido —el contenido de las columnas leído como filas—, que es exactamente «cambiar
+el documento por la espalda», lo único que divergir existe para evitar.
+
+**Enganchar un modelo sin partes es un error con explicación, no un no-op.** Un modelo recién creado
+y todavía vacío sería indistinguible de no tener modelo, y quien lo enganchó no se enteraría de nada.
+(Un modelo *sin enganchar* sí se guarda vacío: es como nace, y las partes se le añaden después.)
+
+### Lo que esta pieza no trae
+
+- **Adoptar el modelo de una tabla ya escrita**, que es la pieza que hace falta para que esto sirva
+  para lo que hay: soltarle la fila de rótulos que lleva entre las celdas, emparejarla con las partes
+  y pasar su contenido de `filas` a `casillas`. Es el equivalente de `completarDesdeFilas` para las
+  tablas. El sitio natural donde engancha es `queSeImprime` de `core/estructurados.js`, que es el que
+  ya decide entre `filas` y `casillas`: hoy devuelve `'filas'` mientras la rejilla exista, y la
+  adopción es la transformación que la quita.
+- **Escribir en el contenido por parte desde el editor.** Una tabla adoptada se **ve** tal como se va
+  a imprimir (`paraPintar` se lo pregunta a la misma regla que los dos motores), pero todavía no se
+  cambia desde ahí: todas las operaciones de `core/tablas-edicion.js` están escritas sobre una
+  rejilla y con índices de fila y columna que vienen de la pantalla, y los de una tabla adoptada no
+  son los de su contenido. Media correspondencia es cómo se le da formato a la celda equivocada, así
+  que `motivoDeNo` se niega y lo dice. Va con la pieza de adopción, que es la que crea esas tablas.
+- **Operaciones para crear o cambiar un modelo** (añadir una parte, renombrarla, moverla, retirarla)
+  ni pantalla desde la que hacerlo. `version` existe en el modelo pero todavía no lo lee nadie:
+  empezará a significar algo con las operaciones.
+- La ficha de situación de aprendizaje sigue con su mecánica aparte (`core/sa.js`,
+  `core/ficha-estructura.js`): se absorbe al final, a propósito y medida aparte. Ahora es el mismo
+  modelo de datos, así que absorberla es quitar código, no traducirlo.
 
 ---
 
