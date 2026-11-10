@@ -16,7 +16,7 @@
 //     tipo,      'tabla' | 'tabla_clave_valor': a qué tipo de campo se le puede poner
 //     sentido,   'columnas' (las partes van a lo ancho) | 'filas' (van a lo alto)
 //     columnas,  de cuántas columnas es la tabla cuando sus partes van a lo alto (por omisión 2)
-//     partes: [ { id, etiqueta, ancho?, grupo?, solo_si_hay?, retirado? } ],
+//     partes: [ { id, etiqueta, peso?, ancho?, grupo?, solo_si_hay?, retirado? } ],
 //     version
 //   }
 //
@@ -28,10 +28,20 @@
 // debajo. `grupo` escribe además su nombre una sola vez, en una fila que ocupa la tabla entera.
 // `solo_si_hay` omite la fila cuando ninguna de sus partes tiene nada escrito.
 //
-// `ancho` SIGNIFICA DOS COSAS SEGÚN EL SENTIDO, y no hay manera de evitarlo sin dos nombres: a lo
-// ancho es el PESO relativo de la columna (un número positivo, puede ser decimal, lo reparte cada
-// motor sobre el ancho de la hoja); a lo alto es CUÁNTAS de las `columnas` ocupa la parte en su fila
-// (un entero, como el `colspan` que acaba siendo).
+// CADA SENTIDO TIENE SU MEDIDA Y SU NOMBRE, porque son magnitudes distintas y no se convierten una
+// en otra: a lo ancho, `peso` es el peso RELATIVO de la columna —un número positivo, puede ser
+// decimal, lo reparte cada motor sobre el ancho de la hoja—; a lo alto, `ancho` es CUÁNTAS de las
+// `columnas` ocupa la parte en su fila, un entero que acaba siendo su `colspan`. Con un solo nombre
+// para las dos, un número escrito para un sentido se usaba como la medida del otro en cuanto alguien
+// le cambiaba el sentido al modelo, y repartir las columnas con unos números que no son de eso no se
+// ve: sale una tabla torcida y nadie sabe por qué. Usar la del otro sentido es un error con
+// explicación y no un valor que se ignore en silencio.
+//
+// `grupo` ES `{ id, etiqueta }` Y NO UN TEXTO, por lo mismo que el id de una parte no es su nombre: el
+// id decide qué partes van juntas y la etiqueta es lo que se imprime, así que renombrar un grupo no
+// cambia su identidad ni deja huérfano nada. En la ficha están separados a propósito —el id es
+// `'actividades'` y el rótulo es otro texto, `CABECERA_ACTIVIDADES`— y así eso deja de ser una
+// traducción rara y pasa a ser el caso normal.
 //
 // LA MAQUETACIÓN ESTÁ ESCRITA DOS VECES, AQUÍ Y EN `filasDeFicha` DE core/sa.js, A PROPÓSITO Y
 // TEMPORALMENTE. Es la única excepción a «una regla en un solo sitio» de toda esta pieza, y existe
@@ -167,7 +177,8 @@
   const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
   const CLAVES_MODELO = ['id', 'nombre', 'tipo', 'sentido', 'columnas', 'partes', 'version'];
-  const CLAVES_PARTE = ['id', 'etiqueta', 'ancho', 'grupo', 'solo_si_hay', 'retirado'];
+  const CLAVES_PARTE = ['id', 'etiqueta', 'peso', 'ancho', 'grupo', 'solo_si_hay', 'retirado'];
+  const CLAVES_GRUPO = ['id', 'etiqueta'];
   const CLAVES_ESTRUCTURA = ['partes', 'sentido', 'columnas'];
 
   // De cuántas columnas es una tabla cuyas partes van a lo alto, si no lo dice. Dos es el rótulo y su
@@ -273,6 +284,22 @@
   const etiquetaDe = (parte) => (esObjeto(parte) ? String(parte.etiqueta == null ? '' : parte.etiqueta) : '');
   const filasDe = (valor) => (esObjeto(valor) && Array.isArray(valor.filas) ? valor.filas : []);
 
+  // EL GRUPO DE UNA PARTE: su id, con el que se compara, y su etiqueta, que es lo que se imprime. Sin
+  // grupo, `null`. Un grupo a medio escribir —sin id— no agrupa: cuenta como no tenerlo, igual que una
+  // estructura sin partes no es una estructura.
+  const grupoDe = (parte) => {
+    const g = esObjeto(parte) ? parte.grupo : undefined;
+    return esObjeto(g) && esCadena(g.id) ? g : null;
+  };
+  const idDeGrupo = (parte) => {
+    const g = grupoDe(parte);
+    return g ? g.id : null;
+  };
+  const etiquetaDeGrupo = (parte) => {
+    const g = grupoDe(parte);
+    return g ? String(g.etiqueta == null ? '' : g.etiqueta) : '';
+  };
+
   // El contenido por id de parte, o `{}`.
   const casillasDe = (valor) => (esObjeto(valor) && esObjeto(valor[CLAVE_CASILLAS]) ? valor[CLAVE_CASILLAS] : {});
 
@@ -296,11 +323,10 @@
   // medias no valen —`motivoDeAnchos` de core/estructurados.js exige una por columna— y una lista
   // incompleta la descartaría cada motor por su cuenta, repartiendo según el texto y sin avisar.
   //
-  // SOLO A LO ANCHO. A lo alto, el `ancho` de una parte no es el peso de una columna sino cuántas
-  // ocupa en su fila, así que pasarlo como anchos de tabla repartiría las columnas con unos números
-  // que no son de eso.
-  function anchosDeEstructura(vigentes) {
-    const todos = vigentes.map((parte) => (esObjeto(parte) ? parte.ancho : undefined));
+  // SOLO A LO ANCHO, y por eso lee `peso` y no `ancho`: son dos claves distintas justamente para que
+  // la medida de un sentido no pueda acabar usada como la del otro.
+  function pesosDeEstructura(vigentes) {
+    const todos = vigentes.map((parte) => (esObjeto(parte) ? parte.peso : undefined));
     const vale = (a) => typeof a === 'number' && Number.isFinite(a) && a > 0;
     return todos.length && todos.every(vale) ? todos : undefined;
   }
@@ -332,8 +358,8 @@
     let suma = 0;
     for (const parte of vigentes) {
       const w = ocupa(parte);
-      const grupo = esObjeto(parte) ? parte.grupo : undefined;
-      if (actual.length && (suma + w > columnas || (esObjeto(actual[0]) ? actual[0].grupo : undefined) !== grupo)) {
+      // Se compara el ID del grupo y no su etiqueta: es el id el que dice qué partes van juntas.
+      if (actual.length && (suma + w > columnas || idDeGrupo(actual[0]) !== idDeGrupo(parte))) {
         filas.push(actual);
         actual = [];
         suma = 0;
@@ -357,15 +383,22 @@
   function aLoAlto(estructura, casillas) {
     const { vigentes, columnas } = estructura;
     const out = [];
-    const grupos = new Set();
+    // EL RÓTULO DE UN GRUPO SE ESCRIBE CADA VEZ QUE EL GRUPO CAMBIA respecto de la fila ANTERIOR QUE SE
+    // IMPRIMIÓ, y no una vez por tabla: así un grupo que reaparece después de otro se vuelve a rotular
+    // en lugar de parecer la continuación del de arriba. Y la fila que no se imprime no cuenta como
+    // cambio, porque entonces el rótulo saldría separado de las filas que encabeza.
+    //
+    // Es la misma regla, paso por paso, que `filasDeFicha` de core/sa.js: ver la nota de la cabecera
+    // sobre por qué la maquetación está escrita dos veces a propósito.
+    let grupoAnterior = null;
     for (const fila of empaquetar(vigentes, columnas)) {
       const todasOpcionales = fila.every((p) => esObjeto(p) && p.solo_si_hay);
       if (todasOpcionales && !fila.some((p) => hayContenido(p, casillas, SENTIDO_FILAS))) continue;
-      const grupo = esObjeto(fila[0]) ? fila[0].grupo : undefined;
-      if (esCadena(grupo) && !grupos.has(grupo)) {
-        out.push([celda(grupo, conColspan(columnas, { bold: true }))]);
-        grupos.add(grupo);
+      const grupo = idDeGrupo(fila[0]);
+      if (grupo && grupo !== grupoAnterior) {
+        out.push([celda(etiquetaDeGrupo(fila[0]), conColspan(columnas, { bold: true }))]);
       }
+      grupoAnterior = grupo;
       out.push(fila.map((p) => celda(etiquetaDe(p), conColspan(ocupa(p), { bold: true, campo: p.id }))));
       out.push(fila.map((p) => {
         const x = casillaDe(casillas, p);
@@ -418,7 +451,7 @@
     // decide por parte y no por fila porque cada parte ES una columna: no hay fila que compartir.
     const aLaVista = vigentes.filter((p) => !(esObjeto(p) && p.solo_si_hay) || hayContenido(p, casillas, SENTIDO_COLUMNAS));
     if (!aLaVista.length) return { estructura, filas: [], anchos: undefined, cabecera: false };
-    const anchos = anchosDeEstructura(aLaVista);
+    const anchos = pesosDeEstructura(aLaVista);
     const alto = aLaVista.reduce((n, parte) => Math.max(n, columnaDe(casillas, parte).length), 0);
     return {
       estructura,
@@ -466,9 +499,10 @@
   // La forma de UNA parte. `ancho` solo tiene sentido con `sentido: 'columnas'`: con los rótulos a la
   // izquierda la parte es una fila y una fila no tiene ancho de columna, así que se rechaza en lugar
   // de guardarse para no imprimirse nunca.
-  // La forma de UNA parte. `ancho` significa dos cosas según el sentido (ver la cabecera), así que se
-  // comprueba distinto: a lo ancho es un peso relativo y puede ser decimal; a lo alto son columnas
-  // enteras y no puede pedir más de las que la tabla tiene.
+  // La forma de UNA parte. Cada sentido tiene su medida y su nombre (ver la cabecera), así que lo que
+  // se comprueba es que cada una esté donde le toca: `peso` solo a lo ancho, donde es un peso relativo
+  // que puede ser decimal; `ancho` solo a lo alto, donde son columnas enteras y no puede pedir más de
+  // las que la tabla tiene. Usar la del otro sentido se dice, no se ignora.
   function motivoDeParte(parte, donde, { sentido, tipo, columnas, ids } = {}) {
     if (!esObjeto(parte)) return `${donde} no es un objeto { id, etiqueta }.`;
     const extra = sobran(parte, CLAVES_PARTE);
@@ -481,23 +515,39 @@
     if (parte.solo_si_hay !== undefined && typeof parte.solo_si_hay !== 'boolean') {
       return `${donde} tiene «solo_si_hay» y no es true ni false.`;
     }
+    const aLoAlto_ = sentido === SENTIDO_FILAS && tipo !== TIPO_CLAVE_VALOR;
     if (parte.grupo !== undefined) {
-      if (sentido !== SENTIDO_FILAS || tipo === TIPO_CLAVE_VALOR) {
-        return `${donde} tiene «grupo», y los grupos son de las partes que van a lo alto en una tabla: son los que abren fila y escriben su rótulo una sola vez encima.`;
+      if (!aLoAlto_) {
+        return `${donde} tiene «grupo», y los grupos son de las partes que van a lo alto en una tabla: son los que abren fila y escriben su rótulo encima.`;
       }
-      if (!esCadena(parte.grupo)) {
-        return `${donde} tiene un «grupo» que no es un texto: el grupo es el rótulo que se escribe una vez encima de las partes que lo comparten.`;
+      const g = parte.grupo;
+      if (!esObjeto(g)) return `el «grupo» de ${donde} no es un objeto { id, etiqueta }: el id dice qué partes van juntas y la etiqueta es lo que se imprime.`;
+      const sobra = sobran(g, CLAVES_GRUPO);
+      if (sobra.length) return `el grupo de ${donde} lleva ${comillas(sobra)}, que no existe en un grupo: solo ${comillas(CLAVES_GRUPO)}.`;
+      if (!esCadena(g.id)) return `el grupo de ${donde} no tiene «id»: es con el que se sabe qué partes van juntas y no cambia al renombrarlo.`;
+      if (typeof g.etiqueta !== 'string') return `el grupo de ${donde} no tiene «etiqueta», o no es texto: es el rótulo que se imprime encima.`;
+      if (g.etiqueta.length > LARGO_NOMBRE) return `la etiqueta del grupo de ${donde} tiene ${g.etiqueta.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
+    }
+
+    // `peso` es la medida de las partes que van a lo ANCHO: un peso relativo de columna.
+    if (parte.peso !== undefined) {
+      if (sentido !== SENTIDO_COLUMNAS) {
+        return `${donde} tiene «peso», y el peso es de las partes que van a lo ancho, donde cada parte es una columna y el peso es la parte del ancho de la hoja que se lleva. A lo alto, lo que se dice es «ancho»: las columnas que ocupa.`;
       }
-      if (parte.grupo.length > LARGO_NOMBRE) {
-        return `el grupo de ${donde} tiene ${parte.grupo.length} caracteres: el máximo son ${LARGO_NOMBRE}.`;
+      if (typeof parte.peso !== 'number' || !Number.isFinite(parte.peso) || parte.peso <= 0) {
+        return `el «peso» de ${donde} no es un número positivo: los pesos son relativos, no medidas.`;
       }
     }
-    if (parte.ancho === undefined) return null;
-    if (sentido === SENTIDO_FILAS) {
+
+    // `ancho` es la medida de las partes que van a lo ALTO: cuántas columnas ocupa en su fila.
+    if (parte.ancho !== undefined) {
       // Una tabla de clave y valor tiene las dos columnas fijas: el concepto a la izquierda y el resto
       // del ancho para su contenido (`pintarClaveValor` de motor/render-generico.js).
       if (tipo === TIPO_CLAVE_VALOR) {
         return `${donde} tiene «ancho», y una tabla de clave y valor tiene las dos columnas fijas: el concepto a la izquierda y el resto para su contenido.`;
+      }
+      if (sentido !== SENTIDO_FILAS) {
+        return `${donde} tiene «ancho», y el ancho son las columnas que ocupa una parte que va a lo alto. A lo ancho, cada parte ES una columna y lo que se dice es «peso»: la parte del ancho de la hoja que se lleva.`;
       }
       if (!esEntero(parte.ancho, 1)) {
         return `el «ancho» de ${donde} no es un número entero de 1 en adelante: a lo alto, el ancho son las columnas de la tabla que ocupa la parte.`;
@@ -505,10 +555,6 @@
       if (columnas && parte.ancho > columnas) {
         return `${donde} ocupa ${plural(parte.ancho, 'columna', 'columnas')} y la tabla tiene ${columnas}: una parte no puede ocupar más de lo que hay.`;
       }
-      return null;
-    }
-    if (typeof parte.ancho !== 'number' || !Number.isFinite(parte.ancho) || parte.ancho <= 0) {
-      return `el «ancho» de ${donde} no es un número positivo: los anchos son pesos relativos, no medidas.`;
     }
     return null;
   }
@@ -524,10 +570,20 @@
         : `${donde} tiene ${plural(partes.length, 'parte', 'partes')}: el máximo son ${tope}, porque con más no caben en el ancho de la hoja.`;
     }
     const ids = new Set();
+    // UN GRUPO, UNA ETIQUETA. Dos partes del mismo grupo con rótulos distintos son dos verdades sobre
+    // lo mismo, y la que se imprimiría es la de la primera: la otra se guardaría para no verse nunca.
+    const etiquetasDeGrupo = new Map();
     for (let i = 0; i < partes.length; i += 1) {
       const m = motivoDeParte(partes[i], `la parte ${i + 1} de ${donde}`, { sentido, tipo, columnas, ids });
       if (m) return m;
       ids.add(partes[i].id);
+      const g = grupoDe(partes[i]);
+      if (g) {
+        if (etiquetasDeGrupo.has(g.id) && etiquetasDeGrupo.get(g.id) !== g.etiqueta) {
+          return `la parte ${i + 1} de ${donde} llama al grupo «${g.id}» «${g.etiqueta}» y otra de sus partes lo llama «${etiquetasDeGrupo.get(g.id)}»: un grupo se imprime con un solo rótulo.`;
+        }
+        etiquetasDeGrupo.set(g.id, g.etiqueta);
+      }
     }
     return null;
   }
@@ -708,7 +764,7 @@
     SENTIDOS, SENTIDO_COLUMNAS, SENTIDO_FILAS, sentidoPorOmision, sentidoVigente,
     MAX_PARTES_ANCHO, MAX_PARTES_ALTO, MAX_CASILLAS_POR_PARTE, MAX_MODELOS, LARGO_NOMBRE,
     COLUMNAS_POR_OMISION, empaquetar,
-    modelosDe, buscar, modeloDeCampo, partesVigentes, casillasDe, adoptada,
+    modelosDe, buscar, modeloDeCampo, partesVigentes, casillasDe, adoptada, grupoDe,
     estructuraDeTabla, tablaVigente, paresVigentes,
     motivoDeModelo, motivoDeModelos, motivoDeParte, motivoDeEstructura, motivoDeContenido,
   };
