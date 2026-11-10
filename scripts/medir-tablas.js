@@ -105,16 +105,18 @@ function imprimir(r, detalle) {
     console.log('  sueltas:');
     res.sueltas.forEach((i) => console.log(`    #${i} ${tipos[i]} ${tablas[i].rows.length}f «${corto(tablas[i].rows[0].map((c) => c.text).join(' | '), 70)}»`));
   }
-  // Los tipos del importador que la propuesta reparte entre varios grupos o deja sueltos: lo que una
-  // persona agruparía y la forma no.
-  const porTipo = new Map();
-  tipos.forEach((t, i) => {
-    const g = res.grupos.find((x) => x.indices.includes(i));
-    if (!porTipo.has(t)) porTipo.set(t, new Set());
-    porTipo.get(t).add(g ? g.id : 'suelta');
-  });
-  const partidos = [...porTipo].filter(([t, s]) => tipos.filter((x) => x === t).length > 1 && s.size > 1);
-  for (const [t, s] of partidos) console.log(`  tipo repartido: ${t} (x${tipos.filter((x) => x === t).length}) en ${[...s].join(', ')}`);
+  // Por cada tipo del importador con varias tablas: cuántas caen en su grupo mayor. Es el acierto
+  // contra el único patrón de medida que hay (las familias que el importador reconoce a mano).
+  const fam = [];
+  for (const t of new Set(tipos)) {
+    const total = tipos.filter((x) => x === t).length;
+    if (total < 2) continue;
+    const cuenta = new Map();
+    tipos.forEach((x, i) => { if (x !== t) return; const g = res.grupos.find((y) => y.indices.includes(i)); const k = g ? g.id : "suelta"; cuenta.set(k, (cuenta.get(k) || 0) + 1); });
+    const mayor = Math.max(...[...cuenta].filter(([k]) => k !== "suelta").map(([, v]) => v), 0);
+    fam.push(t + " " + mayor + "/" + total + (cuenta.size === 1 && !cuenta.has("suelta") ? " (de pleno)" : ""));
+  }
+  console.log("  familias (mayor grupo/total): " + fam.join(", "));
 }
 
 (async () => {
