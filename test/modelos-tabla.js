@@ -621,7 +621,10 @@ prueba('una estructura propia se mide con SU sentido, no con el de omision de su
   assert.strictEqual(MT.estructuraDeTabla(CAMPO, sinColumnas, mapaDe(modelo({ sentido: 'filas', columnas: 4 }))).columnas,
     MT.COLUMNAS_POR_OMISION);
 
-  const veintePartes = Array.from({ length: 20 }, (_, i) => ({ id: 'p' + i, etiqueta: 'P' }));
+  // Con etiquetas DISTINTAS: dos partes que se llaman igual no se pueden distinguir al leer una
+  // tabla importada, y eso lo comprueba ahora la puerta del modelo (`choqueDeEtiquetas`). Lo que esta
+  // prueba mide es el tope de partes a lo alto, no las etiquetas.
+  const veintePartes = Array.from({ length: 20 }, (_, i) => ({ id: 'p' + i, etiqueta: 'P' + i }));
   assert.strictEqual(Est.motivoDeCampo(CAMPO, { estructura: { partes: veintePartes, sentido: 'filas' }, casillas: {} }, { modelos: {} }),
     null, 'veinte filas caben de sobra');
   const apretado = Est.motivoDeCampo(CAMPO, { estructura: { partes: veintePartes, sentido: 'columnas' }, casillas: {} }, { modelos: {} });
@@ -1118,6 +1121,106 @@ prueba('la ficha maquetada por la regla sale igual en el PDF y en el Word', asyn
   assert.deepStrictEqual(textosDeFilas(Edicion.paraPintar(valor, campo, mapaDe(m)).filas), esperado);
   // Y la puerta la guarda.
   assert.strictEqual(Est.motivoDeCampo(campo, valor, { modelos: mapaDe(m) }), null);
+});
+
+// ------------------------------------------------- 9 bis. el rotulo y su valor, al lado
+
+// La tercera forma de colocar, y la que faltaba: `columnas` pone los rotulos arriba, `filas` los pone
+// encima de su contenido y `al_lado` los pone a la izquierda, en la misma fila. Sin ella no se pueden
+// decir la cabecera de una ficha de situacion de aprendizaje ni la identificacion de un modulo, que
+// es `rotulo | valor | rotulo | valor`.
+
+const AL_LADO = () => modelo({
+  sentido: 'filas',
+  columnas: 4,
+  partes: [
+    { id: 'ses', etiqueta: 'Sesiones', ancho: 2, al_lado: true },
+    { id: 'ev', etiqueta: 'Evaluacion', ancho: 2, al_lado: true },
+    { id: 'ra', etiqueta: 'Resultados', ancho: 4, al_lado: true },
+    { id: 'ce', etiqueta: 'Criterios', ancho: 4 },
+  ],
+});
+
+prueba('al lado: dos pares caben en una fila y el rotulo ocupa una columna del par', () => {
+  const valor = { casillas: { ses: c('10'), ev: c('1a'), ra: c('RA1. Reconoce'), ce: c('a) uno') } };
+  const t = MT.tablaVigente(CAMPO, valor, mapaDe(AL_LADO()), false);
+  assert.deepStrictEqual(t.filas, [
+    [{ text: 'Sesiones', bold: true, campo: 'ses' }, { text: '10' },
+      { text: 'Evaluacion', bold: true, campo: 'ev' }, { text: '1a' }],
+    [{ text: 'Resultados', bold: true, campo: 'ra' }, { text: 'RA1. Reconoce', colspan: 3 }],
+    [{ text: 'Criterios', colspan: 4, bold: true, campo: 'ce' }],
+    [{ text: 'a) uno', colspan: 4 }],
+  ]);
+  // Los rotulos van dentro de la tabla, no en una cabecera que se repita.
+  assert.strictEqual(t.cabecera, false);
+  assert.strictEqual(t.anchos, undefined);
+});
+
+prueba('al lado: una parte al lado no comparte fila con una que lleve el rotulo encima', () => {
+  // Una fila de pares imprime UNA fila de tabla y una de rotulos encima imprime DOS, asi que no se
+  // pueden mezclar: `empaquetar` abre fila cuando cambia la forma de colocar, igual que con el grupo.
+  const m = modelo({
+    sentido: 'filas',
+    columnas: 4,
+    partes: [
+      { id: 'a', etiqueta: 'A', ancho: 2, al_lado: true },
+      { id: 'b', etiqueta: 'B', ancho: 2 },
+    ],
+  });
+  assert.deepStrictEqual(MT.empaquetar(m.partes, 4).map((f) => f.map((p) => p.id)), [['a'], ['b']]);
+});
+
+prueba('al lado: una parte solo_si_hay sin nada escrito no imprime su fila', () => {
+  const m = modelo({
+    sentido: 'filas',
+    columnas: 4,
+    partes: [{ id: 'a', etiqueta: 'A', ancho: 2, al_lado: true, solo_si_hay: true }],
+  });
+  assert.deepStrictEqual(MT.tablaVigente(CAMPO, { casillas: {} }, mapaDe(m), false).filas, []);
+  assert.strictEqual(MT.tablaVigente(CAMPO, { casillas: { a: c('x') } }, mapaDe(m), false).filas.length, 1);
+});
+
+prueba('al lado: la puerta lo mide donde existe y solo donde existe', () => {
+  assert.strictEqual(MT.motivoDeModelo(AL_LADO()), null);
+  // A lo ancho cada parte ES una columna y su rotulo va siempre arriba.
+  assert.match(MT.motivoDeModelo(modelo({ partes: [{ id: 'a', etiqueta: 'A', al_lado: true }] })), /tiene .al_lado./);
+  // En una tabla de clave y valor todas las partes van ya al lado: decirlo seria la segunda manera
+  // de decir lo mismo, y dos caminos para la misma forma es lo que esta regla evita.
+  assert.match(MT.motivoDeModelo(modelo({
+    tipo: 'tabla_clave_valor', sentido: 'filas', partes: [{ id: 'a', etiqueta: 'A', al_lado: true }],
+  })), /tiene .al_lado./);
+  // El par ocupa dos columnas como minimo: una el rotulo y otra lo que se escriba.
+  assert.match(MT.motivoDeModelo(modelo({
+    sentido: 'filas', columnas: 4, partes: [{ id: 'a', etiqueta: 'A', ancho: 1, al_lado: true }],
+  })), /ocupa una sola columna/);
+  assert.match(MT.motivoDeModelo(modelo({
+    sentido: 'filas', columnas: 4, partes: [{ id: 'a', etiqueta: 'A', ancho: 2, al_lado: 'si' }],
+  })), /no es true ni false/);
+});
+
+prueba('dos partes no pueden llamarse igual, y se comprueba con el mapa del lector', () => {
+  // La regla la lista docs/modelos-de-tabla.md como una de las que no se vuelven a discutir, y es la
+  // misma que `choqueDeEtiquetaFicha` de core/plantilla.js: el lector reconoce las partes por el
+  // TEXTO de su etiqueta, asi que con dos iguales se queda con una y el texto de la otra se pierde.
+  const igual = modelo({ partes: [{ id: 'a', etiqueta: 'Sesiones' }, { id: 'b', etiqueta: '  SESIONES ' }] });
+  assert.match(MT.motivoDeModelo(igual), /igual que otra de sus partes/);
+  // Y cubre los SINONIMOS, que chocan igual aunque el texto no sea identico: es el mapa del lector y
+  // no una comparacion parecida.
+  const sinonimo = modelo({
+    partes: [
+      { id: 'recursos', etiqueta: 'Materiales y recursos did' + ACENTO_O + 'cticos disponibles' },
+      { id: 'otra', etiqueta: 'Materiales y recursos disponibles' },
+    ],
+  });
+  assert.match(MT.motivoDeModelo(sinonimo), /se reconoce con la misma redacci/);
+  assert.strictEqual(Sa.porEtiqueta(sinonimo.partes).get(Sa.norm('Materiales y recursos disponibles')).id, 'otra');
+  // Una retirada no la mira el lector, y una etiqueta en blanco no la nombra nadie.
+  assert.strictEqual(MT.motivoDeModelo(modelo({
+    partes: [{ id: 'a', etiqueta: 'Sesiones' }, { id: 'b', etiqueta: 'Sesiones', retirado: true }],
+  })), null);
+  assert.strictEqual(MT.motivoDeModelo(modelo({
+    partes: [{ id: 'a', etiqueta: '' }, { id: 'b', etiqueta: '' }],
+  })), null);
 });
 
 // ---------------------------------------------------------------- 10. LA PUERTA DE ACEPTACION
