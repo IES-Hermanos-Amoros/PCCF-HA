@@ -256,7 +256,7 @@ function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo
   // Los modelos de tabla viajan en el contexto por lo mismo que la estructura de la ficha: la regla
   // se pregunta en `pintarCampo`, que esta a varias llamadas de aqui. Sin ellos (`undefined`) ninguna
   // tabla sigue estructura y el documento sale byte a byte como antes.
-  const ctx = { avisos: [], convenioCe, estructuraFicha: plantilla.estructuraFicha, modelos: plantilla.modelos };
+  const ctx = { avisos: [], convenioCe, estructuraFicha: plantilla.estructuraFicha, modelos: MT.modelosDe(plantilla) };
   const cuerpo = [];
   plantilla.secciones.forEach((sec, i) => {
     const numero = String(i + 1);

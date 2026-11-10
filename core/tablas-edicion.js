@@ -876,7 +876,15 @@
     let pesos = anchosDe(valor) || undefined;
 
     if (op === 'anadir-fila') {
-      const ancho = g.ncols || Math.min(Math.max(parseInt(contexto.columnas, 10) || 1, 1), E.MAX_COLUMNAS);
+      // UNA FILA DE UNA TABLA CON ESTRUCTURA NACE CON UNA CELDA POR PARTE, y las retiradas cuentan:
+      // su hueco sigue en el contenido. Manda sobre el ancho de la tabla y sobre el que recuerda el
+      // editor porque en una tabla que se ha quedado sin filas los dos dirían otra cosa —`g.ncols`
+      // es 0— y la fila no cuadraría con la estructura: la puerta la rechazaría y `aplicar` promete
+      // que eso no pasa.
+      const conEstructura = MT().estructuraDeTabla(contexto.campo, valor, contexto.modelos);
+      const porPartes = conEstructura && conEstructura.sentido === MT().SENTIDO_COLUMNAS
+        ? conEstructura.partes.length : 0;
+      const ancho = porPartes || g.ncols || Math.min(Math.max(parseInt(contexto.columnas, 10) || 1, 1), E.MAX_COLUMNAS);
       const k = args.despuesDe == null ? n : args.despuesDe + 1;
       const atravesadas = new Set();
       celdas = copia(g);

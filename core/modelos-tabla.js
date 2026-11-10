@@ -139,6 +139,14 @@
   const sentidoDe = (modelo, tipo) => (esObjeto(modelo) && SENTIDOS.indexOf(modelo.sentido) >= 0
     ? modelo.sentido : sentidoPorOmision(tipo));
 
+  // EL SENTIDO QUE ESTÁ EN VIGOR para las tablas de un campo. Es siempre el del MODELO al que el
+  // campo apunta, también cuando la tabla ha divergido: `valor.estructura` guarda las partes y no el
+  // sentido. Hace falta aparte de `estructuraDeTabla` porque la puerta comprueba la forma de una
+  // estructura propia antes de saber si llega a estar en vigor, y una parte se mide distinto según el
+  // sentido —el `ancho` solo existe a lo ancho, y el tope de partes no es el mismo—.
+  const sentidoVigente = (campo, modelos) => sentidoDe(modeloDeCampo(campo, modelos),
+    esObjeto(campo) ? campo.tipo : undefined);
+
   // Las partes que se imprimen, cada una con el HUECO que ocupa en el contenido, que es su posición
   // entre TODAS las partes y no entre las vigentes (ver «RETIRAR UNA PARTE NO BORRA SU CONTENIDO»).
   const partesVigentes = (partes) => (Array.isArray(partes) ? partes : [])
@@ -166,7 +174,7 @@
       // en null: la estructura es suya y no hay a quién volver.
       modelo: modelo ? modelo.id || campo.modelo : null,
       tipo: campo.tipo,
-      sentido: sentidoDe(modelo, campo.tipo),
+      sentido: sentidoVigente(campo, modelos),
       partes,
       vigentes: partesVigentes(partes),
     };
@@ -215,6 +223,12 @@
       };
     }
     const { sentido, vigentes } = estructura;
+    // UNA TABLA CUYAS PARTES ESTÁN TODAS RETIRADAS NO IMPRIME NADA. No es un caso de laboratorio:
+    // retirar la última parte que quedaba lo deja así, y lo que saldría si no es una fila de cero
+    // celdas, que pdfmake no sabe colocar —revienta la generación del tomo entero— y que el Word
+    // omite sin decir nada. Es «(tabla vacía)» en los dos, igual que `{ filas: [] }`, y es verdad:
+    // no queda ninguna parte que enseñar. Lo escrito sigue guardado y vuelve al restaurar una parte.
+    if (!vigentes.length) return { estructura, filas: [], anchos: undefined, cabecera: false };
     const contenido = filasDe(valor);
     const anchos = anchosDeEstructura(vigentes);
     if (sentido === SENTIDO_FILAS) {
@@ -341,13 +355,18 @@
 
   // POR QUÉ LA ESTRUCTURA QUE UNA TABLA GUARDA PARA SÍ NO VALE. Son las mismas partes de un modelo,
   // sin nombre ni tipo ni sentido: eso es del modelo del que divergió, no de la tabla.
-  function motivoDeEstructura(estructura, donde, { tipo } = {}) {
+  // `sentido` es el que está EN VIGOR para este campo (`sentidoVigente`), no el de omisión del tipo:
+  // una parte se mide distinto a lo ancho que a lo alto —el `ancho` solo existe a lo ancho y el tope
+  // de partes no es el mismo—, así que medirla con el sentido equivocado aceptaría unos anchos que
+  // luego reparten las columnas que no son, y rechazaría por «el máximo son 12» una estructura de
+  // veinte filas que cabe de sobra.
+  function motivoDeEstructura(estructura, donde, { tipo, sentido: pedido } = {}) {
     if (estructura === undefined) return null;
     if (!esObjeto(estructura)) return `la estructura de ${donde} no es un objeto { partes: [...] }.`;
     const extra = sobran(estructura, ['partes']);
     if (extra.length) return `la estructura de ${donde} lleva ${comillas(extra)}, que no existe en la estructura de una tabla: solo «partes».`;
     if (!Array.isArray(estructura.partes)) return `las partes de la estructura de ${donde} no son una lista.`;
-    const sentido = sentidoPorOmision(tipo);
+    const sentido = SENTIDOS.indexOf(pedido) >= 0 ? pedido : sentidoPorOmision(tipo);
     const tope = sentido === SENTIDO_FILAS ? MAX_PARTES_ALTO : MAX_PARTES_ANCHO;
     if (estructura.partes.length > tope) {
       return `la estructura de ${donde} tiene ${plural(estructura.partes.length, 'parte', 'partes')}: el máximo son ${tope}.`;
@@ -421,7 +440,7 @@
 
   const api = {
     TIPOS, TIPO_TABLA, TIPO_CLAVE_VALOR,
-    SENTIDOS, SENTIDO_COLUMNAS, SENTIDO_FILAS, sentidoPorOmision,
+    SENTIDOS, SENTIDO_COLUMNAS, SENTIDO_FILAS, sentidoPorOmision, sentidoVigente,
     MAX_PARTES_ANCHO, MAX_PARTES_ALTO, MAX_MODELOS, LARGO_NOMBRE,
     modelosDe, buscar, modeloDeCampo, partesVigentes,
     estructuraDeTabla, tablaVigente, paresVigentes,

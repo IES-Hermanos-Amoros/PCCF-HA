@@ -656,7 +656,7 @@
   function motivoDeTablaConModelo(campo, valor, donde, guardada, modelos) {
     if (!esObjeto(valor)) return `${donde} no es una tabla { filas: [[celda, …], …] }.`;
     const { estructura, ...rejilla } = valor;
-    const e = MT().motivoDeEstructura(estructura, donde, { tipo: campo.tipo });
+    const e = MT().motivoDeEstructura(estructura, donde, { tipo: campo.tipo, sentido: MT().sentidoVigente(campo, modelos) });
     if (e) return e;
     const m = motivoDeRejilla(rejilla, donde, { guardada });
     if (m) return m;
@@ -666,7 +666,7 @@
   function motivoDeClaveValorConModelo(campo, valor, donde, modelos) {
     if (!esObjeto(valor)) return `${donde} no es una tabla de clave y valor { pares: [{ etiqueta, valor }] }.`;
     const { estructura, ...resto } = valor;
-    const e = MT().motivoDeEstructura(estructura, donde, { tipo: campo.tipo });
+    const e = MT().motivoDeEstructura(estructura, donde, { tipo: campo.tipo, sentido: MT().sentidoVigente(campo, modelos) });
     if (e) return e;
     const m = motivoDeClaveValor(resto, donde);
     if (m) return m;

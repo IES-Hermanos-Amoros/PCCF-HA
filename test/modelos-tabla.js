@@ -491,6 +491,94 @@ prueba('con los rotulos a lo alto, las tres salidas coinciden tambien', async ()
   assert.deepStrictEqual(textosDeFilas(Edicion.paraPintar(valor, CAMPO, mapaDe(m)).filas), esperado);
 });
 
+// ---------------------------------------------------------------- 7 bis. lo que no puede pasar
+
+prueba('una tabla con TODAS sus partes retiradas no imprime nada, y el PDF se genera', async () => {
+  // Retirar la ultima parte que quedaba deja la tabla asi. Lo que saldria si se pintara es una fila
+  // de cero celdas: pdfmake no sabe colocarla y revienta la generacion del tomo entero, y el Word la
+  // omite sin decir nada, asi que las dos salidas dirian cosas distintas de la misma tabla. Por eso
+  // esta prueba genera el PDF de verdad: sobre la definicion sola, el fallo no se veia.
+  const m = modelo({ partes: [{ id: 'a', etiqueta: 'A', retirado: true }, { id: 'b', etiqueta: 'B', retirado: true }] });
+  const valor = { filas: [[c('SECRETO-UNO'), c('SECRETO-DOS')]] };
+  const base = unaTablaCon(CAMPO, valor);
+  const plantilla = { ...base.plantilla, modelos: mapaDe(m) };
+
+  const t = MT.tablaVigente(CAMPO, valor, mapaDe(m), false);
+  assert.deepStrictEqual(t.filas, [], 'una tabla sin ninguna parte vigente no tiene filas');
+
+  const def = buildDocDefinition({ plantilla, datos: base.datos, instancias: 'todas', titulo: 'T' });
+  const textos = JSON.stringify(def.content.slice(7));
+  assert.ok(textos.includes('(tabla vac'), 'el PDF no dice que la tabla esta vacia: ' + textos);
+  assert.ok(!textos.includes('SECRETO'), 'sale el contenido de las partes retiradas');
+
+  // El PDF de verdad, con pdfmake, que es donde estaba el fallo.
+  const PdfPrinter = require('pdfmake');
+  const fuentes = require('../motor/fonts');
+  const bytes = await new Promise((res, rej) => {
+    try {
+      const doc = new PdfPrinter(fuentes).createPdfKitDocument(def);
+      let n = 0;
+      doc.on('data', (d) => { n += d.length; });
+      doc.on('end', () => res(n));
+      doc.on('error', rej);
+      doc.end();
+    } catch (e) { rej(e); }
+  });
+  assert.ok(bytes > 1000, 'el PDF ha salido vacio');
+
+  // Y el Word tampoco escribe la tabla, pero sin discrepar: las dos salidas la omiten.
+  assert.deepStrictEqual(await filasDelWord(plantilla, base.datos), []);
+  // Lo escrito sigue guardado y vuelve al restaurar una parte.
+  assert.strictEqual(valor.filas[0][0].text, 'SECRETO-UNO');
+});
+
+prueba('una fila nueva de una tabla con estructura nace con una celda por parte', () => {
+  // `aplicar` promete devolver un valor que pasa la puerta. Si la fila naciera con el ancho de la
+  // tabla (0 en una que se ha quedado sin filas) o con el que recuerda el editor, no cuadraria con la
+  // estructura y el boton daria un 400.
+  const m = modelo({ partes: [{ id: 'a', etiqueta: 'A' }, { id: 'b', etiqueta: 'B', retirado: true }, { id: 'd', etiqueta: 'D' }] });
+  const modelos = mapaDe(m);
+  const pasa = (v) => assert.strictEqual(Est.motivoDeCampo(CAMPO, v, { modelos }), null,
+    'la puerta rechaza lo que ha salido del editor: ' + Est.motivoDeCampo(CAMPO, v, { modelos }));
+
+  // Desde una tabla sin filas, y con un ancho recordado que dice otra cosa.
+  let v = Edicion.aplicar({ filas: [] }, 'anadir-fila', {}, { campo: CAMPO, modelos, columnas: 7 });
+  assert.strictEqual(v.filas[0].length, 3, 'las partes retiradas tambien cuentan: su hueco sigue ahi');
+  pasa(v);
+
+  // Y la cadena entera con operaciones permitidas: quitar la ultima fila y volver a anadir una.
+  v = Edicion.aplicar(v, 'quitar-fila', { fila: 0 }, { campo: CAMPO, modelos });
+  assert.deepStrictEqual(v.filas, []);
+  pasa(v);
+  v = Edicion.aplicar(v, 'anadir-fila', {}, { campo: CAMPO, modelos });
+  assert.strictEqual(v.filas[0].length, 3);
+  pasa(v);
+
+  // Sin estructura, la fila nace como siempre: con el ancho de la tabla o con el recordado.
+  const libre = Edicion.aplicar({ filas: [] }, 'anadir-fila', {}, { campo: CAMPO_SIN_MODELO, columnas: 7 });
+  assert.strictEqual(libre.filas[0].length, 7);
+});
+
+prueba('una estructura propia se mide con el sentido EN VIGOR, no con el de omision de su tipo', () => {
+  // `valor.estructura` guarda las partes y no el sentido, asi que el sentido es el del modelo al que
+  // apunta el campo. Medirla con el de omision aceptaria unos anchos que luego reparten las columnas
+  // que no son, y rechazaria por «el maximo son 12» una estructura de veinte filas que cabe de sobra.
+  const aLoAlto = mapaDe(modelo({ sentido: 'filas', partes: [{ id: 'z', etiqueta: 'Z' }] }));
+  assert.strictEqual(MT.sentidoVigente(CAMPO, aLoAlto), 'filas');
+  assert.strictEqual(MT.sentidoVigente(CAMPO_SIN_MODELO, aLoAlto), 'columnas', 'sin modelo, el de omision del tipo');
+
+  const conAncho = { estructura: { partes: [{ id: 'a', etiqueta: 'A', ancho: 3 }] }, filas: [[c('x')]] };
+  const m = Est.motivoDeCampo(CAMPO, conAncho, { modelos: aLoAlto });
+  assert.ok(m && m.includes('ancho'), 'se ha aceptado un ancho en una parte que es una fila: ' + m);
+  // Y el mismo valor, con el modelo a lo ancho, se guarda.
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, conAncho, { modelos: mapaDe(modelo()) }), null);
+
+  const veinte = { estructura: { partes: Array.from({ length: 20 }, (_, i) => ({ id: 'p' + i, etiqueta: 'P' })) }, filas: [] };
+  assert.strictEqual(Est.motivoDeCampo(CAMPO, veinte, { modelos: aLoAlto }), null, 'veinte filas caben de sobra');
+  const aLoAncho = Est.motivoDeCampo(CAMPO, veinte, { modelos: mapaDe(modelo()) });
+  assert.ok(aLoAncho && aLoAncho.includes(String(MT.MAX_PARTES_ANCHO)), aLoAncho);
+});
+
 // ---------------------------------------------------------------- 8. LA PUERTA DE ACEPTACION
 
 prueba('sin modelo y sin estructura, el PDF sale byte a byte como antes de que el modelo existiera', () => {

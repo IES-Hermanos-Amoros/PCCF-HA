@@ -267,7 +267,7 @@ function seccion(sec, valores, numero, nivel, ctx) {
 
 // Lo que la plantilla dice y el valor no, de una vez por documento: la estructura de la ficha de
 // situacion de aprendizaje y los modelos de tabla. Es el `ctx` del PDF, con lo mismo dentro.
-const contexto = (plantilla) => ({ estructuraFicha: plantilla.estructuraFicha, modelos: plantilla.modelos });
+const contexto = (plantilla) => ({ estructuraFicha: plantilla.estructuraFicha, modelos: MT.modelosDe(plantilla) });
 
 function cuerpo({ plantilla, datos, instancias }) {
   const ctx = contexto(plantilla);

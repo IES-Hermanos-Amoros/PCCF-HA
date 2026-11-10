@@ -565,7 +565,7 @@ const PATCH = conErrores(async (peticion, parametros) => {
   const { fallo: falloValores } = revisarValores(cuerpo.valores, {
     seccion, info, contexto, guardados,
     estructuraFicha: documento.plantilla && documento.plantilla.estructuraFicha,
-    modelos: documento.plantilla && documento.plantilla.modelos,
+    modelos: ModelosTabla.modelosDe(documento.plantilla),
   });
   if (falloValores) return falloValores;
   const valores = { ...guardados, ...alGuardar(cuerpo.valores, { info, guardados }) };
