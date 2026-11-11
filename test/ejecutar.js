@@ -50,6 +50,7 @@ const SUITES = [
   // --- E2: quién eres y qué llevas ----------------------------------------
   { archivo: 'test/sesiones.js', nombre: 'identidad: invitación, acceso y sesión' },
   { archivo: 'test/asignacion.js', nombre: 'reparto de unidades al profesorado' },
+  { archivo: 'test/asignaciones.js', nombre: 'asignación de apartados comunes a personas' },
 
   // --- E3: escribir ------------------------------------------------------
   { archivo: 'test/edicion.js', nombre: 'edición de apartados y conflictos' },

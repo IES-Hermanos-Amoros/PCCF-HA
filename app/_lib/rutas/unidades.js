@@ -186,4 +186,4 @@ const PUT = conErrores(async (peticion, parametros) => {
   }, { headers: { 'Cache-Control': 'no-store' } });
 });
 
-module.exports = { GET, PUT, puedeRepartir };
+module.exports = { GET, PUT, puedeRepartir, personasQueDanClase };

@@ -107,6 +107,8 @@ título. Omitirlo significa «apartado común del documento».
 | `GET /api/documentos/[id]/docx?estado=&unidad=` | lo mismo en Word | E1 |
 | `GET /api/documentos/[id]/unidades` | el reparto: las unidades con sus docentes, las personas que pueden llevarlas y **cuántas unidades no tiene nadie** | E2 |
 | `PUT /api/documentos/[id]/unidades/[unidad]/docentes` | cambia quién lleva esa unidad. Cuerpo: `{ docentes: [id] }`, la lista completa | E2 |
+| `GET /api/documentos/[id]/asignaciones` | quién lleva cada **apartado común**: los apartados asignables (`seccion`, `titulo`, `nivel`, `personas`), las personas que pueden llevarlos, el `resumen` y, en `mios`, lo que puede editar quien pregunta (`editaTodo`, `soloLectura`, sus `unidades` y sus `apartados` asignados). La ve quien ve el documento; `puedeAsignar` dice si los controles van habilitados | R1 |
+| `PUT /api/documentos/[id]/asignaciones?seccion=` | cambia quién lleva ese apartado. Cuerpo: `{ personas: [id] }`, la lista completa. La jefatura del departamento y el soporte, en su departamento | R1 |
 | `PATCH /api/documentos/[id]/apartado?seccion=&unidad=` | guarda esa rama. Cuerpo: `{ valores, esperaUpdatedAt }`, con **solo los campos que se han tocado**. Acepta texto, ponderaciones, fichas de situación de aprendizaje, **tablas** y **tablas de clave y valor** (ver «Tablas y campos creados en la aplicación»); los demás tipos todavía no. Devuelve 409 si no cuadra la versión. La lectura del mismo apartado trae además `iniciales`: con qué abrir cada campo de tabla que todavía no tiene valor | E3 |
 | `GET /api/documentos/[id]/validaciones` | los avisos agrupados por unidad, con quién lleva cada una, el recuento y si el documento se puede aprobar. Mide con **las comprobaciones que tenga configuradas el documento** (`/comprobaciones`): lleva el `convenioCe` con el que ha contado los criterios y las `desactivadas`, porque un panel sin avisos porque todo está bien y uno sin avisos porque alguien apagó las comprobaciones son la misma pantalla y no son lo mismo | E4·E7 |
 | `GET /api/documentos/[id]/coordinacion` | la matriz **unidad × bloque**: una fila por módulo o materia con quién lo lleva, una columna por bloque (que viaja **una vez**, no una por unidad) y en cada cruce cómo va esa rama: `estado` —los cinco del árbol, con `errores`— más los recuentos de los que sale (`apartados`, `conContenido`, `revisados`, `errores`, `avisos`) y el `destino` al que lleva el clic. **No lleva contenido**: ni un `valores`. El estado sale de lo que ya se sirve —`relleno` y `origen` de `/arbol`, y los avisos del MISMO cálculo que `/validaciones`, que viajan también como `cuenta` y `puedeAprobarse`—, así que no puede discrepar de ninguna de las dos. Un documento sin unidades responde `modo: 'comun'`: una fila por apartado de primer nivel y la jefatura del departamento como responsable. La ve quien ve el documento | E7 |
@@ -576,3 +578,32 @@ El número de versión no se reutiliza al borrar: la siguiente subida es siempre
 
 La pantalla es `/versiones/[id]` (`app/_componentes/Versiones.js`), enlazada desde la portada del
 documento; una versión alternativa se abre en lectura con un aviso arriba.
+
+## Asignar apartados comunes a personas (`/asignaciones`)
+
+Los módulos se reparten por unidad (`PUT .../unidades/[unidad]/docentes`). Los apartados **comunes** del
+documento —fuera de los módulos— los edita la jefatura del departamento, pero algunos requieren
+colaboración: `PUT .../asignaciones?seccion=` deja que la jefatura (o el soporte) se los dé a personas
+concretas. La regla de edición no cambia: `reglaEdicion` ya contaba con `tieneApartadoAsignado` sobre
+`documento.asignaciones`, que es `{ idApartado: [idUsuario] }`; esto es lo que lo rellena.
+
+- **Qué se puede asignar.** Solo los apartados vigentes de la plantilla que edita la jefatura
+  (`edita: 'jefe_departamento'`, también por herencia del bloque) y que no son un módulo ni el bloque que
+  los agrupa. Los de `docentes_del_modulo` se reparten por unidad y no hay otro valor delegable. Un
+  apartado retirado no existe para la ruta. Asignar un apartado de primer nivel asigna también sus
+  subapartados, igual que en el resto de la aplicación.
+- **`seccion` va en la consulta**, no en el camino, porque los ids de apartado llevan barras.
+- **La lista completa**, por lo mismo que en las unidades: la última escritura impone un reparto que
+  alguien eligió entero. Una lista vacía quita la asignación y no deja la clave. Si otra escritura mueve el
+  documento mientras tanto, se relee y se reaplica este apartado sobre lo nuevo, para no deshacer lo de
+  otro apartado.
+- **Quién puede llevarlos.** Las mismas personas que pueden llevar un módulo: activas, del departamento del
+  documento y que dan clase (`docente` o `jefe_departamento`). Si una sola no vale, 400 con `invalidos` y
+  no se guarda ninguna.
+- **El id de usuario** se lee con `idDeUsuario` (`core/permisos.js`), la única forma: es lo que se guarda y
+  lo que compara la regla de edición.
+- **Errores.** 401 sin sesión; 404 si el documento es de otro departamento, o el apartado no existe o no es
+  asignable; 403 si lo ve pero no asigna (docente, jefatura de estudios); 400 si el cuerpo o las personas
+  están mal.
+- **Lo que ve cada docente** viaja en `mios` del GET: sus módulos, sus apartados asignados, y los avisos
+  `editaTodo` (jefatura y soporte) y `soloLectura` (jefatura de estudios). Todo lo demás es solo lectura.

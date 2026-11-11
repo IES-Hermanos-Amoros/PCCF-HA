@@ -735,6 +735,16 @@ prueba('reparte las unidades la jefatura del departamento, y el soporte', () => 
   assert.strictEqual(P.puedeRepartirUnidades(null, donde), false, 'ni sin usuario');
 });
 
+prueba('asigna los apartados comunes quien reparte las unidades: jefatura del departamento y soporte', () => {
+  const donde = { departamento: DEP };
+  assert.strictEqual(P.puedeAsignarApartados(usuario('jefe_departamento'), donde), true);
+  assert.strictEqual(P.puedeAsignarApartados(usuario('admin'), donde), true);
+  assert.strictEqual(P.puedeAsignarApartados(usuario('docente'), donde), false);
+  assert.strictEqual(P.puedeAsignarApartados(usuario('jefe_estudios'), donde), false);
+  assert.strictEqual(P.puedeAsignarApartados(usuario('jefe_departamento'), { departamento: 'matematicas' }), false);
+  assert.strictEqual(P.puedeAsignarApartados(null, donde), false);
+});
+
 // ----------------------------------------------------------------- el foco de una confirmación
 //
 // Las tres confirmaciones en dos pasos de la aplicación comparten la decisión de a quién le toca el

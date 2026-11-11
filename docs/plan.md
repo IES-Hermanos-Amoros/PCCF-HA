@@ -538,3 +538,25 @@ peor caso el grupo se queda sin activa y nunca con dos, que es lo que duplicarí
 alternativa pide confirmación explícita en el cuerpo y no se permite sobre la activa. Las reglas de
 quién puede están en `core/permisos.js` (`puedeActivarVersion`, `puedeBorrarVersion`), separadas
 aunque hoy respondan lo mismo, porque activar es reversible y borrar no.
+
+## Reparto de apartados comunes (R1)
+
+Cada profesor edita su parte de la programación. Los **módulos** se reparten por unidad desde el E2. Los
+**apartados comunes** (fuera de los módulos, `edita: 'jefe_departamento'`) tenían la regla
+(`tieneApartadoAsignado`, `documento.asignaciones`) pero ninguna forma de darlos; R1 añade la ruta
+`/api/documentos/[id]/asignaciones` (`docs/api.md`), la regla `puedeAsignarApartados` en
+`core/permisos.js` —hoy igual que repartir unidades, y aparte por ser otra pregunta— y una sección en la
+pantalla de Reparto.
+
+- Se delega solo lo que edita la jefatura: lo demás ya se reparte por unidad o no es delegable.
+- Las asignaciones **viajan al curso siguiente** (`arrastre.js`) y **se limpian al borrar** un apartado
+  retirado con sus subapartados (`estructura.js`); retirar sin borrar las conserva por si se restaura.
+  Las dos cosas están ahora cubiertas en `test/asignaciones.js`.
+- Una persona dada de baja o trasladada sigue en la lista guardada pero no cuenta como quien lleva el
+  apartado: se filtra al leer, como en las unidades.
+
+La pantalla de Reparto lleva debajo de la matriz de módulos `app/_componentes/ApartadosComunes.js`: «Lo
+que puedes editar» (módulos y apartados asignados a quien mira, o «todo» para la jefatura y el soporte, o
+solo lectura para la jefatura de estudios; sale de `mios` en el GET, la pantalla no recalcula la regla) y
+la matriz apartados × personas, con la misma forma de guardar que la de módulos (lista completa, casillas
+con `aria-disabled` cuando no se puede asignar, 400 dicho como «no se ha guardado nada»).
