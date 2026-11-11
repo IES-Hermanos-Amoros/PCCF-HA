@@ -130,6 +130,14 @@
     return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
   }
 
+  // Quién decide qué personas llevan cada apartado COMÚN del documento (los que edita la jefatura y
+  // están fuera de los módulos), cuando requieren colaboración. El criterio es el del reparto de
+  // unidades, pero es otra pregunta: si un día cambia una, la otra no tiene por qué enterarse.
+  function puedeAsignarApartados(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
+  }
+
   // Quién cambia la ESTRUCTURA del documento: renombrar un apartado, añadir
   // uno, moverlo o retirarlo (core/plantilla.js). La jefatura del departamento
   // —que es quien responde de qué apartados tiene la programación— y el
@@ -231,6 +239,7 @@
     idDeUsuario,
     estaActivo,
     puedeRepartirUnidades,
+    puedeAsignarApartados,
     puedeCambiarEstructura,
     puedeConfigurarComprobaciones,
   };

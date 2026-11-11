@@ -486,3 +486,21 @@ Está recogido en [`mockup-v2/CAMBIOS.md`](mockup-v2/CAMBIOS.md) y no bloquea na
 - **qué pasa con los documentos de cursos ya aprobados** cuando cambia la plantilla: E6;
 - **los códigos de módulo** de DAW y SMR están puestos de memoria y hay que confirmarlos contra los
   reales decretos. No bloquea: el id interno no depende del código.
+
+---
+
+## Reparto de apartados comunes (R1)
+
+Cada profesor edita su parte de la programación. Los **módulos** se reparten por unidad desde el E2. Los
+**apartados comunes** (fuera de los módulos, `edita: 'jefe_departamento'`) tenían la regla
+(`tieneApartadoAsignado`, `documento.asignaciones`) pero ninguna forma de darlos; R1 añade la ruta
+`/api/documentos/[id]/asignaciones` (`docs/api.md`), la regla `puedeAsignarApartados` en
+`core/permisos.js` —hoy igual que repartir unidades, y aparte por ser otra pregunta— y una sección en la
+pantalla de Reparto.
+
+- Se delega solo lo que edita la jefatura: lo demás ya se reparte por unidad o no es delegable.
+- Las asignaciones **viajan al curso siguiente** (`arrastre.js`) y **se limpian al borrar** un apartado
+  retirado con sus subapartados (`estructura.js`); retirar sin borrar las conserva por si se restaura.
+  Las dos cosas están ahora cubiertas en `test/asignaciones.js`.
+- Una persona dada de baja o trasladada sigue en la lista guardada pero no cuenta como quien lleva el
+  apartado: se filtra al leer, como en las unidades.
