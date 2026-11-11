@@ -19,6 +19,7 @@ const { aMotor } = require('../../../core/documento');
 const { obtenerRepositorio } = require('../repositorio');
 const { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO } = require('../usuario');
 const { RANGO, PUEDEN_INVITAR } = require('../invitaciones');
+const { esActiva } = require('../../../core/versiones');
 
 // ---------------------------------------------------------------- errores
 
@@ -86,7 +87,12 @@ const texto = (cuerpo, campo) => {
 //
 // Devuelve { fallo } o { usuario, documento, repo }. Se devuelve el `Response` en lugar de lanzar
 // para que cada ruta siga siendo una función que devuelve respuestas y se pueda leer de arriba abajo.
-async function abrirDocumento(peticion, parametros) {
+//
+// UNA VERSIÓN ALTERNATIVA SOLO SE LEE. Toda petición que no sea GET sobre un documento que no es la
+// versión activa se corta aquí con un 409, de modo que ninguna ruta de escritura tiene que
+// acordarse de comprobarlo. Las rutas de versiones piden `{ permiteAlternativa: true }`: son las
+// únicas que escriben sobre ellas (activarlas, borrarlas).
+async function abrirDocumento(peticion, parametros, { permiteAlternativa = false } = {}) {
   const usuario = await usuarioDeLaPeticion(peticion);
   if (!usuario) return { fallo: SIN_IDENTIFICAR() };
 
@@ -104,6 +110,16 @@ async function abrirDocumento(peticion, parametros) {
 
   if (!documento || !C.puedeVer(usuario, documento)) {
     return { fallo: noEncontrado('No existe ese documento, o no es de tu departamento.') };
+  }
+
+  if (!permiteAlternativa && peticion.method !== 'GET' && !esActiva(documento)) {
+    return {
+      fallo: fallo(
+        409, 'version_alternativa',
+        'Esta es una versión alternativa y no se edita: actívala primero desde la lista de versiones.',
+        { documentoId: String(documento._id) },
+      ),
+    };
   }
 
   // LA ESTRUCTURA RETIRADA SE PODA AQUÍ, UNA VEZ.
@@ -211,6 +227,7 @@ const comprobacionesDe = (documento) => Val.normalizarConfig(documento && docume
 function puedeEditarApartado({ usuario, documento, unidad, seccion, edita, contenido = true }) {
   if (!usuario || !documento) return false;
   if (!C.puedeVer(usuario, documento)) return false;
+  if (!esActiva(documento)) return false;
   // Un nodo que solo agrupa (la raíz, un bloque de unidades, la unidad misma) no se edita: se
   // resume. Es el `esContenido` del mockup, y sin esta línea el árbol enseñaría un lápiz sobre una
   // carpeta.

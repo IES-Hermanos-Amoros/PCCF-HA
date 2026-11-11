@@ -20,9 +20,10 @@
 
 'use strict';
 
+const { esActiva } = require('../../../core/versiones');
 const { exportarDocx } = require('../../../motor/exportar-docx');
 const {
-  conErrores, abrirDocumento, leerParaElMotor, tituloDelTomo, nombreDeArchivo,
+  conErrores, fallo, abrirDocumento, leerParaElMotor, tituloDelTomo, nombreDeArchivo,
   estadoPedido, unidadPedida,
 } = require('./comun');
 
@@ -32,6 +33,7 @@ const GET = conErrores(async (peticion, parametros) => {
   const abierto = await abrirDocumento(peticion, parametros);
   if (abierto.fallo) return abierto.fallo;
   const { documento, repo } = abierto;
+  if (!esActiva(documento)) return fallo(409, 'version_alternativa', 'Solo se exporta la versión activa del documento. Activa esta versión primero si quieres exportarla.');
 
   const url = new URL(peticion.url);
   const { fallo: falloEstado } = estadoPedido(url, documento);

@@ -30,6 +30,7 @@
 const { importarDocx } = require('../../../motor/importar-docx');
 const { conciliar, ETIQUETAS_COMO } = require('../../../core/conciliar');
 const { aFilas, idDeTitulo } = require('../../../core/documento');
+const { esActiva, versionesDe, siguienteVersion } = require('../../../core/versiones');
 const { obtenerRepositorio } = require('../repositorio');
 const { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO } = require('../usuario');
 const { conErrores, fallo, malaPeticion, sinPlantilla } = require('./comun');
@@ -208,12 +209,20 @@ const POST = conErrores(async (peticion) => {
   const buffer = Buffer.from(await archivo.arrayBuffer());
   const resultado = await guardarImportacion({
     buffer, origen: archivo.name || null, tipo, ciclo, curso, departamento, forzar, inicio,
+    subidoPor: usuario._id,
   });
   if (resultado.error) {
     return fallo(400, 'peticion', resultado.error.mensaje, resultado.error.extra);
   }
   return Response.json(
-    { documento: sinPlantilla(resultado.documento), resumen: resultado.resumen },
+    {
+      documento: sinPlantilla(resultado.documento),
+      resumen: resultado.resumen,
+      // Si ya había un documento de este tipo, ciclo, curso y departamento, lo subido entra como versión
+      // alternativa y no activa; lo que había no se toca (docs/plan.md, «Versiones del documento»).
+      alternativa: !esActiva(resultado.documento),
+      version: resultado.documento.version,
+    },
     { status: 201, headers: { 'Cache-Control': 'no-store' } },
   );
 });
@@ -232,7 +241,7 @@ const POST = conErrores(async (peticion) => {
 // sube un usuario empieza su historia, y el curso siguiente se crea con /siguiente-curso.
 async function guardarImportacion({
   buffer, origen, tipo, ciclo, curso, departamento, forzar,
-  inicio = Date.now(), anteriorId = null, repo = obtenerRepositorio(),
+  inicio = Date.now(), anteriorId = null, repo = obtenerRepositorio(), subidoPor = null, versionar = true,
 }) {
   const rechazo = (mensaje, extra = {}, causa = undefined) => ({ error: { mensaje, extra, causa } });
 
@@ -339,7 +348,18 @@ async function guardarImportacion({
     conciliar: (_titulo, instancia) => idPorInstancia.get(instancia),
   });
 
-  const documento = await repo.documentos.crear(filas.documento);
+  // Si ya hay un documento con esta clave, lo subido no lo pisa: entra como versión alternativa. Con
+  // `versionar: false` (la carga de scripts/cargar-reales.js, que sustituye lo anterior) nace activo.
+  const previas = versionar
+    ? versionesDe(filas.documento, await repo.documentos.listar({ tipo, curso, departamento }))
+    : [];
+  const alternativa = previas.length > 0;
+  const documento = await repo.documentos.crear({
+    ...filas.documento,
+    activa: !alternativa,
+    version: siguienteVersion(previas),
+    subidoPor,
+  });
   try {
     if (filas.unidades.length) await repo.unidades.crearMuchos(documento._id, filas.unidades);
     if (filas.apartados.length) await repo.apartados.crearMuchos(documento._id, filas.apartados);

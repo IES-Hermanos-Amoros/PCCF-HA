@@ -23,9 +23,10 @@
 
 'use strict';
 
+const { esActiva } = require('../../../core/versiones');
 const { buildDocDefinition } = require('../../../motor/render-generico');
 const {
-  conErrores, abrirDocumento, leerParaElMotor, tituloDelTomo, nombreDeArchivo,
+  conErrores, fallo, abrirDocumento, leerParaElMotor, tituloDelTomo, nombreDeArchivo,
   estadoPedido, unidadPedida, comprobacionesDe, SUBTITULO,
 } = require('./comun');
 
@@ -34,6 +35,7 @@ async function definicionDe(peticion, parametros) {
   const abierto = await abrirDocumento(peticion, parametros);
   if (abierto.fallo) return { fallo: abierto.fallo };
   const { documento, repo } = abierto;
+  if (!esActiva(documento)) return { fallo: fallo(409, 'version_alternativa', 'Solo se exporta la versión activa del documento. Activa esta versión primero si quieres exportarla.') };
 
   const url = new URL(peticion.url);
   const { fallo: falloEstado, estado } = estadoPedido(url, documento);

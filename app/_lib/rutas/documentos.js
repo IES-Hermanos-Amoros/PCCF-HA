@@ -22,6 +22,7 @@
 'use strict';
 
 const C = require('../../../core/permisos');
+const { esActiva } = require('../../../core/versiones');
 const { obtenerRepositorio } = require('../repositorio');
 const { usuarioDeLaPeticion } = require('../usuario');
 const { conErrores, sinPlantilla, SIN_IDENTIFICAR } = require('./comun');
@@ -48,7 +49,8 @@ const GET = conErrores(async (peticion) => {
 
   const repo = obtenerRepositorio();
   const documentos = (await repo.documentos.listar(filtro))
-    .filter((d) => C.puedeVer(usuario, d))
+    // Solo la versión activa: las alternativas se piden desde /versiones.
+    .filter((d) => esActiva(d) && C.puedeVer(usuario, d))
     .map(sinPlantilla);
 
   return Response.json({ documentos }, { headers: { 'Cache-Control': 'no-store' } });

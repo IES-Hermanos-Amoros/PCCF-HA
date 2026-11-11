@@ -486,3 +486,40 @@ Está recogido en [`mockup-v2/CAMBIOS.md`](mockup-v2/CAMBIOS.md) y no bloquea na
 - **qué pasa con los documentos de cursos ya aprobados** cuando cambia la plantilla: E6;
 - **los códigos de módulo** de DAW y SMR están puestos de memoria y hay que confirmarlos contra los
   reales decretos. No bloquea: el id interno no depende del código.
+
+---
+
+## 8. Versiones del documento
+
+Reimportar un Word para un curso que ya tiene documento no lo pisa ni lo duplica: entra como una
+**versión alternativa**, no activa, y el documento que había sigue exactamente como estaba.
+
+**Qué es «el mismo documento».** Tipo + curso + ciclo + departamento. Todos los documentos con esa
+clave son versiones del mismo y exactamente uno está activo. No hay un campo «grupo» que mantener: el
+grupo es la clave, y se calcula (`core/versiones.js`, `versionesDe`). Así un documento guardado antes
+de que existieran las versiones ya pertenece a su grupo sin migrar nada.
+
+**Campos nuevos en `documentos`**, todos opcionales:
+
+| Campo | Qué es |
+|---|---|
+| `activa` | `false` en una alternativa. **Ausente es activa**, como `activo` en las personas: los documentos anteriores no lo llevan y no deben quedarse fuera |
+| `version` | número de orden dentro del grupo, desde 1. Ausente es 1 |
+| `subidoPor` | `_id` de quien subió el Word. Su fecha es `creado` y el nombre del fichero, `origen` |
+
+**Qué hace solo la versión activa.** Es la única que se lista (`GET /api/documentos`), se edita, se
+exporta (PDF y Word) y se arrastra al curso siguiente. Las alternativas se pueden abrir en lectura
+(`/arbol`, `/apartado`, `/estado`…) con `puedeEditar` a falso. La comprobación está en un solo sitio,
+`abrirDocumento` (`app/_lib/rutas/comun.js`): cualquier petición que no sea `GET` sobre una
+alternativa responde 409 `version_alternativa`, de modo que una ruta de escritura nueva no tiene que
+acordarse. Las rutas de versiones piden expresamente `permiteAlternativa`.
+
+**Por qué la clave y no un id de grupo.** Un id de grupo repartido por los documentos obliga a
+migrar los existentes y a decidir qué hacer cuando dos grupos se funden. La clave ya es la regla que
+usa el arrastre para no crear dos veces el curso siguiente.
+
+**Cargas por script.** `scripts/cargar-reales.js` sustituye lo anterior a propósito (borra los
+previos tras cargar), así que importa con `versionar: false` y el documento nace activo.
+
+**Lo que no se resuelve.** `anteriorId` del curso siguiente apunta al documento que era activo al
+arrastrar; si luego se activa otra versión, el enlace no se mueve.

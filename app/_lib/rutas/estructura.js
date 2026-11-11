@@ -81,6 +81,7 @@
 'use strict';
 
 const C = require('../../../core/permisos');
+const { esActiva } = require('../../../core/versiones');
 const Plantilla = require('../../../core/plantilla');
 const Campos = require('../../../core/campos');
 const Arbol = require('../../../core/arbol');
@@ -385,7 +386,7 @@ const GET = conErrores(async (peticion, parametros) => {
     {
       documentoId: documento._id,
       plantillaVersion: Number(documento.plantillaVersion) || 1,
-      puedeCambiar: C.puedeCambiarEstructura(usuario, documento),
+      puedeCambiar: esActiva(documento) && C.puedeCambiarEstructura(usuario, documento),
       unidades: unidades.length,
       apartados: Plantilla.estructura(plantillaCompleta),
       // Cada retirado lleva `contenido`: lo que se destruiría si se borrara (`apartados` con su

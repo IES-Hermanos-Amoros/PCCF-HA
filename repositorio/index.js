@@ -28,7 +28,7 @@ const CAMPOS = {
   // juntos siempre, y porque así el arrastre se los lleva sin tener que acordarse de los tres: es
   // la misma decisión que puso el registro de cambios de la estructura DENTRO de `plantilla`
   // (core/plantilla.js, «el registro viaja dentro de plantilla a propósito»).
-  documento: ['tipo', 'ciclo', 'curso', 'departamento', 'estado', 'plantilla', 'plantillaVersion', 'anteriorId', 'asignaciones', 'origen', 'comprobaciones'],
+  documento: ['tipo', 'ciclo', 'curso', 'departamento', 'estado', 'plantilla', 'plantillaVersion', 'anteriorId', 'asignaciones', 'origen', 'comprobaciones', 'activa', 'version', 'subidoPor'],
   unidad: ['titulo', 'num', 'grupo', 'docentes'],
   apartado: ['valores', 'origen', 'revisadoPor', 'revisadoEn'],
   compartido: ['bloque', 'seccion', 'comun', 'responsable', 'modo', 'version'],

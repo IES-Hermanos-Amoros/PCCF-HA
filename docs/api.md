@@ -538,3 +538,19 @@ servidor **no escribe nada** y devuelve 409. Sin eso, dos docentes —o dos pest
 persona— editando el mismo apartado pierden uno de los dos trabajos sin que nadie se entere, que es
 el peor fallo posible en una herramienta donde la gente escribe su programación. Lo resuelve
 `repositorio/`, que ya lo trae hecho y probado.
+
+## Versiones del documento
+
+El porqué, en `docs/plan.md` §8. Lo que cambia en la API:
+
+**`POST /api/documentos/importar`** responde además `alternativa` (booleano) y `version` (número). Si
+ya existe un documento con el mismo tipo, curso, ciclo y departamento, lo subido se guarda como
+versión alternativa (`activa: false` en el documento) y el existente no se toca; si no, nace activo.
+
+**`GET /api/documentos`** lista solo la versión activa de cada documento. El documento lleva `activa`,
+`version` y `subidoPor` cuando los tiene (ausentes, es la versión activa y la 1).
+
+**409 `version_alternativa`**: se intenta escribir en una versión alternativa (cualquier petición que
+no sea `GET` sobre ella, incluido `siguiente-curso`) o exportarla (`/pdf`, `/docx`). Lleva
+`documentoId`. Se arregla activándola primero. Es distinto del `conflicto` de concurrencia, y la
+interfaz los separa por el código.

@@ -73,6 +73,9 @@ const SUITES = [
   { archivo: 'test/coordinacion.js', nombre: 'coordinación y comentarios' },
   { archivo: 'test/reglas.js', nombre: 'comprobaciones configurables del documento' },
 
+  // --- versiones del documento ---------------------------------------------
+  { archivo: 'test/versiones.js', nombre: 'versiones del documento: alternativas, activa y copia del Word' },
+
   // --- agrupar tablas por su forma (solo propone) ---------------------------
   { archivo: 'test/tablas-forma.js', nombre: 'propuesta de grupos de tablas por forma' },
 ];

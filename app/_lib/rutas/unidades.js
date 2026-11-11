@@ -48,6 +48,7 @@
 'use strict';
 
 const C = require('../../../core/permisos');
+const { esActiva } = require('../../../core/versiones');
 const { SIN_PERMISO } = require('../usuario');
 const {
   fallo, malaPeticion, noEncontrado, conErrores, abrirDocumento,
@@ -60,7 +61,7 @@ const ROLES_QUE_DAN_CLASE = ['docente', 'jefe_departamento'];
 // Quién reparte. La pertenencia al departamento ya la comprueba `puedeVer`, que es lo primero que
 // hace `abrirDocumento`, así que aquí basta con mirar el rol.
 // La regla vive en core/permisos.js, con las demás.
-const puedeRepartir = (usuario, documento) => C.puedeRepartirUnidades(usuario, documento);
+const puedeRepartir = (usuario, documento) => esActiva(documento) && C.puedeRepartirUnidades(usuario, documento);
 
 // Una persona está activa salvo que se la haya marcado como desactivada. `activo` es un campo del
 // repositorio desde el E2, y lo pone la gestión de personas; ausente significa activa.

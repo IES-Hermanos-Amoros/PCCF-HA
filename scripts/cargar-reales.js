@@ -201,6 +201,7 @@ async function repartirModulos(repo, documentos) {
       curso: entrada.curso,
       departamento: DEPARTAMENTO,
       forzar: forzar || !!entrada.forzar,
+      versionar: false,
       inicio,
       anteriorId: anterior ? anterior._id : null,
       repo,
