@@ -9,7 +9,7 @@ const { randomUUID } = require('node:crypto');
 const { ErrorConflicto, ErrorDuplicado } = require('./errores');
 
 const copia = (valor) => structuredClone(valor);
-const HIJOS = ['unidades', 'apartados', 'compartidos', 'comentarios'];
+const HIJOS = ['unidades', 'apartados', 'compartidos', 'comentarios', 'copias'];
 
 // Una lista con repetidos se rechaza antes de tocar nada: si se guardara la mitad, una importación a medias
 // quedaría indistinguible de una completa.
@@ -17,7 +17,7 @@ const hayRepetidos = (valores) => new Set(valores).size !== valores.length;
 
 function crear() {
   const tablas = {
-    documentos: [], unidades: [], apartados: [], compartidos: [], comentarios: [], usuarios: [],
+    documentos: [], unidades: [], apartados: [], compartidos: [], comentarios: [], copias: [], usuarios: [],
     invitaciones: [], sesiones: [],
   };
 
@@ -178,6 +178,33 @@ function crear() {
     },
   };
 
+  // La copia del .docx importado, una por documento. Se guarda una copia del buffer: quien lo pasó puede
+  // seguir usándolo sin tocar lo guardado.
+  const copias = {
+    guardar(documentoId, { nombre, contenido, subidoPor }) {
+      const nueva = {
+        _id: randomUUID(), documentoId, nombre, subidoPor, tamano: contenido.length, creado: new Date(),
+        contenido: Buffer.from(contenido),
+      };
+      tablas.copias = tablas.copias.filter((c) => c.documentoId !== documentoId);
+      tablas.copias.push(nueva);
+      const { contenido: _c, ...info } = nueva;
+      return copia(info);
+    },
+    info(documentoId) {
+      const registro = tablas.copias.find((c) => c.documentoId === documentoId);
+      if (!registro) return null;
+      const { contenido: _c, ...info } = registro;
+      return copia(info);
+    },
+    obtener(documentoId) {
+      const registro = tablas.copias.find((c) => c.documentoId === documentoId);
+      if (!registro) return null;
+      const { contenido, ...info } = registro;
+      return { ...copia(info), contenido: Buffer.from(contenido) };
+    },
+  };
+
   const usuarios = {
     crear(usuario) {
       if (tablas.usuarios.some((u) => u.email === usuario.email)) throw new ErrorDuplicado('ya hay un usuario con ese email');
@@ -275,7 +302,7 @@ function crear() {
     listar: (filtro) => de('sesiones', filtro).sort((x, y) => x.creado - y.creado),
   };
 
-  return { documentos, unidades, apartados, compartidos, comentarios, usuarios, invitaciones, sesiones };
+  return { documentos, unidades, apartados, compartidos, comentarios, copias, usuarios, invitaciones, sesiones };
 }
 
 module.exports = { crear };

@@ -20,6 +20,7 @@ const Apartado = require('../app/_lib/rutas/apartado');
 const Arrastre = require('../app/_lib/rutas/arrastre');
 const Pdf = require('../app/_lib/rutas/pdf');
 const Docx = require('../app/_lib/rutas/docx');
+const Copia = require('../app/_lib/rutas/copia');
 const Versiones = require('../core/versiones');
 
 const CLAVE_GLOBAL = '__pccf_repositorio__';
@@ -209,6 +210,46 @@ prueba('no se arrastra una alternativa al curso siguiente, y la activa sí', asy
   await esError(await Arrastre.CREAR(pet(`/api/documentos/${alt}/siguiente-curso`, u.jefa, { metodo: 'POST', cuerpo: {} }), { id: alt }), 409, 'version_alternativa');
   const ok = await Arrastre.CREAR(pet(`/api/documentos/${activa}/siguiente-curso`, u.jefa, { metodo: 'POST', cuerpo: {} }), { id: activa });
   assert.equal(ok.status, 201);
+});
+
+// ---------------------------------------------------------------- etapa 2: la copia del .docx
+
+prueba('importar guarda el .docx original como copia de seguridad, de cada versión', async () => {
+  const { repo, u } = await escenario();
+  const a = await docxDe('Primera');
+  const b = await docxDe('Segunda');
+  const r1 = await (await Importar.POST(subir(u.jefa, a))).json();
+  const r2 = await (await Importar.POST(subir(u.jefa, b))).json();
+  assert.equal(r1.resumen.copia, true);
+  assert.equal(r2.alternativa, true);
+  const c1 = await repo.copias.obtener(r1.documento._id);
+  const c2 = await repo.copias.obtener(r2.documento._id);
+  assert.ok(c1.contenido.equals(a));
+  assert.ok(c2.contenido.equals(b));
+  assert.equal(c1.nombre, 'memoria.docx');
+  assert.equal(c1.subidoPor, u.jefa._id);
+});
+
+prueba('GET /copia devuelve el Word tal como se subió, también de una alternativa, y respeta el departamento', async () => {
+  const { u } = await escenario();
+  const a = await docxDe('Primera');
+  const b = await docxDe('Segunda');
+  const r1 = (await (await Importar.POST(subir(u.jefa, a))).json()).documento._id;
+  const r2 = (await (await Importar.POST(subir(u.jefa, b))).json()).documento._id;
+  for (const [id, original] of [[r1, a], [r2, b]]) {
+    const res = await Copia.GET(pet(`/api/documentos/${id}/copia`, u.ana), { id });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type'), /wordprocessingml/);
+    assert.ok(Buffer.from(await res.arrayBuffer()).equals(original));
+  }
+  await esError(await Copia.GET(pet(`/api/documentos/${r1}/copia`, u.pepe), { id: r1 }), 404, 'no_encontrado');
+  await esError(await Copia.GET(pet(`/api/documentos/${r1}/copia`, null), { id: r1 }), 401, 'sin_identificar');
+});
+
+prueba('un documento sin copia (anterior a las versiones) da 404 en /copia', async () => {
+  const { repo, u } = await escenario();
+  const d = await repo.documentos.crear({ tipo: 'memoria', ciclo: null, curso: '2026-27', departamento: 'informatica', plantilla: PLANTILLA });
+  await esError(await Copia.GET(pet(`/api/documentos/${d._id}/copia`, u.jefa), { id: d._id }), 404, 'no_encontrado');
 });
 
 // ---------------------------------------------------------------- ejecución

@@ -73,6 +73,10 @@ const FILTROS = {
 // el registro no distinguiría a quien entró de quien nunca llegó a entrar.
 const ESTADOS_INVITACION = ['pendiente', 'usada', 'anulada'];
 
+// El tope de una copia: un Word de verdad pesa unos cientos de KB, y por encima de esto se acerca al límite de
+// 16 MB de un documento de Mongo con el sobrante de los metadatos.
+const TAMANO_MAXIMO_COPIA = 15 * 1024 * 1024;
+
 // Lo que tiene un apartado recién creado. Es una función y no una constante porque cada apartado debe recibir su
 // propio objeto: si dos apartados compartieran el mismo objeto `valores`, modificar uno cambiaría el otro.
 const porDefectoApartado = () => ({ valores: {}, origen: null, revisadoPor: null, revisadoEn: null });
@@ -271,6 +275,25 @@ function crearRepositorio({ adaptador }) {
       },
     },
 
+    // La copia de seguridad del .docx que se importó, una por documento. Va en su propia colección y no dentro
+    // del documento por el límite de 16 MB de un documento de Mongo, y para que ninguna lectura normal de
+    // documentos arrastre el fichero. `info` dice qué hay sin traer el contenido; `obtener` lo trae.
+    copias: {
+      guardar: async (documentoId, c) => {
+        if (!Buffer.isBuffer(c?.contenido)) throw new TypeError('contenido debe ser un Buffer');
+        if (c.contenido.length > TAMANO_MAXIMO_COPIA) {
+          throw new RangeError(`la copia pesa ${c.contenido.length} bytes y el máximo es ${TAMANO_MAXIMO_COPIA}`);
+        }
+        return a.copias.guardar(cadena(documentoId, 'documentoId'), {
+          nombre: typeof c.nombre === 'string' && c.nombre ? c.nombre : null,
+          subidoPor: c.subidoPor == null ? null : String(c.subidoPor),
+          contenido: c.contenido,
+        });
+      },
+      info: async (documentoId) => a.copias.info(cadena(documentoId, 'documentoId')),
+      obtener: async (documentoId) => a.copias.obtener(cadena(documentoId, 'documentoId')),
+    },
+
     usuarios: {
       crear: async (u) => a.usuarios.crear({ ...elegir(u, CAMPOS.usuario), email: cadena(u?.email, 'email') }),
       obtener: async (id) => a.usuarios.obtener(cadena(id, 'id')),
@@ -341,4 +364,4 @@ function crearRepositorio({ adaptador }) {
   };
 }
 
-module.exports = { crearRepositorio, ErrorConflicto, ErrorDuplicado, ESTADOS_INVITACION };
+module.exports = { crearRepositorio, ErrorConflicto, ErrorDuplicado, ESTADOS_INVITACION, TAMANO_MAXIMO_COPIA };

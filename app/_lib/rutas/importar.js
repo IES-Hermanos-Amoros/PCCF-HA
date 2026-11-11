@@ -354,6 +354,7 @@ async function guardarImportacion({
     ? versionesDe(filas.documento, await repo.documentos.listar({ tipo, curso, departamento }))
     : [];
   const alternativa = previas.length > 0;
+  let copiaGuardada = false;
   const documento = await repo.documentos.crear({
     ...filas.documento,
     activa: !alternativa,
@@ -364,6 +365,14 @@ async function guardarImportacion({
     if (filas.unidades.length) await repo.unidades.crearMuchos(documento._id, filas.unidades);
     if (filas.apartados.length) await repo.apartados.crearMuchos(documento._id, filas.apartados);
     if (filas.compartidos.length) await repo.compartidos.crearMuchos(documento._id, filas.compartidos);
+    // El Word original queda como copia de seguridad de esta versión (docs/plan.md §8). Si pasa del tope
+    // del repositorio la importación sigue valiendo y la respuesta dice que no hay copia.
+    try {
+      await repo.copias.guardar(documento._id, { nombre: origen, contenido: buffer, subidoPor });
+      copiaGuardada = true;
+    } catch (e) {
+      if (!(e instanceof RangeError)) throw e;
+    }
   } catch (e) {
     // Un documento a medias es peor que ninguno: sale en la lista y no se puede abrir bien. Se borra
     // lo que se haya escrito y se devuelve el error.
@@ -377,6 +386,8 @@ async function guardarImportacion({
     apartados: filas.apartados.length,
     compartidos: filas.compartidos.length,
     tardaMs: Date.now() - inicio,
+    // Si el Word original se ha guardado como copia de seguridad (GET /api/documentos/[id]/copia).
+    copia: copiaGuardada,
     // Los avisos del importador tal cual: son lo que quien sube el fichero tiene que revisar en el Word.
     avisos: informe.avisos,
     // Cómo se ha reconocido cada módulo. `como` son códigos estables; la etiqueta es la que se enseña.

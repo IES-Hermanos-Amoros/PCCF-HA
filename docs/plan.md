@@ -523,3 +523,11 @@ previos tras cargar), así que importa con `versionar: false` y el documento nac
 
 **Lo que no se resuelve.** `anteriorId` del curso siguiente apunta al documento que era activo al
 arrastrar; si luego se activa otra versión, el enlace no se mueve.
+
+**La copia del Word original.** Cada importación guarda el `.docx` tal como llegó, asociado a la
+versión que crea (`repo.copias`: `guardar`, `info`, `obtener`). Es una colección aparte y no un campo
+del documento por dos razones: un documento de Mongo no pasa de 16 MB y un Word puede pesar varios, y
+así ninguna lectura normal de documentos arrastra el fichero (`info` lo lee con proyección sin
+contenido). Se guarda una copia por documento y se borra con él. El tope es de 15 MB
+(`TAMANO_MAXIMO_COPIA`): por encima la importación sigue valiendo y la respuesta dice
+`resumen.copia: false`. Los documentos anteriores a las versiones no tienen copia.

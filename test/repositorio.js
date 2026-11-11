@@ -159,6 +159,27 @@ async function bateria(etiqueta, fabrica) {
     assert.equal(await repo.apartados.leer(d._id, 'modulos/x', 'm1'), null);
   });
 
+  await prueba('copias: guarda el .docx aparte, info no trae el contenido, obtener lo devuelve idéntico y se va con el documento', async (repo) => {
+    const d = await documento(repo);
+    const bytes = Buffer.from([0x50, 0x4b, 3, 4, 0, 255, 128, 7]);
+    assert.equal(await repo.copias.info(d._id), null);
+    assert.equal(await repo.copias.obtener(d._id), null);
+    const guardada = await repo.copias.guardar(d._id, { nombre: 'pd.docx', contenido: bytes, subidoPor: 'u1' });
+    assert.equal(guardada.contenido, undefined);
+    assert.equal(guardada.tamano, bytes.length);
+    const info = await repo.copias.info(d._id);
+    assert.deepEqual([info.nombre, info.subidoPor, info.tamano, info.contenido], ['pd.docx', 'u1', 8, undefined]);
+    const leida = await repo.copias.obtener(d._id);
+    assert.ok(Buffer.isBuffer(leida.contenido));
+    assert.ok(leida.contenido.equals(bytes));
+    assert.equal(leida.nombre, 'pd.docx');
+    // El documento no arrastra el fichero en sus lecturas normales.
+    assert.equal((await repo.documentos.obtener(d._id)).contenido, undefined);
+    await error(repo.copias.guardar(d._id, { nombre: 'x', contenido: 'no es un buffer' }));
+    await repo.documentos.borrar(d._id);
+    assert.equal(await repo.copias.info(d._id), null);
+  });
+
   await prueba('apartados.borrar destruye las filas de las secciones pedidas, de todas las unidades, y solo de ese documento', async (repo) => {
     const d = await documento(repo);
     const otro = await documento(repo);

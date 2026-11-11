@@ -554,3 +554,9 @@ versión alternativa (`activa: false` en el documento) y el existente no se toca
 no sea `GET` sobre ella, incluido `siguiente-curso`) o exportarla (`/pdf`, `/docx`). Lleva
 `documentoId`. Se arregla activándola primero. Es distinto del `conflicto` de concurrencia, y la
 interfaz los separa por el código.
+
+**`POST /api/documentos/importar`** guarda además el `.docx` subido como copia de seguridad de esa
+versión y lo dice en `resumen.copia`. **`GET /api/documentos/[id]/copia`** lo devuelve tal como se
+subió (`attachment`, con el número de versión en el nombre). Lo descarga quien ve el documento, sea la
+versión activa o una alternativa; 404 si esa versión no tiene copia (los documentos anteriores a las
+versiones no la tienen) o es de otro departamento.
