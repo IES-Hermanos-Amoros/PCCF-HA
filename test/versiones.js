@@ -21,6 +21,8 @@ const Arrastre = require('../app/_lib/rutas/arrastre');
 const Pdf = require('../app/_lib/rutas/pdf');
 const Docx = require('../app/_lib/rutas/docx');
 const Copia = require('../app/_lib/rutas/copia');
+const RutaVersiones = require('../app/_lib/rutas/versiones');
+const Permisos = require('../core/permisos');
 const Versiones = require('../core/versiones');
 
 const CLAVE_GLOBAL = '__pccf_repositorio__';
@@ -250,6 +252,145 @@ prueba('un documento sin copia (anterior a las versiones) da 404 en /copia', asy
   const { repo, u } = await escenario();
   const d = await repo.documentos.crear({ tipo: 'memoria', ciclo: null, curso: '2026-27', departamento: 'informatica', plantilla: PLANTILLA });
   await esError(await Copia.GET(pet(`/api/documentos/${d._id}/copia`, u.jefa), { id: d._id }), 404, 'no_encontrado');
+});
+
+// ---------------------------------------------------------------- etapa 3: listar, activar y borrar
+
+const versiones = (persona, id) => RutaVersiones.GET(pet(`/api/documentos/${id}/versiones`, persona), { id });
+const activar = (persona, id) => RutaVersiones.ACTIVAR(pet(`/api/documentos/${id}/activar`, persona, { metodo: 'POST' }), { id });
+const borrar = (persona, id, cuerpo) => RutaVersiones.BORRAR(pet(`/api/documentos/${id}`, persona, { metodo: 'DELETE', cuerpo }), { id });
+
+// Tres versiones de la misma memoria: la 1 activa y la 2 y la 3 alternativas.
+async function tresVersiones(u) {
+  const v1 = (await importar(u.jefa, 'Primera')).documento._id;
+  const v2 = (await importar(u.jefa, 'Segunda')).documento._id;
+  const v3 = (await importar(u.admin, 'Tercera')).documento._id;
+  return { v1, v2, v3 };
+}
+
+prueba('core/permisos: activar y borrar versiones, solo jefatura de su departamento y soporte', () => {
+  const doc = { departamento: 'informatica' };
+  const q = (rol, departamento) => ({ rol, departamento });
+  for (const f of [Permisos.puedeActivarVersion, Permisos.puedeBorrarVersion]) {
+    assert.equal(f(q('admin', 'otro'), doc), true);
+    assert.equal(f(q('jefe_departamento', 'informatica'), doc), true);
+    assert.equal(f(q('jefe_departamento', 'matematicas'), doc), false);
+    assert.equal(f(q('docente', 'informatica'), doc), false);
+    assert.equal(f(q('jefe_estudios', 'direccion'), doc), false);
+    assert.equal(f(null, doc), false);
+  }
+});
+
+prueba('GET /versiones lista las del grupo desde cualquiera de ellas: número, activa, quién subió y si hay copia', async () => {
+  const { u } = await escenario();
+  const { v1, v2, v3 } = await tresVersiones(u);
+  for (const desde of [v1, v3]) {
+    const res = await versiones(u.ana, desde);
+    assert.equal(res.status, 200);
+    const cuerpo = await res.json();
+    assert.deepEqual(cuerpo.versiones.map((v) => [v._id, v.version, v.activa]), [[v1, 1, true], [v2, 2, false], [v3, 3, false]]);
+    assert.equal(cuerpo.versiones[0].subidoPor.nombre, 'Jefatura');
+    assert.equal(cuerpo.versiones[2].subidoPor.nombre, 'Soporte');
+    assert.equal(cuerpo.versiones[0].subidoPor.email, undefined);
+    assert.ok(cuerpo.versiones.every((v) => v.copia && v.copia.tamano > 0));
+    // Un docente ve la lista pero no puede activar ni borrar ni subir.
+    assert.ok(cuerpo.versiones.every((v) => !v.puedeActivar && !v.puedeBorrar));
+    assert.equal(cuerpo.puedeSubir, false);
+  }
+  const jefa = await (await versiones(u.jefa, v1)).json();
+  assert.deepEqual(jefa.versiones.map((v) => [v.puedeActivar, v.puedeBorrar]), [[false, false], [true, true], [true, true]]);
+  assert.equal(jefa.puedeSubir, true);
+  await esError(await versiones(u.pepe, v1), 404, 'no_encontrado');
+  await esError(await versiones(null, v1), 401, 'sin_identificar');
+});
+
+prueba('activar: la elegida pasa a activa, la anterior queda como alternativa con sus ediciones y nada se borra', async () => {
+  const { repo, u } = await escenario();
+  const { v1, v2, v3 } = await tresVersiones(u);
+
+  // La activa se edita antes de cambiar de versión.
+  const lectura = await (await Apartado.GET(pet(`/api/documentos/${v1}/apartado?seccion=introduccion`, u.jefa), { id: v1 })).json();
+  const edicion = await Apartado.PATCH(
+    pet(`/api/documentos/${v1}/apartado?seccion=introduccion`, u.jefa, { metodo: 'PATCH', cuerpo: { valores: { texto: [{ type: 'p', text: 'Editada a mano' }] }, esperaUpdatedAt: lectura.updatedAt } }),
+    { id: v1 },
+  );
+  assert.equal(edicion.status, 200);
+  const editado = JSON.stringify((await repo.apartados.leer(v1, 'introduccion')).valores);
+
+  const res = await activar(u.jefa, v2);
+  assert.equal(res.status, 200);
+  const cuerpo = await res.json();
+  assert.equal(cuerpo.documento._id, v2);
+  assert.deepEqual(cuerpo.anteriores, [v1]);
+
+  assert.deepEqual((await lista(u.jefa)).map((d) => d._id), [v2]);
+  const estados = (await (await versiones(u.jefa, v1)).json()).versiones.map((v) => v.activa);
+  assert.deepEqual(estados, [false, true, false]);
+  // La anterior conserva sus ediciones, solo en lectura; y ahora la nueva activa sí se edita.
+  assert.equal(JSON.stringify((await repo.apartados.leer(v1, 'introduccion')).valores), editado);
+  assert.ok(await repo.copias.info(v1));
+  const lecturaNueva = await (await Apartado.GET(pet(`/api/documentos/${v2}/apartado?seccion=introduccion`, u.jefa), { id: v2 })).json();
+  assert.equal(lecturaNueva.puedeEditar, true);
+  const lecturaVieja = await (await Apartado.GET(pet(`/api/documentos/${v1}/apartado?seccion=introduccion`, u.jefa), { id: v1 })).json();
+  assert.equal(lecturaVieja.puedeEditar, false);
+  assert.equal((await Pdf.GET(pet(`/api/documentos/${v2}/pdf`, u.jefa), { id: v2 })).status, 200);
+  // Y la siguiente subida sigue siendo la versión 4, alternativa.
+  const cuarta = await importar(u.jefa, 'Cuarta');
+  assert.deepEqual([cuarta.version, cuarta.alternativa], [4, true]);
+  // Se puede volver atrás.
+  assert.equal((await activar(u.admin, v3)).status, 200);
+  assert.deepEqual((await lista(u.jefa)).map((d) => d._id), [v3]);
+});
+
+prueba('activar: 401, 403 para el docente y la jefatura de estudios, 404 de otro departamento, 409 si ya es la activa', async () => {
+  const { repo, u } = await escenario();
+  const { v1, v2 } = await tresVersiones(u);
+  await esError(await activar(null, v2), 401, 'sin_identificar');
+  await esError(await activar(u.ana, v2), 403, 'sin_permiso');
+  await esError(await activar(u.estudios, v2), 403, 'sin_permiso');
+  await esError(await activar(u.pepe, v2), 404, 'no_encontrado');
+  await esError(await activar(u.jefa, v1), 409, 'version_activa');
+  assert.equal((await repo.documentos.obtener(v1)).activa, true);
+  assert.equal((await repo.documentos.obtener(v2)).activa, false);
+  await esError(await activar(u.jefa, 'no-existe'), 404, 'no_encontrado');
+});
+
+prueba('borrar una alternativa: pide confirmación, nunca la activa, solo jefatura o soporte', async () => {
+  const { repo, u } = await escenario();
+  const { v1, v2, v3 } = await tresVersiones(u);
+
+  await esError(await borrar(u.jefa, v2), 400, 'peticion');
+  await esError(await borrar(u.jefa, v2, { confirmar: 'si' }), 400, 'peticion');
+  assert.ok(await repo.documentos.obtener(v2));
+
+  await esError(await borrar(u.ana, v2, { confirmar: true }), 403, 'sin_permiso');
+  await esError(await borrar(u.pepe, v2, { confirmar: true }), 404, 'no_encontrado');
+  await esError(await borrar(null, v2, { confirmar: true }), 401, 'sin_identificar');
+  await esError(await borrar(u.jefa, v1, { confirmar: true }), 409, 'version_activa');
+  assert.ok(await repo.documentos.obtener(v1));
+
+  const res = await borrar(u.jefa, v2, { confirmar: true });
+  assert.equal(res.status, 200);
+  const cuerpo = await res.json();
+  assert.equal(cuerpo.borrada, v2);
+  assert.equal(cuerpo.contenido.copia, true);
+  assert.equal(await repo.documentos.obtener(v2), null);
+  assert.equal(await repo.copias.info(v2), null);
+  assert.deepEqual(await repo.apartados.listar(v2), []);
+  // Las demás no se tocan, y el número no se reutiliza.
+  assert.ok(await repo.documentos.obtener(v1));
+  assert.ok(await repo.documentos.obtener(v3));
+  assert.equal((await importar(u.jefa, 'Otra')).version, 4);
+  assert.equal((await borrar(u.admin, v3, { confirmar: true })).status, 200);
+});
+
+prueba('borradas las alternativas, el documento activo sigue solo', async () => {
+  const { u } = await escenario();
+  const { v1, v2, v3 } = await tresVersiones(u);
+  assert.equal((await borrar(u.jefa, v2, { confirmar: true })).status, 200);
+  assert.equal((await borrar(u.jefa, v3, { confirmar: true })).status, 200);
+  const cuerpo = await (await versiones(u.jefa, v1)).json();
+  assert.deepEqual(cuerpo.versiones.map((v) => [v._id, v.activa]), [[v1, true]]);
 });
 
 // ---------------------------------------------------------------- ejecución

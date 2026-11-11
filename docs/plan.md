@@ -531,3 +531,10 @@ así ninguna lectura normal de documentos arrastra el fichero (`info` lo lee con
 contenido). Se guarda una copia por documento y se borra con él. El tope es de 15 MB
 (`TAMANO_MAXIMO_COPIA`): por encima la importación sigue valiendo y la respuesta dice
 `resumen.copia: false`. Los documentos anteriores a las versiones no tienen copia.
+
+**Activar y borrar.** Activar es un intercambio de dos escrituras sin transacción: primero se
+desactiva la activa y luego se activa la elegida, y si la segunda falla se restaura la primera. En el
+peor caso el grupo se queda sin activa y nunca con dos, que es lo que duplicaría la lista. Borrar una
+alternativa pide confirmación explícita en el cuerpo y no se permite sobre la activa. Las reglas de
+quién puede están en `core/permisos.js` (`puedeActivarVersion`, `puedeBorrarVersion`), separadas
+aunque hoy respondan lo mismo, porque activar es reversible y borrar no.

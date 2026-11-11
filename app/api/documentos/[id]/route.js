@@ -5,9 +5,15 @@
 // objeto normal `{ id }` y test/api.js se la puede pasar a mano.
 
 import { GET as documento } from '../../../_lib/rutas/documento';
+import { BORRAR as borrarVersion } from '../../../_lib/rutas/versiones';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(peticion, contexto) {
   return documento(peticion, await (contexto && contexto.params));
+}
+
+// Borra una versión alternativa (app/_lib/rutas/versiones.js). La activa no se borra.
+export async function DELETE(peticion, contexto) {
+  return borrarVersion(peticion, await (contexto && contexto.params));
 }

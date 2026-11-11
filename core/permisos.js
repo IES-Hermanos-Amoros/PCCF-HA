@@ -165,6 +165,23 @@
     return usuario.rol === 'admin' || usuario.rol === 'jefe_estudios';
   }
 
+  // Quién cambia cuál es la versión activa de un documento, y quién borra una versión alternativa
+  // (docs/plan.md §8). La jefatura del departamento, en su departamento, y el soporte. Subir una versión
+  // alternativa no es esto: es importar, y lo pueden los mismos roles que ya importan.
+  //
+  // Son dos preguntas y dos funciones aunque hoy contesten lo mismo: activar es reversible, porque la
+  // anterior queda como alternativa con sus ediciones, y borrar no. El día que una de las dos cambie, la
+  // otra no tiene por qué enterarse.
+  function puedeActivarVersion(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
+  }
+
+  function puedeBorrarVersion(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
+  }
+
   // ------------------------------------------------- búsqueda en la plantilla
 
   // Los ids de sección son rutas con '/', igual que los que produce el
@@ -233,6 +250,8 @@
     puedeRepartirUnidades,
     puedeCambiarEstructura,
     puedeConfigurarComprobaciones,
+    puedeActivarVersion,
+    puedeBorrarVersion,
   };
 
   // Vale como <script> en el mockup, como `require` en el motor y en las

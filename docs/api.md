@@ -560,3 +560,19 @@ versión y lo dice en `resumen.copia`. **`GET /api/documentos/[id]/copia`** lo d
 subió (`attachment`, con el número de versión en el nombre). Lo descarga quien ve el documento, sea la
 versión activa o una alternativa; 404 si esa versión no tiene copia (los documentos anteriores a las
 versiones no la tienen) o es de otro departamento.
+
+**Rutas de versiones** (`app/_lib/rutas/versiones.js`). Subir una versión alternativa no tiene ruta
+propia: es `POST /api/documentos/importar`, con los mismos roles.
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /api/documentos/[id]/versiones` | todas las versiones del documento `[id]` (la activa y las alternativas, desde cualquiera de ellas), de la más antigua a la más reciente. Cada una lleva `version`, `activa`, `origen` (nombre del Word), `creado`, `estado`, `subidoPor` (`{ _id, nombre }`, nunca el correo), `copia` (`{ nombre, tamano }` o `null`) y `puedeActivar` y `puedeBorrar` ya resueltos para quien pregunta. La respuesta trae además `puedeSubir`. La ve quien ve el documento |
+| `POST /api/documentos/[id]/activar` | `[id]` pasa a ser la versión activa. La que lo era queda como alternativa **con sus ediciones intactas**; no se borra nada. 200 con el `documento` y los `anteriores` desactivados. 403 si no es jefatura de ese departamento ni soporte, 404 si es de otro departamento, 409 `version_activa` si ya lo era y 409 `conflicto` si cambió desde que se leyó |
+| `DELETE /api/documentos/[id]` | borra una versión **alternativa** con todo lo suyo (apartados, textos compartidos, comentarios y la copia del Word). Cuerpo `{ "confirmar": true }`: sin él, 400 y no se borra nada. Es irreversible. La activa no se borra: 409 `version_activa`. Mismos permisos que activar |
+
+`core/permisos.js` → `puedeActivarVersion` y `puedeBorrarVersion`: la jefatura del departamento, en su
+departamento, y el soporte. La jefatura de estudios y el docente ven las versiones pero no las cambian.
+El número de versión no se reutiliza al borrar: la siguiente subida es siempre la mayor más uno.
+
+La pantalla es `/versiones/[id]` (`app/_componentes/Versiones.js`), enlazada desde la portada del
+documento; una versión alternativa se abre en lectura con un aviso arriba.

@@ -866,6 +866,20 @@ export default function Visor({
         />
       ) : null}
 
+      {/* Las versiones del documento: reimportar un Word para este curso entra
+          como alternativa, y aquí se elige cuál es la activa. */}
+      {n.tipo === 'raiz' ? (
+        <section className="tarjeta estructura">
+          <header className="tarjeta-cab">
+            <h2>Versiones del documento</h2>
+            <span className="suave">subir otra, elegir la activa o consultar las demás</span>
+          </header>
+          <div className="compartido-acciones">
+            <a className="mini" href={`/versiones/${encodeURIComponent(documentoId)}`}>Ver las versiones</a>
+          </div>
+        </section>
+      ) : null}
+
       {/* Los apartados retirados se recuperan desde aquí, y es lo que promete la
           tarjeta *Estructura* al retirar uno: es la única pantalla desde la que
           se puede, porque un apartado retirado ya no sale en el árbol y no se
@@ -1253,6 +1267,16 @@ export default function Visor({
 
         <main className="main">
           {migas()}
+
+          {documento && documento.activa === false ? (
+            <div className="nota nota-lock" role="status">
+              <div>
+                <strong>Esta es una versión alternativa y solo se puede leer.</strong>{' '}
+                No se edita, no se exporta ni se pasa al curso siguiente hasta que la actives.{' '}
+                <a className="enlace" href={`/versiones/${encodeURIComponent(documentoId)}`}>Ver las versiones</a>
+              </div>
+            </div>
+          ) : null}
 
           <div className="cabecera">
             <div>
