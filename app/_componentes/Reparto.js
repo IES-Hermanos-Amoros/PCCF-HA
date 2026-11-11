@@ -56,6 +56,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Ayuda from './Ayuda';
+import ApartadosComunes from './ApartadosComunes';
 import BarraSuperior from './BarraSuperior';
 import { pedir } from './api';
 import { useSesion } from './sesion-cliente';
@@ -549,6 +550,9 @@ export default function Reparto({ documentoId }) {
             </p>
           </section>
         ) : null}
+
+        {/* Los apartados comunes y lo que puede editar cada cual: otra pregunta, otra ruta. */}
+        {datos ? <ApartadosComunes documentoId={documentoId} /> : null}
       </main>
     </>
   );

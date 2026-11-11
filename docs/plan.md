@@ -504,3 +504,9 @@ pantalla de Reparto.
   Las dos cosas están ahora cubiertas en `test/asignaciones.js`.
 - Una persona dada de baja o trasladada sigue en la lista guardada pero no cuenta como quien lleva el
   apartado: se filtra al leer, como en las unidades.
+
+La pantalla de Reparto lleva debajo de la matriz de módulos `app/_componentes/ApartadosComunes.js`: «Lo
+que puedes editar» (módulos y apartados asignados a quien mira, o «todo» para la jefatura y el soporte, o
+solo lectura para la jefatura de estudios; sale de `mios` en el GET, la pantalla no recalcula la regla) y
+la matriz apartados × personas, con la misma forma de guardar que la de módulos (lista completa, casillas
+con `aria-disabled` cuando no se puede asignar, 400 dicho como «no se ha guardado nada»).
