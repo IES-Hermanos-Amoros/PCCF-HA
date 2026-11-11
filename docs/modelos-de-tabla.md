@@ -336,3 +336,74 @@ partes lo acepta la puerta y produciría más de 400 filas impresas, cuando el m
 guardada son 200. No revienta, porque la tabla generada no vuelve a pasar por la puerta, y 200 partes
 en una tabla es absurdo —la ficha tiene doce—. Cerrarlo de verdad es comprobar las filas que la
 maquetación va a producir, no inventar un medio tope.
+
+## 8. El hueco del modelo: «todas», «solo ésta», y la que falta
+
+### Las siete formas de la ficha son UN modelo, no siete
+
+Las 311 fichas guardadas están en siete formas de rejilla distintas: 244 de 18x7, 35 de 24x4, 17 de
+17x7, 10 de 22x7, dos de 18x6, dos de 18x5 y una de 22x8. Eso **no** significa que haya siete
+modelos, y conviene dejarlo escrito porque invita a concluirlo:
+
+- la secuencia de rótulos de la primera columna es **la misma y en el mismo orden** en las siete
+  formas y en los cuatro documentos: «Situación de aprendizaje N», «Evaluación», «Resultado(s) de
+  aprendizaje», «Criterios de evaluación», «Competencias…», «Objetivos de aprendizaje»,
+  «Tipificación de actividades formativas», «Introducción», «Actividades de refuerzo»…
+- el lector de `core/sa.js` reconoce los mismos 7 a 10 rótulos en todas ellas, porque identifica por
+  el TEXTO del rótulo y eso no depende de cómo esté dibujada la tabla;
+- lo que varía es el **contenido**: las filas, porque una ficha tiene un RA y otra tres; las
+  columnas, porque cada autor dibujó sus celdas combinadas a su manera.
+
+La forma de la rejilla nunca fue el modelo. **Es un modelo para las 311.** Y de ahí sale una
+consecuencia práctica para la pieza de adopción: para una familia que ya tiene lector, el propio
+lector es el criterio de agrupación y el que debe adoptarla, en lugar de hacerla pasar por el
+emparejado genérico de rótulos. Las 311 son un grupo porque el lector encuentra los mismos rótulos
+en todas.
+
+### Lo que el dato no sabe decir
+
+Un campo apunta a su modelo con `campo.modelo`, y nada en el código lee un modelo desde una tabla.
+Una tabla concreta sí puede guardar su forma propia en `valor.estructura`, pero eso significa «ésta
+se salió del modelo», que no es lo mismo que «ésta sigue el modelo B». Con eso, de las tres cosas
+que un jefe de departamento quiere poder decir, solo dos tienen sitio donde escribirse:
+
+| lo que quiere decir | dónde se escribe | ¿se puede? |
+| --- | --- | --- |
+| «la ficha de SA lleva estas casillas» → todas las del campo | `campo.modelo` | sí |
+| «esta tabla concreta va a su aire» | `valor.estructura` | sí |
+| «**estas seis** son un grupo y llevan otra forma» | — | no |
+
+Y falta justo la de en medio, que es la que pidió el centro: *aplicar los cambios a todas las tablas
+similares o solo a una de ellas*.
+
+### El caso medido, para comprobarlo
+
+`PD_SMR_25-26_final.docx` tiene **un** campo `ficha` y **76** fichas colgando de él. Dentro de ese
+único campo conviven tres comportamientos:
+
+```
+   smr-prog   10.7  Introducción a la programación     con «Evaluación»: 0   sin: 6
+   smr-0222    9.3  Sistemas operativos monopuesto                      5        5
+   los otros nueve módulos                                             65        0
+```
+
+Las seis de `smr-prog` no llevan fila «Evaluación» y son el módulo entero: **parece una decisión**.
+Las cinco de `smr-0222` son las SA 6 a 10 y conviven con las SA 1 a 5 que sí la llevan: **parece un
+descuido** de quien redactó el Word. Y en `PD_DAW_25-26_final.docx`, la SA 6 de Sostenibilidad («El
+plan de sostenibilidad») es **la única** de 76 sin ella: ésa sí es una suelta.
+
+Cuál de las dos cosas es cada grupo **no lo sabe la aplicación**, y por 3.3 no le toca decidirlo: las
+agrupa, las enseña con su motivo y una persona confirma si convergen o se separan.
+
+### Por qué hay que cerrarlo antes de la pantalla
+
+Si el departamento decide que `smr-prog` legítimamente no lleva «Evaluación», hoy solo puede ir
+ficha a ficha, y en cuanto lo hace esas seis se convierten en seis documentos sueltos: ningún cambio
+posterior que afecte a la ficha les llega, porque ya no siguen modelo, llevan su copia propia. Seis
+ediciones ahora y seis en cada cambio futuro, que es exactamente el trabajo manual que esto venía a
+quitar.
+
+El arreglo es que una tabla pueda apuntar a un modelo igual que lo hace un campo, con su orden de
+precedencia decidido: la forma propia de la tabla, si la tiene; si no, el modelo al que apunte la
+tabla; si no, el del campo. Y va **antes** de la pantalla de confirmación de la importación, porque
+si no la pantalla ofrecería una decisión que el dato no sabe guardar.
