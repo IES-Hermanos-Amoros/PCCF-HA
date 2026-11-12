@@ -117,6 +117,7 @@ const GET = conErrores(async (peticion, parametros) => {
       sinDocentes: lista.filter((u) => u.sinDocentes).length,
     },
     puedeRepartir: puedeRepartir(usuario, documento),
+    alternativa: !esActiva(documento),
   }, { headers: { 'Cache-Control': 'no-store' } });
 });
 

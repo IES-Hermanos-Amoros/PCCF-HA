@@ -110,6 +110,7 @@ export default function Reparto({ documentoId }) {
   const personas = (datos && datos.personas) || [];
   const unidades = (datos && datos.unidades) || [];
   const puedeRepartir = !!(datos && datos.puedeRepartir);
+  const alternativa = !!(datos && datos.alternativa);
 
   // Cuántas unidades lleva cada persona: sobre TODAS las unidades, no sobre las
   // que deja ver el filtro. El recuento de la columna responde «cuánta carga
@@ -322,8 +323,10 @@ export default function Reparto({ documentoId }) {
           <div className="nota" id={MOTIVO_NO_REPARTE}>
             <div>
               <strong>Puedes ver el reparto, pero no cambiarlo.</strong>{' '}
-              Reparten las unidades la jefatura del departamento y el soporte.
-              {yo ? <> Tu rol es {ROLES[yo.rol] || yo.rol}.</> : null}
+              {alternativa
+                ? 'Esta es una versión alternativa: el reparto se hace en la versión activa.'
+                : <>Reparten las unidades la jefatura del departamento y el soporte.
+                  {yo ? <> Tu rol es {ROLES[yo.rol] || yo.rol}.</> : null}</>}
             </div>
           </div>
         ) : null}
@@ -518,7 +521,9 @@ export default function Reparto({ documentoId }) {
                                         aria-describedby={puedeRepartir ? undefined : MOTIVO_NO_REPARTE}
                                         title={puedeRepartir
                                           ? undefined
-                                          : 'Solo la jefatura del departamento y el soporte reparten las unidades.'}
+                                          : (alternativa
+                                            ? 'Esta es una versión alternativa: el reparto se hace en la versión activa.'
+                                            : 'Solo la jefatura del departamento y el soporte reparten las unidades.')}
                                         onChange={(ev) => {
                                           // Sin permiso no se desactiva la
                                           // casilla —se la saltaría el

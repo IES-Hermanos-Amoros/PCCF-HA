@@ -989,9 +989,15 @@ export default function Visor({
         <div className="nota nota-lock">
           <Candado />
           <div>
-            {motivoBloqueo(nodo, rol)}
-            {' '}
-            <span className="suave">Se puede leer y exportar, pero no escribir.</span>
+            {documento && documento.activa === false
+              ? <>Este apartado es de una versión alternativa: se puede leer y comentar, pero no escribir ni exportar hasta que la actives.</>
+              : (
+                <>
+                  {motivoBloqueo(nodo, rol)}
+                  {' '}
+                  <span className="suave">Se puede leer y exportar, pero no escribir.</span>
+                </>
+              )}
             {/* Si el candado es porque no se lleva el módulo, el arreglo está
                 en el reparto: se dice dónde, en vez de dejar solo el «no». */}
             {nodo.edita === 'docentes_del_modulo' ? (
@@ -1146,6 +1152,7 @@ export default function Visor({
         documentoId={documentoId}
         onCajon={() => setCajon((x) => !x)}
         exportar={{ pdf: `${base}/pdf`, docx: `${base}/docx` }}
+        alternativa={!!documento && documento.activa === false}
         vistas={VISTAS}
         vista={vista}
         onVista={cambiarVista}

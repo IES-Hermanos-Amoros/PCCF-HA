@@ -129,7 +129,7 @@ const porFecha = (a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTi
 // ---------------------------------------------------------------- GET: el hilo
 
 const GET = conErrores(async (peticion, parametros) => {
-  const abierto = await abrirApartado(peticion, parametros);
+  const abierto = await abrirApartado(peticion, parametros, { permiteAlternativa: true });
   if (abierto.fallo) return abierto.fallo;
   const { documento, repo, seccion, unidadId, info } = abierto;
 
@@ -156,7 +156,8 @@ const GET = conErrores(async (peticion, parametros) => {
 //   404  no existe el documento, o es de otro departamento, o esa sección o esa unidad no son suyas
 //   400  el cuerpo está mal, o el comentario está vacío o es demasiado largo
 const CREAR = conErrores(async (peticion, parametros) => {
-  const abierto = await abrirApartado(peticion, parametros);
+  // También en una versión alternativa: es donde se discute cuál de las versiones se activa.
+  const abierto = await abrirApartado(peticion, parametros, { permiteAlternativa: true });
   if (abierto.fallo) return abierto.fallo;
   const { usuario, documento, repo, seccion, unidadId, info } = abierto;
 

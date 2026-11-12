@@ -17,6 +17,10 @@ const { COOKIE_SESION, abrirSesion } = require('../app/_lib/sesion');
 const Importar = require('../app/_lib/rutas/importar');
 const Documentos = require('../app/_lib/rutas/documentos');
 const Apartado = require('../app/_lib/rutas/apartado');
+const Comentarios = require('../app/_lib/rutas/comentarios');
+const Estado = require('../app/_lib/rutas/estado');
+const Unidades = require('../app/_lib/rutas/unidades');
+const Asignaciones = require('../app/_lib/rutas/asignaciones');
 const Arrastre = require('../app/_lib/rutas/arrastre');
 const Pdf = require('../app/_lib/rutas/pdf');
 const Docx = require('../app/_lib/rutas/docx');
@@ -413,6 +417,44 @@ prueba('una memoria guardada antes con ciclo cuenta como del mismo grupo que la 
   assert.equal(r.alternativa, true);
   assert.equal(Versiones.mismoGrupo({ tipo: 'memoria', curso: 'c', departamento: 'd', ciclo: 'daw' }, { tipo: 'memoria', curso: 'c', departamento: 'd' }), true);
   assert.equal(Versiones.mismoGrupo({ tipo: 'pccf', curso: 'c', departamento: 'd', ciclo: 'daw' }, { tipo: 'pccf', curso: 'c', departamento: 'd' }), false);
+});
+
+prueba('en una alternativa se puede comentar (GET y POST del hilo), y lo demás sigue en solo lectura', async () => {
+  const { repo, u } = await escenario();
+  await importar(u.jefa, 'Primera');
+  const alt = (await importar(u.jefa, 'Segunda')).documento._id;
+  const url = `/api/documentos/${alt}/comentarios?seccion=introduccion`;
+
+  const vacio = await Comentarios.GET(pet(url, u.jefa), { id: alt });
+  assert.equal(vacio.status, 200);
+  const creado = await Comentarios.CREAR(pet(url, u.ana, { metodo: 'POST', cuerpo: { texto: 'Prefiero esta' } }), { id: alt });
+  assert.equal(creado.status, 201);
+  const hilo = await (await Comentarios.GET(pet(url, u.jefa), { id: alt })).json();
+  assert.deepEqual(hilo.comentarios.map((c) => c.texto), ['Prefiero esta']);
+
+  // Otro departamento sigue sin verla, y escribir un apartado sigue dando 409.
+  await esError(await Comentarios.CREAR(pet(url, u.pepe, { metodo: 'POST', cuerpo: { texto: 'x' } }), { id: alt }), 404, 'no_encontrado');
+  const cuerpo = await (await Apartado.GET(pet(`/api/documentos/${alt}/apartado?seccion=introduccion`, u.jefa), { id: alt })).json();
+  await esError(await Apartado.PATCH(
+    pet(`/api/documentos/${alt}/apartado?seccion=introduccion`, u.jefa, { metodo: 'PATCH', cuerpo: { valores: { texto: [] }, esperaUpdatedAt: cuerpo.updatedAt } }),
+    { id: alt },
+  ), 409, 'version_alternativa');
+});
+
+prueba('las pantallas de una alternativa saben que lo es: estado, reparto y apartados comunes lo dicen y no ofrecen escribir', async () => {
+  const { u } = await escenario();
+  const activa = (await importar(u.jefa, 'Primera')).documento._id;
+  const alt = (await importar(u.jefa, 'Segunda')).documento._id;
+  for (const [ruta, modulo] of [['estado', Estado], ['unidades', Unidades], ['asignaciones', Asignaciones]]) {
+    const enActiva = await (await modulo.GET(pet(`/api/documentos/${activa}/${ruta}`, u.jefa), { id: activa })).json();
+    const enAlt = await (await modulo.GET(pet(`/api/documentos/${alt}/${ruta}`, u.jefa), { id: alt })).json();
+    assert.equal(enActiva.alternativa, false, ruta);
+    assert.equal(enAlt.alternativa, true, ruta);
+  }
+  const unidades = await (await Unidades.GET(pet(`/api/documentos/${alt}/unidades`, u.jefa), { id: alt })).json();
+  assert.equal(unidades.puedeRepartir, false);
+  const asignaciones = await (await Asignaciones.GET(pet(`/api/documentos/${alt}/asignaciones`, u.jefa), { id: alt })).json();
+  assert.equal(asignaciones.puedeAsignar, false);
 });
 
 // ---------------------------------------------------------------- ejecución

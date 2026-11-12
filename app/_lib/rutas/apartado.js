@@ -148,8 +148,8 @@ function refsDe(seccion, valores) {
 // el enlace está mal construido.
 //
 // Devuelve { fallo } o { usuario, documento, repo, seccion, unidadId, unidad, info }.
-async function abrirApartado(peticion, parametros) {
-  const abierto = await abrirDocumento(peticion, parametros);
+async function abrirApartado(peticion, parametros, { permiteAlternativa = false } = {}) {
+  const abierto = await abrirDocumento(peticion, parametros, { permiteAlternativa });
   if (abierto.fallo) return abierto;
   const { usuario, documento, repo } = abierto;
 

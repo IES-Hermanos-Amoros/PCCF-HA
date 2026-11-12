@@ -50,6 +50,8 @@ export default function CursoSiguiente({ documentoId, documento, documentos, rol
   const sucesor = (documentos || []).find((d) => d.anteriorId === documentoId) || null;
 
   const puedeElRol = !rol || PUEDEN_CREAR_CURSO.includes(rol);
+  // Una versión alternativa no se pasa al curso siguiente: hay que activarla primero.
+  const esAlternativa = !!documento && documento.activa === false;
 
   if (sucesor) {
     return (
@@ -131,7 +133,7 @@ export default function CursoSiguiente({ documentoId, documento, documentos, rol
           onChange={(ev) => setCurso(ev.target.value)}
           placeholder="2027-28"
           inputMode="numeric"
-          disabled={!puedeElRol || enviando}
+          disabled={!puedeElRol || esAlternativa || enviando}
         />
         <span className="ayuda">
           {documento && documento.curso
@@ -145,6 +147,12 @@ export default function CursoSiguiente({ documentoId, documento, documentos, rol
       ) : null}
 
       {/* Por qué el botón está apagado: la explicación de lo que se ve. */}
+      {esAlternativa ? (
+        <p className="ayuda">
+          Esta es una versión alternativa: solo la versión activa se pasa al curso siguiente. Actívala
+          desde las versiones del documento si quieres partir de ella.
+        </p>
+      ) : null}
       {!puedeElRol ? (
         <p className="ayuda">
           Lo hace la jefatura del departamento: con tu rol el servidor lo rechazaría.
@@ -155,7 +163,7 @@ export default function CursoSiguiente({ documentoId, documento, documentos, rol
         <button
           type="button"
           className="btn-primario"
-          disabled={!puedeElRol || enviando || !cursoValido}
+          disabled={!puedeElRol || esAlternativa || enviando || !cursoValido}
           onClick={crear}
         >
           {enviando ? 'Creando el documento…' : `Crear el documento de ${cursoValido ? curso : 'otro curso'}`}
@@ -171,7 +179,7 @@ export default function CursoSiguiente({ documentoId, documento, documentos, rol
             {error.message}
             {/* El 409 trae el id del documento que ya existe: se ofrece abrirlo,
                 que es lo que se quería hacer. */}
-            {error.estado === 409 && error.documentoId ? (
+            {error.estado === 409 && error.documentoId && error.codigo !== 'version_alternativa' ? (
               <div className="compartido-acciones">
                 <a className="mini" href={`/doc/${encodeURIComponent(error.documentoId)}`}>
                   Abrir el que ya existe

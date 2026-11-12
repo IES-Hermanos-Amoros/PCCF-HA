@@ -513,7 +513,10 @@ exporta (PDF y Word) y se arrastra al curso siguiente. Las alternativas se puede
 (`/arbol`, `/apartado`, `/estado`…) con `puedeEditar` a falso. La comprobación está en un solo sitio,
 `abrirDocumento` (`app/_lib/rutas/comun.js`): cualquier petición que no sea `GET` sobre una
 alternativa responde 409 `version_alternativa`, de modo que una ruta de escritura nueva no tiene que
-acordarse. Las rutas de versiones piden expresamente `permiteAlternativa`.
+acordarse. Las rutas de versiones piden expresamente `permiteAlternativa`, y también el hilo de comentarios (GET y
+POST): la alternativa es justo donde se discute cuál de las versiones activar, así que ahí se comenta
+aunque no se escriba. La interfaz no ofrece en una alternativa lo que siempre daría 409: exportar,
+pasar al curso siguiente, mandar a revisión ni repartir.
 
 **Por qué la clave y no un id de grupo.** Un id de grupo repartido por los documentos obliga a
 migrar los existentes y a decidir qué hacer cuando dos grupos se funden. La clave ya es la regla que

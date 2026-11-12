@@ -42,6 +42,7 @@ export default function ApartadosComunes({ documentoId }) {
   if (!datos) return <p className="suave">Cargando los apartados comunes…</p>;
 
   const { apartados, personas, mios, puedeAsignar, resumen } = datos;
+  const alternativa = !!datos.alternativa;
   const enlace = (seccion) => `/doc/${encodeURIComponent(documentoId)}/${seccion.split("/").map(encodeURIComponent).join("/")}`;
 
   async function alternar(a, personaId, marcar) {
@@ -98,7 +99,9 @@ export default function ApartadosComunes({ documentoId }) {
         <div className="nota" id={MOTIVO}>
           <div>
             <strong>Puedes ver quién lleva cada apartado común, pero no cambiarlo.</strong>{' '}
-            Lo asignan la jefatura del departamento y el soporte.
+            {alternativa
+              ? 'Esta es una versión alternativa: los apartados se asignan en la versión activa.'
+              : 'Lo asignan la jefatura del departamento y el soporte.'}
           </div>
         </div>
       ) : null}

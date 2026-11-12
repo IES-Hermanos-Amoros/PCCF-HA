@@ -290,8 +290,9 @@ export default function EstadoDocumento({ documentoId, onIr }) {
   }
 
   const transiciones = estado.transiciones || [];
-  const mias = transiciones.filter((t) => t.puede);
-  const deOtros = transiciones.filter((t) => !t.puede);
+  const alternativa = !!estado.alternativa;
+  const mias = alternativa ? [] : transiciones.filter((t) => t.puede);
+  const deOtros = alternativa ? [] : transiciones.filter((t) => !t.puede);
 
   return (
     <section className="tarjeta tarjeta-estado">
@@ -401,7 +402,14 @@ export default function EstadoDocumento({ documentoId, onIr }) {
         </ul>
       ) : null}
 
-      {!transiciones.length ? (
+      {alternativa ? (
+        <p className="suave">
+          Esta es una versión alternativa: su estado no se cambia. Actívala desde las versiones del
+          documento si quieres mandarla a revisión.
+        </p>
+      ) : null}
+
+      {!transiciones.length && !alternativa ? (
         <p className="suave">Desde «{nombre(estado.estado)}» no sale ninguna flecha del circuito.</p>
       ) : null}
 

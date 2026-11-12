@@ -25,7 +25,9 @@ const {
 } = require('./comun');
 const { personasQueDanClase } = require('./unidades');
 
-const puedeAsignar = (usuario, documento) => C.puedeAsignarApartados(usuario, documento);
+const { esActiva } = require('../../../core/versiones');
+
+const puedeAsignar = (usuario, documento) => esActiva(documento) && C.puedeAsignarApartados(usuario, documento);
 
 // Los apartados de la plantilla (ya sin los retirados: `abrirDocumento` la poda) que se pueden
 // asignar: los que edita la jefatura —el `edita` se hereda del bloque— y que no son un módulo ni el
@@ -90,6 +92,8 @@ const GET = conErrores(async (peticion, parametros) => {
       conPersonas: apartados.filter((a) => a.personas.length > 0).length,
     },
     puedeAsignar: puedeAsignar(usuario, documento),
+    // Una versión alternativa no se reparte: la pantalla lo dice en lugar de culpar al rol.
+    alternativa: !esActiva(documento),
     mios,
   }, { headers: { 'Cache-Control': 'no-store' } });
 });

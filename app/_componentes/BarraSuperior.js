@@ -125,8 +125,10 @@ function Identidad({ persona }) {
   );
 }
 
+const MOTIVO_SIN_EXPORTAR = 'Esta es una versión alternativa y no se exporta: actívala primero.';
+
 export default function BarraSuperior({
-  subtitulo, persona, onCajon, documentos, documentoId, exportar, vistas, vista, onVista, aqui,
+  subtitulo, persona, onCajon, documentos, documentoId, exportar, vistas, vista, onVista, aqui, alternativa,
 }) {
   return (
     <header className="topbar">
@@ -201,11 +203,25 @@ export default function BarraSuperior({
                 el visor del navegador, y un .docx no se mira en el navegador, se
                 abre con Word. Poner `download` en el PDF obligaría a guardarlo
                 para leerlo. */}
-            <a className="btn-ghost" href={exportar.docx} download>Word</a>
-            <a className="btn-primario" href={exportar.pdf} target="_blank" rel="noopener">
-              <Descarga />
-              PDF
-            </a>
+            {alternativa ? (
+              // Una versión alternativa no se exporta (el servidor respondería 409): se dice por qué.
+              <>
+                <button type="button" className="btn-ghost" aria-disabled="true" title={MOTIVO_SIN_EXPORTAR}>Word</button>
+                <button type="button" className="btn-primario" aria-disabled="true" title={MOTIVO_SIN_EXPORTAR}>
+                  <Descarga />
+                  PDF
+                </button>
+                <span className="sr">{MOTIVO_SIN_EXPORTAR}</span>
+              </>
+            ) : (
+              <>
+                <a className="btn-ghost" href={exportar.docx} download>Word</a>
+                <a className="btn-primario" href={exportar.pdf} target="_blank" rel="noopener">
+                  <Descarga />
+                  PDF
+                </a>
+              </>
+            )}
           </>
         ) : null}
       </div>
