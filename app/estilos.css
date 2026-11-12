@@ -1195,3 +1195,28 @@ del > mark.quita { text-decoration-thickness: 2px; }
    `.linea-estructura` ya es un flex con `wrap`. */
 .ayuda-plantilla { border-left: 2px solid var(--ambar); padding-left: 8px; font-size: 12.5px; }
 .ayuda-plantilla > span { color: var(--texto); }
+
+/* Un valor que no se puede leer, junto al campo donde se escribió. */
+.error-campo { display: block; color: var(--rojo); font-size: 0.85em; margin-top: 2px; }
+
+/* Enlace para saltar la barra superior: invisible hasta que recibe el foco con el teclado. */
+.saltar {
+  position: absolute; left: 8px; top: -48px; z-index: 1000;
+  padding: 8px 14px; background: var(--panel); color: var(--texto, inherit);
+  border: 2px solid var(--rojo); border-radius: 6px;
+}
+.saltar:focus { top: 8px; }
+main:focus { outline: none; }
+
+/* En pantalla estrecha cada fila de una tabla apilable pasa a ser una tarjeta: lo de la derecha, las
+   acciones, no se queda escondido tras un desplazamiento horizontal que nadie adivina. */
+@media (max-width: 700px) {
+  .tabla-apilable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .tabla-apilable, .tabla-apilable tbody, .tabla-apilable tr,
+  .tabla-apilable th, .tabla-apilable td { display: block; width: 100%; box-sizing: border-box; }
+  .tabla-apilable tr { border: 1px solid var(--borde); border-radius: 8px; margin-bottom: 10px; padding: 4px 0; }
+  .tabla-apilable th, .tabla-apilable td { border: 0; }
+  .tabla-apilable [data-etiqueta]::before {
+    content: attr(data-etiqueta); display: block; font-size: 12px; color: var(--suave); font-weight: 600;
+  }
+}

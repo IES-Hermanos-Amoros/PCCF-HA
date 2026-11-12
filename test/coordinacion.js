@@ -385,6 +385,29 @@ prueba('cada fila dice quién lleva la unidad, con el nombre y el rol y sin el c
   assert.ok(!JSON.stringify(c).includes('@ejemplo.invalid'), 'el correo no sale: esta pantalla dice a quién avisar, no cómo escribirle');
 });
 
+prueba('una persona de baja no lleva módulos: coordinación, validaciones y reparto coinciden', async () => {
+  const { repo, u, doc } = await escenario();
+  const antes = await (await panel(u.jefa, doc._id)).json();
+  const sinAntes = antes.grupos.find((g) => g.unidadId === PROG);
+  assert.deepEqual(sinAntes.responsables.map((r) => r.nombre), ['Ana']);
+
+  await repo.usuarios.actualizar(u.ana._id, { activo: false });
+
+  const v = await (await panel(u.jefa, doc._id)).json();
+  const g = v.grupos.find((x) => x.unidadId === PROG);
+  assert.deepEqual(g.responsables, [], 'validaciones: la persona de baja no responde del módulo');
+  assert.ok(g.avisos.some((a) => a.regla === 'sin_docente'), 'validaciones: avisa de que no hay docente');
+
+  const c = await (await coordinacion(u.jefa, doc._id)).json();
+  const fila = c.filas.find((f) => f.unidadId === PROG);
+  assert.deepEqual(fila.docentes, [], 'coordinación: la fila queda sin docentes');
+  assert.equal(fila.sinDocentes, true);
+
+  const Unidades = require('../app/_lib/rutas/unidades');
+  const r = await (await Unidades.GET(pet(`/api/documentos/${doc._id}/unidades`, u.jefa), { id: doc._id })).json();
+  assert.deepEqual(r.unidades.find((x) => x.unidadId === PROG).docentes, []);
+});
+
 prueba('el estado de una celda son los cinco del árbol, y sale de relleno + origen + errores', async () => {
   const { u, doc } = await escenario();
   const c = await cuerpoDe(await coordinacion(u.jefa, doc._id));

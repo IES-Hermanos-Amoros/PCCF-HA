@@ -111,6 +111,8 @@ export default function Reparto({ documentoId }) {
   const unidades = (datos && datos.unidades) || [];
   const puedeRepartir = !!(datos && datos.puedeRepartir);
   const alternativa = !!(datos && datos.alternativa);
+  // El PCCF y la memoria no se reparten por módulos: solo tienen apartados comunes.
+  const sinUnidades = !!datos && unidades.length === 0;
 
   // Cuántas unidades lleva cada persona: sobre TODAS las unidades, no sobre las
   // que deja ver el filtro. El recuento de la columna responde «cuánta carga
@@ -234,7 +236,7 @@ export default function Reparto({ documentoId }) {
             es de otro departamento—, así que el menú no debe ofrecer sus
             pantallas. Lo que queda es volver a la lista. */}
         <BarraSuperior subtitulo="Reparto de unidades" persona={yo} aqui="reparto" />
-        <main className="main main-estrecha">
+        <main id="contenido" tabIndex={-1} className="main main-estrecha">
           <div className="cabecera"><div><h1>No se puede ver el reparto</h1></div></div>
           <div className="nota nota-lock" role="alert">
             <div>
@@ -262,14 +264,15 @@ export default function Reparto({ documentoId }) {
     <>
       <BarraSuperior subtitulo={corto(documento) || 'Reparto de unidades'} persona={yo} documentoId={documentoId} aqui="reparto" />
 
-      <main className="main">
+      <main id="contenido" tabIndex={-1} className="main">
         <div className="cabecera">
           <div>
-            <h1>Quién lleva cada unidad</h1>
+            <h1>{sinUnidades ? 'Quién lleva cada apartado' : 'Quién lleva cada unidad'}</h1>
             <p className="suave">
               {corto(documento) ? <>{corto(documento)}. </> : null}
-              Una unidad sin docentes no la puede editar nadie salvo la jefatura del departamento:
-              eso es lo que hay que mirar aquí.
+              {sinUnidades
+                ? 'Este documento no se reparte por unidades: lo lleva la jefatura del departamento, salvo los apartados que delegue.'
+                : 'Una unidad sin docentes no la puede editar nadie salvo la jefatura del departamento: eso es lo que hay que mirar aquí.'}
             </p>
           </div>
           <div className="cabecera-derecha">
@@ -288,7 +291,7 @@ export default function Reparto({ documentoId }) {
 
         {datos === null && !error ? <p className="suave">Cargando el reparto…</p> : null}
 
-        {resumen ? (
+        {resumen && !sinUnidades ? (
           <div className="metricas">
             {/* El número que se mira. Viene contado de la API a propósito. */}
             <div className="metrica">
@@ -319,7 +322,7 @@ export default function Reparto({ documentoId }) {
         {/* Este bloque es el `aria-describedby` de cada casilla apagada, así que
             lo que diga se lee en cada una: cuanto más corto, mejor. Quién
             reparte y por qué está en la ayuda de la tabla. */}
-        {datos && !puedeRepartir ? (
+        {datos && !sinUnidades && !puedeRepartir ? (
           <div className="nota" id={MOTIVO_NO_REPARTE}>
             <div>
               <strong>Puedes ver el reparto, pero no cambiarlo.</strong>{' '}
@@ -334,7 +337,7 @@ export default function Reparto({ documentoId }) {
         {/* Aquí no hay tabla y por tanto no hay ayuda plegada donde meter el
             porqué: este bloque es todo lo que se ve, así que lleva el dato, la
             regla y la salida, en dos líneas. */}
-        {datos && personas.length === 0 ? (
+        {datos && !sinUnidades && personas.length === 0 ? (
           <div className="nota nota-lock">
             <div>
               <strong>No hay nadie a quien asignar unidades.</strong>{' '}
@@ -344,7 +347,7 @@ export default function Reparto({ documentoId }) {
           </div>
         ) : null}
 
-        {datos && personas.length ? (
+        {datos && !sinUnidades && personas.length ? (
           <section className="tarjeta">
             <header className="tarjeta-cab">
               <h2>Unidades × personas</h2>

@@ -91,7 +91,7 @@ function useAlcance(documentoId) {
 
     if (documentoId) {
       pedir(`/api/documentos/${encodeURIComponent(documentoId)}/unidades`)
-        .then((r) => parchear({ reparto: !!r.puedeRepartir }))
+        .then((r) => parchear({ reparto: !!r.puedeRepartir, sinUnidades: !!(r.resumen && r.resumen.unidades === 0) }))
         .catch(() => parchear({ reparto: false }));
     } else {
       parchear({ reparto: false });
@@ -143,8 +143,10 @@ function destinosDe({ documentoId, alcance, aqui, onVista }) {
     lista.push({
       id: 'reparto',
       href: `/reparto/${d}`,
-      etiqueta: 'Quién lleva cada unidad',
-      ayuda: alcance.reparto
+      etiqueta: alcance.sinUnidades ? 'Quién lleva cada apartado' : 'Quién lleva cada unidad',
+      ayuda: alcance.sinUnidades
+        ? 'Quién lleva cada apartado común del documento, que reparte la jefatura del departamento.'
+        : alcance.reparto
         ? 'El reparto de los módulos y las materias entre el profesorado.'
         : 'Quién da clase de cada módulo. Repartirlos lo hace la jefatura del departamento: aquí solo se ven.',
     });
