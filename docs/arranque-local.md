@@ -1,6 +1,6 @@
 # Arrancar la aplicación en local, paso a paso
 
-Para quien se baja la rama y quiere probarla en su máquina. Hay tres caminos, de más fácil a más
+Para quien se baja la rama y quiere probarla en su máquina. Hay varios caminos, de más fácil a más
 completo. Elige uno y no mezcles: el error más común es mezclar el 2 con el 3 (ver más abajo).
 
 ## Requisitos
@@ -47,6 +47,33 @@ PCCF_ACCESO_LIBRE=1 npm run dev
 Sale una franja roja de «modo de pruebas». Solo funciona con `npm run dev` (no con `npm run start`),
 y no se abre si `MONGODB_URI` apunta a una base que no está en tu máquina (Atlas, por ejemplo).
 
+## Camino 2b · MongoDB local y `/entrar` (el cómodo para el día a día)
+
+Lo escrito sobrevive a los reinicios, no hay enlaces que gastar ni cadenas que copiar. Es lo más
+parecido a «solo `npm run dev`».
+
+1. `docker compose up -d` (levanta un MongoDB en `localhost:27017`).
+2. En `.env.local` (créalo copiando [`.env.example`](../.env.example)), una sola vez:
+
+   ```
+   MONGODB_URI=mongodb://localhost:27017
+   PCCF_ACCESO_LIBRE=1
+   ```
+3. `npm run dev` y abre `http://localhost:3000/entrar`: eliges la persona y entras.
+
+No hace falta sembrar: las pantallas crean las personas de muestra solas la primera vez que cargan.
+Si `/entrar` sale sin personas, reinicia `npm run dev` y recarga.
+
+### ¿Y si tu MongoDB es Atlas?
+
+`/entrar` **no se abre nunca** con una base que no esté en tu máquina; es a propósito, para que este
+atajo no pueda abrir datos de verdad. Hay dos salidas, de más a menos sencilla:
+
+- **Usar Mongo en Docker** para probar, como arriba. Sigue teniendo Atlas para lo demás: basta con
+  cambiar `MONGODB_URI` cuando toque.
+- **Quedarte con Atlas y entrar con enlace**: camino 3, sembrando con
+  `node --env-file=.env.local scripts/sembrar.js`.
+
 ## Camino 3 · Con MongoDB, para que lo escrito sobreviva
 
 1. Elige la base:
@@ -86,7 +113,7 @@ gastaste los enlaces, vuelve a sembrar: es idempotente (no duplica personas) y g
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | El enlace dice que no se encuentra o no vale | Se sembró en otro sitio (memoria) o ya se usó | Camino 3, paso 3; o reinicia en los caminos 1 y 2 |
-| `/entrar` no ofrece personas, o `/api/acceso-libre` da 404 | Falta `PCCF_ACCESO_LIBRE=1`, o usas `npm run start`, o `MONGODB_URI` apunta fuera de tu máquina | Camino 2, o usa enlaces |
+| `/entrar` no ofrece personas, o `/api/acceso-libre` da 404 | Falta `PCCF_ACCESO_LIBRE=1`, o usas `npm run start`, o `MONGODB_URI` apunta a Atlas u otra máquina | Camino 2b (Mongo en Docker), o camino 3 con enlaces |
 | Todas las rutas dan 401 | No hay personas en la base | Sembrar |
 | Los enlaces salen con otro puerto | `PCCF_URL_BASE` | Ajustarlo en `.env.local` y volver a sembrar |
 | No arranca | Dependencias o Node antiguo | `npm install`, y `node -v` |
