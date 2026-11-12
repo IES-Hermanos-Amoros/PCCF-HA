@@ -762,8 +762,9 @@ prueba('crear dos veces el mismo curso: 409 con el id del que ya existe, y no se
   assert.equal((await repo.unidades.listar(primero)).length, antesUnidades);
 });
 
-prueba('el curso pedido tiene que tener la forma y ser posterior al de partida', async () => {
+prueba('el curso pedido tiene que tener la forma y ser el inmediato siguiente al de partida', async () => {
   const { u, doc } = await escenario();
+  await esError(await crearSiguiente(u.jefa, doc._id, { curso: '2027-29' }), 400, 'peticion');
   await esError(await crearSiguiente(u.jefa, doc._id, { curso: '2027/28' }), 400, 'peticion');
   await esError(await crearSiguiente(u.jefa, doc._id, { curso: '2026-27' }), 400, 'peticion');
   await esError(await crearSiguiente(u.jefa, doc._id, { curso: '2025-26' }), 400, 'peticion');
@@ -771,11 +772,14 @@ prueba('el curso pedido tiene que tener la forma y ser posterior al de partida',
   await esError(await crearSiguiente(u.jefa, doc._id, '{no es json'), 400, 'peticion');
 });
 
-prueba('pedir otro curso posterior, no el siguiente, también vale', async () => {
-  const { u, doc } = await escenario();
-  const res = await crearSiguiente(u.jefa, doc._id, { curso: '2028-29' });
+prueba('pedir un curso posterior que no es el inmediato siguiente es 400 y no escribe nada', async () => {
+  const { repo, u, doc } = await escenario();
+  const antes = (await repo.documentos.listar({})).length;
+  const cuerpo = await esError(await crearSiguiente(u.jefa, doc._id, { curso: '2028-29' }), 400, 'peticion');
+  assert.ok(cuerpo.mensaje.includes('2027-28'), cuerpo.mensaje);
+  assert.equal((await repo.documentos.listar({})).length, antes);
+  const res = await crearSiguiente(u.jefa, doc._id, { curso: '2027-28' });
   assert.equal(res.status, 201);
-  assert.equal((await res.json()).documento.curso, '2028-29');
 });
 
 prueba('un documento sin curso no deduce el siguiente: lo pide, y con él crea el documento', async () => {

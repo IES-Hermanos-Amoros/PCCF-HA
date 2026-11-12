@@ -534,6 +534,21 @@ mandarlo, pero un mismo documento no puede ser tres según el ciclo que se escog
 sigue siendo obligatorio para todos, que es lo que distingue la memoria de un curso de la del
 siguiente.
 
+## Validación al importar y al crear el curso siguiente
+
+Todo esto responde 400 antes de escribir nada.
+
+- **Curso.** `AAAA-AA` con el segundo año igual al primero más uno (`2026-27`, `2099-00`). `2026-29` o
+  `2026-26` tienen la forma pero no son un curso: se aceptaban y quedaban guardados con un curso que
+  no existe. En `siguiente-curso` el curso pedido, además, tiene que ser el **inmediato** siguiente al del
+  documento de partida: un curso salteado dejaría un hueco en la cadena de `anteriorId`.
+- **Ciclo.** Tiene que ser un ciclo o ámbito del catálogo (`CICLOS` de `core/unidades.js`: `daw`, `smr`,
+  `eso`, `bach`). Antes un ciclo inventado llegaba hasta la conciliación y respondía «No reconozco 11 de 11
+  módulos», que no dice qué está mal.
+- **Programación didáctica sin módulos.** Un Word sin ningún bloque de módulo no entra como `programacion_didactica`.
+  El PCCF o la memoria subidos con ese tipo entraban como una PD vacía (el sentido inverso, una PD subida
+  como PCCF o memoria, ya se rechazaba por sus bloques).
+
 ## Por qué `esperaUpdatedAt`
 
 Es la versión del apartado que tenía el cliente cuando lo leyó. Si no coincide con la guardada, el

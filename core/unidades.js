@@ -118,7 +118,14 @@
 
   const unidad = (id) => porId.get(id) || null;
 
-  const api = { UNIDADES, unidad, tituloDe, etiquetaCodigo, deCiclo, deAmbito, hijasDe };
+  // Los ciclos de FP y los ámbitos (eso, bach) con unidades en el catálogo: lo que vale como `ciclo` al importar.
+  const CICLOS = [];
+  for (const u of UNIDADES) {
+    const clave = u.ciclo || u.ambito;
+    if (clave && clave !== 'fp' && !CICLOS.includes(clave)) CICLOS.push(clave);
+  }
+
+  const api = { UNIDADES, CICLOS, unidad, tituloDe, etiquetaCodigo, deCiclo, deAmbito, hijasDe };
 
   // Mismo patrón que core/permisos.js: un único objeto `Core` en el navegador y en
   // las pruebas, `module.exports` si existe `module`. El mockup todavía lee

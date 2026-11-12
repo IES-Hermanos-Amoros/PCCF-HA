@@ -33,7 +33,8 @@ const { aFilas, idDeTitulo } = require('../../../core/documento');
 const { TIPOS_SIN_CICLO, esActiva, versionesDe, siguienteVersion } = require('../../../core/versiones');
 const { obtenerRepositorio } = require('../repositorio');
 const { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO } = require('../usuario');
-const { conErrores, fallo, malaPeticion, sinPlantilla } = require('./comun');
+const { conErrores, fallo, malaPeticion, sinPlantilla, cursoValido } = require('./comun');
+const { CICLOS } = require('../../../core/unidades');
 
 // Solo la jefatura de departamento y el soporte. El docente edita sus módulos, no crea documentos; y
 // la jefatura de estudios no edita nada: es quien aprueba (docs/api.md, «Quién puede importar»).
@@ -192,8 +193,11 @@ const POST = conErrores(async (peticion) => {
   const curso = texto(formulario, 'curso');
   const departamento = texto(formulario, 'departamento');
 
-  if (!/^\d{4}-\d{2}$/.test(curso)) {
-    return malaPeticion(`El curso «${curso}» no tiene la forma 2026-27.`);
+  if (!cursoValido(curso)) {
+    return malaPeticion(`El curso «${curso}» no es válido: tiene la forma 2026-27, con el segundo año igual al primero más uno.`);
+  }
+  if (ciclo !== null && !CICLOS.includes(ciclo)) {
+    return malaPeticion(`El ciclo «${ciclo}» no existe: usa ${CICLOS.join(', ')}.`);
   }
 
   const { fallo: falloForzar, forzar } = leerForzar(formulario);
@@ -300,6 +304,14 @@ async function guardarImportacion({
       + 'No se ha guardado nada.',
       { tipo, instancias: instancias.map((i) => i.titulo) },
     );
+  }
+
+  // Una programación didáctica sin ni un módulo es casi siempre otro documento subido con el tipo sin
+  // cambiar (un PCCF o una memoria): se rechaza antes de escribir nada.
+  if (tipo === 'programacion_didactica' && !instancias.length) {
+    return rechazo('Este Word no tiene ningún bloque de módulo, y una programación didáctica los lleva '
+      + '(uno por módulo). Lo más probable es que sea un PCCF o una memoria y se haya quedado el tipo sin '
+      + 'cambiar. No se ha guardado nada.', { tipo });
   }
 
   // La conciliación: cada módulo del Word, con su id estable del catálogo.

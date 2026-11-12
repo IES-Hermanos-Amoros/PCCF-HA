@@ -460,6 +460,12 @@ const CURSO_RE = /^\d{4}-\d{2}$/;
 
 // El curso que viene después de uno dado: 2026-27 → 2027-28. Es lo que se propone por omisión al
 // crear el documento del curso siguiente; quien lo pide puede dar otro.
+// Un curso es AAAA-AA con el segundo año igual al primero más uno: 2026-27, 2099-00.
+function cursoValido(curso) {
+  if (!CURSO_RE.test(String(curso))) return false;
+  return Number(String(curso).slice(5)) === (Number(String(curso).slice(0, 4)) + 1) % 100;
+}
+
 function cursoSiguiente(curso) {
   const anio = Number(String(curso).slice(0, 4)) + 1;
   return `${anio}-${String((anio + 1) % 100).padStart(2, '0')}`;
@@ -476,6 +482,7 @@ const { ORIGENES, esRevisado } = require('../../../core/documento');
 module.exports = {
   CURSO_RE,
   cursoSiguiente,
+  cursoValido,
   ORIGENES,
   esRevisado,
   fallo,

@@ -71,7 +71,7 @@
 
 const Unidades = require('../../../core/unidades');
 const { mismoGrupo } = require('../../../core/versiones');
-const { conErrores, abrirDocumento, leerJson, fallo, malaPeticion, sinPlantilla, CURSO_RE, cursoSiguiente } = require('./comun');
+const { conErrores, abrirDocumento, leerJson, fallo, malaPeticion, sinPlantilla, CURSO_RE, cursoSiguiente, cursoValido } = require('./comun');
 const { SIN_PERMISO } = require('../usuario');
 
 // Quién crea el curso siguiente: la jefatura del departamento y el soporte. El docente no crea
@@ -190,11 +190,11 @@ const CREAR = conErrores(async (peticion, parametros) => {
     }
     curso = cursoSiguiente(cursoDePartida);
   }
-  if (!CURSO_RE.test(curso)) {
-    return malaPeticion(`El curso «${curso}» no tiene la forma 2027-28.`);
+  if (!cursoValido(curso)) {
+    return malaPeticion(`El curso «${curso}» no es válido: tiene la forma 2027-28, con el segundo año igual al primero más uno.`);
   }
-  if (cursoDePartida && !(curso > cursoDePartida)) {
-    return malaPeticion(`El curso nuevo tiene que ser posterior al del documento de partida, «${cursoDePartida}».`);
+  if (cursoDePartida && curso !== cursoSiguiente(cursoDePartida)) {
+    return malaPeticion(`El curso nuevo tiene que ser el inmediato siguiente al del documento de partida, «${cursoDePartida}»: ${cursoSiguiente(cursoDePartida)}.`);
   }
 
   // El mismo documento, para el mismo curso: un documento es (tipo, ciclo, departamento), y el curso
