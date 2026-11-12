@@ -235,7 +235,7 @@ export default function Reparto({ documentoId }) {
             es de otro departamento—, así que el menú no debe ofrecer sus
             pantallas. Lo que queda es volver a la lista. */}
         <BarraSuperior subtitulo="Reparto de unidades" persona={yo} aqui="reparto" />
-        <main className="main main-estrecha">
+        <main id="contenido" tabIndex={-1} className="main main-estrecha">
           <div className="cabecera"><div><h1>No se puede ver el reparto</h1></div></div>
           <div className="nota nota-lock" role="alert">
             <div>
@@ -263,7 +263,7 @@ export default function Reparto({ documentoId }) {
     <>
       <BarraSuperior subtitulo={corto(documento) || 'Reparto de unidades'} persona={yo} documentoId={documentoId} aqui="reparto" />
 
-      <main className="main">
+      <main id="contenido" tabIndex={-1} className="main">
         <div className="cabecera">
           <div>
             <h1>{sinUnidades ? 'Quién lleva cada apartado' : 'Quién lleva cada unidad'}</h1>

@@ -17,6 +17,8 @@
 import { asegurarSemilla } from '../../../../_lib/semilla';
 import Visor from '../../../../_componentes/Visor';
 
+export const metadata = { title: 'Documento' };
+
 export const dynamic = 'force-dynamic';
 
 export default async function PaginaDocumento({ params, searchParams }) {

@@ -2,6 +2,8 @@
 // El porqué, los cerrojos y cómo se quita, en app/_lib/rutas/acceso-libre.js.
 import AccesoLibre from '../../_componentes/AccesoLibre';
 
+export const metadata = { title: 'Entrar sin enlace' };
+
 export const dynamic = 'force-dynamic';
 
 export default function Entrar() {

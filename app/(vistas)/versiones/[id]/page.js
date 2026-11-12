@@ -6,6 +6,8 @@
 import { asegurarSemilla } from '../../../_lib/semilla';
 import Versiones from '../../../_componentes/Versiones';
 
+export const metadata = { title: 'Versiones' };
+
 export const dynamic = 'force-dynamic';
 
 export default async function PaginaVersiones({ params }) {

@@ -12,6 +12,8 @@
 import { asegurarSemilla } from '../../_lib/semilla';
 import Acceso from '../../_componentes/Acceso';
 
+export const metadata = { title: 'Acceso' };
+
 export const dynamic = 'force-dynamic';
 
 export default async function PaginaAcceso({ searchParams }) {

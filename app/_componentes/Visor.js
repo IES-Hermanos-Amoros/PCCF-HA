@@ -628,7 +628,7 @@ export default function Visor({
     return (
       <>
         <BarraSuperior persona={yo} />
-        <main className="main">
+        <main id="contenido" tabIndex={-1} className="main">
           <div className="cabecera"><div><h1>No se puede abrir este documento</h1></div></div>
           <div className="nota nota-lock">
             <Candado />
@@ -659,7 +659,7 @@ export default function Visor({
     return (
       <>
         <BarraSuperior persona={yo} />
-        <main className="main"><p className="suave">Abriendo el documento…</p></main>
+        <main id="contenido" tabIndex={-1} className="main"><p className="suave">Abriendo el documento…</p></main>
       </>
     );
   }
@@ -1274,7 +1274,7 @@ export default function Visor({
           </div>
         </aside>
 
-        <main className="main">
+        <main id="contenido" tabIndex={-1} className="main">
           {migas()}
 
           {documento && documento.activa === false ? (

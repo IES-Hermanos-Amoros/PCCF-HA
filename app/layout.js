@@ -8,7 +8,10 @@
 import './estilos.css';
 
 export const metadata = {
-  title: 'Programaciones · Departamento de Informática',
+  title: {
+    default: 'Programaciones · Departamento de Informática',
+    template: '%s · Programaciones',
+  },
   description:
     'Programaciones didácticas, PCCF y memoria final de curso: se redactan aquí y se exportan a PDF y Word.',
 };
@@ -34,6 +37,7 @@ export default function Layout({ children }) {
         />
       </head>
       <body>
+        <a className="saltar" href="#contenido">Saltar al contenido</a>
         <AvisoAccesoLibre />
         {children}
       </body>

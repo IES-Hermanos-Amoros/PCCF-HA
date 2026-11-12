@@ -112,7 +112,7 @@ export function BorrarApartado({
         ref={confirma.refAbrir()}
         onClick={() => confirma.abrir()}
         disabled={ocupado}
-        aria-label={`Borrar «${titulo}» para siempre`}
+        aria-label={`Borrar para siempre «${titulo}»`}
         title={`Borrar «${titulo}» para siempre. No se puede deshacer`}
       >
         Borrar para siempre…
@@ -210,7 +210,7 @@ export function BorrarCampo({
         ref={confirma.refAbrir()}
         onClick={() => confirma.abrir()}
         disabled={ocupado}
-        aria-label={`Borrar el campo «${nombre}» para siempre`}
+        aria-label={`Borrar para siempre el campo «${nombre}»`}
         title={`Borrar el campo «${nombre}» para siempre. No se puede deshacer`}
       >
         Borrar para siempre…

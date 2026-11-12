@@ -90,7 +90,7 @@ export default function Portada() {
     <>
       <BarraSuperior persona={persona} aqui="documentos" />
 
-      <main className="main">
+      <main id="contenido" tabIndex={-1} className="main">
         <div className="cabecera">
           <div>
             <h1>Documentos del departamento</h1>

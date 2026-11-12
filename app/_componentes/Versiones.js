@@ -20,6 +20,7 @@ import Ayuda from './Ayuda';
 import BarraSuperior from './BarraSuperior';
 import { pedir } from './api';
 import { useSesion } from './sesion-cliente';
+import useConfirmacion from './confirmar-cliente';
 import { NOMBRE_TIPO } from './etiquetas';
 
 const fecha = (iso) => {
@@ -39,7 +40,7 @@ export default function Versiones({ documentoId }) {
   const [aviso, setAviso] = useState(null);
   const [trabajando, setTrabajando] = useState(null);
   // La versión cuyo borrado espera la segunda pulsación.
-  const [borrando, setBorrando] = useState(null);
+  const confirma = useConfirmacion();
   const [archivo, setArchivo] = useState(null);
 
   const cargar = useCallback(() => pedir(`${base(documentoId)}/versiones`)
@@ -55,11 +56,12 @@ export default function Versiones({ documentoId }) {
       const r = await accion();
       setAviso({ tipo: 'bien', texto: typeof mensaje === 'function' ? mensaje(r) : mensaje });
       await cargar();
+      confirma.terminar();
     } catch (e) {
       setAviso({ tipo: 'error', texto: e.message });
+      confirma.cancelar();
     } finally {
       setTrabajando(null);
-      setBorrando(null);
     }
   };
 
@@ -99,7 +101,7 @@ export default function Versiones({ documentoId }) {
     return (
       <>
         <BarraSuperior subtitulo="Versiones" persona={yo} aqui="versiones" />
-        <main className="main main-estrecha">
+        <main id="contenido" tabIndex={-1} className="main main-estrecha">
           <div className="cabecera"><div><h1>No se pueden ver las versiones</h1></div></div>
           <div className="nota nota-lock" role="alert"><div>{error.message}</div></div>
           <p><a className="enlace" href="/">Volver a la lista de documentos</a></p>
@@ -111,7 +113,7 @@ export default function Versiones({ documentoId }) {
   return (
     <>
       <BarraSuperior subtitulo={titulo || 'Versiones'} persona={yo} documentoId={documentoId} aqui="versiones" />
-      <main className="main main-estrecha">
+      <main id="contenido" tabIndex={-1} className="main main-estrecha">
         <div className="cabecera">
           <div>
             <h1>Versiones del documento</h1>
@@ -128,7 +130,12 @@ export default function Versiones({ documentoId }) {
         {datos === null ? <p className="suave">Cargando las versiones…</p> : null}
 
         {aviso ? (
-          <div className={aviso.tipo === 'error' ? 'nota nota-error' : 'nota'} role={aviso.tipo === 'error' ? 'alert' : 'status'}>
+          <div
+            className={aviso.tipo === 'error' ? 'nota nota-error' : 'nota'}
+            role={aviso.tipo === 'error' ? 'alert' : 'status'}
+            ref={confirma.refAviso}
+            tabIndex={-1}
+          >
             <div>{aviso.texto}</div>
           </div>
         ) : null}
@@ -151,7 +158,7 @@ export default function Versiones({ documentoId }) {
             </header>
 
             <div className="tabla-scroll">
-              <table className="tabla">
+              <table className="tabla tabla-apilable">
                 <caption className="sr">Versiones de este documento</caption>
                 <thead>
                   <tr>
@@ -165,18 +172,18 @@ export default function Versiones({ documentoId }) {
                 <tbody>
                   {datos.versiones.map((v) => (
                     <tr key={v._id}>
-                      <th scope="row">{v.version}</th>
-                      <td>{v.origen || <span className="suave">sin nombre de fichero</span>}</td>
-                      <td>
+                      <th scope="row" data-etiqueta="Versión">{v.version}</th>
+                      <td data-etiqueta="Origen">{v.origen || <span className="suave">sin nombre de fichero</span>}</td>
+                      <td data-etiqueta="Subida">
                         {fecha(v.creado)}
                         <div className="suave">{v.subidoPor && v.subidoPor.nombre ? `por ${v.subidoPor.nombre}` : 'autor desconocido'}</div>
                       </td>
-                      <td>
+                      <td data-etiqueta="Estado">
                         {v.activa
                           ? <span className="chip chip-validado">activa</span>
                           : <span className="chip">alternativa · solo lectura</span>}
                       </td>
-                      <td>
+                      <td data-etiqueta="Acciones">
                         <div className="compartido-acciones">
                           <a className="mini" href={`/doc/${encodeURIComponent(v._id)}`}>
                             {v.activa ? 'Abrir' : 'Consultar'}
@@ -196,21 +203,27 @@ export default function Versiones({ documentoId }) {
                               {trabajando === `a-${v._id}` ? 'Activando…' : 'Activar esta versión'}
                             </button>
                           ) : null}
-                          {v.puedeBorrar && borrando !== v._id ? (
-                            <button type="button" className="mini" disabled={trabajando !== null} onClick={() => setBorrando(v._id)}>
+                          {v.puedeBorrar && !confirma.estaAbierta(v._id) ? (
+                            <button
+                              type="button"
+                              className="mini"
+                              ref={confirma.refAbrir(v._id)}
+                              disabled={trabajando !== null}
+                              onClick={() => confirma.abrir(v._id)}
+                            >
                               Borrar
                             </button>
                           ) : null}
                         </div>
-                        {v.puedeBorrar && borrando === v._id ? (
+                        {v.puedeBorrar && confirma.estaAbierta(v._id) ? (
                           <div className="nota nota-error" role="alert">
                             <div>
                               <strong>Se borra la versión {v.version} con todo lo que tenga escrito, y no se puede deshacer.</strong>
                               <div className="compartido-acciones">
-                                <button type="button" className="mini" disabled={trabajando !== null} onClick={() => borrar(v)}>
+                                <button type="button" className="mini" ref={confirma.refPaso} disabled={trabajando !== null} onClick={() => borrar(v)}>
                                   {trabajando === `b-${v._id}` ? 'Borrando…' : `Sí, borrar la versión ${v.version}`}
                                 </button>
-                                <button type="button" className="mini" onClick={() => setBorrando(null)}>Cancelar</button>
+                                <button type="button" className="mini" onClick={confirma.cancelar}>Cancelar</button>
                               </div>
                             </div>
                           </div>
