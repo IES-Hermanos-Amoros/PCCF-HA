@@ -852,7 +852,8 @@ export default function Visor({
             otra cosa, y lo dice esa pantalla. */}
         <div className="compartido-acciones">
           <a className="mini" href={`/reparto/${encodeURIComponent(documentoId)}`}>
-            Quién lleva cada unidad
+            {documento.tipo === 'pccf' || documento.tipo === 'memoria'
+              ? 'Quién lleva cada apartado' : 'Quién lleva cada unidad'}
           </a>
           {documento.anteriorId ? (
             <a className="mini" href={`/doc/${encodeURIComponent(documento.anteriorId)}`}>

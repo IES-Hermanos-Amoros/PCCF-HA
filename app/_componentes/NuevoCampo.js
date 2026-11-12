@@ -159,7 +159,7 @@ export function ElegirCampo({
             );
           })}
           <p className="ayuda">
-            El nombre se queda con el campo para siempre: no se puede cambiar después.
+            El nombre se puede cambiar después con «Renombrar»; el identificador con el que se guarda no cambia.
           </p>
         </div>
       ) : null}
