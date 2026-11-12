@@ -114,6 +114,7 @@
 'use strict';
 
 const Arbol = require('../../../core/arbol');
+const { personasQueDanClase } = require('./unidades');
 const Sa = require('../../../core/sa');
 const Val = require('../../../core/validaciones');
 const E = require('../../../core/estructurados');
@@ -223,7 +224,7 @@ async function informeDe({ documento, repo }) {
   // core/permisos.js: los comunes los escribe ella, salvo los que haya delegado, y a quién se le ha
   // delegado qué se ve en el reparto.
   const personas = new Map();
-  for (const p of await repo.usuarios.listar({ departamento: documento.departamento })) {
+  for (const p of await personasQueDanClase(repo, documento)) {
     personas.set(p._id, { _id: p._id, nombre: p.nombre, rol: p.rol });
   }
   const jefatura = [...personas.values()].filter((p) => p.rol === 'jefe_departamento');
@@ -299,7 +300,7 @@ async function informeDe({ documento, repo }) {
     // Primero el que impide trabajar: mientras la unidad no tenga profesorado, nadie salvo la
     // jefatura puede escribir en ella, así que lo demás es secundario.
     grupo.avisos.unshift(...marcar(
-      Val.sinDocente(grupo.titulo, (unidad.docentes || []).length), 'sin_docente', suyo, false,
+      Val.sinDocente(grupo.titulo, grupo.responsables.length), 'sin_docente', suyo, false,
     ));
 
     const fichas = grupo.fichas.map((x) => x.ficha);
