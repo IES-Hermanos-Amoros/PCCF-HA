@@ -529,7 +529,8 @@ materias de una se buscarían también entre las de la otra.
 ciclos de FP en el mismo documento—, así que exigirle uno sería obligar a quien la sube a elegir uno
 de mentira, y de paso etiquetar la memoria del departamento como si fuera de DAW. El modelo ya admite
 `ciclo` nulo desde el E0 (`docs/plan.md` §3) y no hay nada que conciliar, porque una memoria no tiene
-módulos. Si llega con ciclo, se guarda: quien lo mande no se lleva un error por mandarlo. El `curso`
+módulos. Si llega con ciclo, **se ignora** (se guarda `null`): quien lo mande no se lleva un error por
+mandarlo, pero un mismo documento no puede ser tres según el ciclo que se escogiera al subirlo. El `curso`
 sigue siendo obligatorio para todos, que es lo que distingue la memoria de un curso de la del
 siguiente.
 
@@ -548,6 +549,10 @@ El porqué, en `docs/plan.md` §8. Lo que cambia en la API:
 **`POST /api/documentos/importar`** responde además `alternativa` (booleano) y `version` (número). Si
 ya existe un documento con el mismo tipo, curso, ciclo y departamento, lo subido se guarda como
 versión alternativa (`activa: false` en el documento) y el existente no se toca; si no, nace activo.
+La clave de la **memoria** ignora el ciclo (es del departamento): subirla con ciclos distintos, o sin
+ciclo, son versiones del mismo documento. Las memorias guardadas antes con ciclo entran en ese mismo
+grupo sin migrar nada; si había varias activas por haberla subido con ciclos distintos, el grupo las
+muestra todas y se arregla borrando o activando desde `/versiones`.
 
 **`GET /api/documentos`** lista solo la versión activa de cada documento. El documento lleva `activa`,
 `version` y `subidoPor` cuando los tiene (ausentes, es la versión activa y la 1).

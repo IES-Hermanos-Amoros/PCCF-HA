@@ -393,6 +393,28 @@ prueba('borradas las alternativas, el documento activo sigue solo', async () => 
   assert.deepEqual(cuerpo.versiones.map((v) => [v._id, v.activa]), [[v1, true]]);
 });
 
+// ---------------------------------------------------------------- la memoria es del departamento
+
+prueba('la memoria ignora el ciclo: con ciclos distintos o sin él son versiones del mismo documento', async () => {
+  const { repo, u } = await escenario();
+  const a = await importar(u.jefa, 'Con DAW', { ciclo: 'daw' });
+  const b = await importar(u.jefa, 'Con SMR', { ciclo: 'smr' });
+  const c = await importar(u.jefa, 'Sin ciclo', { ciclo: null });
+  assert.deepEqual([a.alternativa, b.alternativa, c.alternativa], [false, true, true]);
+  assert.deepEqual([a.version, b.version, c.version], [1, 2, 3]);
+  assert.equal((await repo.documentos.obtener(b.documento._id)).ciclo, null);
+  assert.equal((await lista(u.jefa)).length, 1);
+});
+
+prueba('una memoria guardada antes con ciclo cuenta como del mismo grupo que la que llega sin él', async () => {
+  const { repo, u } = await escenario();
+  await repo.documentos.crear({ tipo: 'memoria', curso: '2026-27', departamento: 'informatica', ciclo: 'daw' });
+  const r = await importar(u.jefa, 'Nueva', { ciclo: null });
+  assert.equal(r.alternativa, true);
+  assert.equal(Versiones.mismoGrupo({ tipo: 'memoria', curso: 'c', departamento: 'd', ciclo: 'daw' }, { tipo: 'memoria', curso: 'c', departamento: 'd' }), true);
+  assert.equal(Versiones.mismoGrupo({ tipo: 'pccf', curso: 'c', departamento: 'd', ciclo: 'daw' }, { tipo: 'pccf', curso: 'c', departamento: 'd' }), false);
+});
+
 // ---------------------------------------------------------------- ejecución
 async function ejecutar() {
   for (const { nombre, fn } of pendientes) {

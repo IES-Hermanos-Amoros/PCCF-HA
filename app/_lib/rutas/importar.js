@@ -30,7 +30,7 @@
 const { importarDocx } = require('../../../motor/importar-docx');
 const { conciliar, ETIQUETAS_COMO } = require('../../../core/conciliar');
 const { aFilas, idDeTitulo } = require('../../../core/documento');
-const { esActiva, versionesDe, siguienteVersion } = require('../../../core/versiones');
+const { TIPOS_SIN_CICLO, esActiva, versionesDe, siguienteVersion } = require('../../../core/versiones');
 const { obtenerRepositorio } = require('../repositorio');
 const { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO } = require('../usuario');
 const { conErrores, fallo, malaPeticion, sinPlantilla } = require('./comun');
@@ -188,7 +188,7 @@ const POST = conErrores(async (peticion) => {
   if (EXIGEN_CICLO.includes(tipo) && cicloCrudo === null) {
     return malaPeticion('Falta el campo «ciclo».');
   }
-  const ciclo = cicloCrudo === null ? null : cicloCrudo.toLowerCase();
+  const ciclo = cicloCrudo === null || TIPOS_SIN_CICLO.includes(tipo) ? null : cicloCrudo.toLowerCase();
   const curso = texto(formulario, 'curso');
   const departamento = texto(formulario, 'departamento');
 

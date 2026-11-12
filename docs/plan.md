@@ -494,7 +494,8 @@ Está recogido en [`mockup-v2/CAMBIOS.md`](mockup-v2/CAMBIOS.md) y no bloquea na
 Reimportar un Word para un curso que ya tiene documento no lo pisa ni lo duplica: entra como una
 **versión alternativa**, no activa, y el documento que había sigue exactamente como estaba.
 
-**Qué es «el mismo documento».** Tipo + curso + ciclo + departamento. Todos los documentos con esa
+**Qué es «el mismo documento».** Tipo + curso + ciclo + departamento (en la memoria, que es del
+departamento y no de un ciclo, la clave no lleva ciclo: `TIPOS_SIN_CICLO` en `core/versiones.js`). Todos los documentos con esa
 clave son versiones del mismo y exactamente uno está activo. No hay un campo «grupo» que mantener: el
 grupo es la clave, y se calcula (`core/versiones.js`, `versionesDe`). Así un documento guardado antes
 de que existieran las versiones ya pertenece a su grupo sin migrar nada.

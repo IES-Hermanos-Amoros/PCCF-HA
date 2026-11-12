@@ -70,6 +70,7 @@
 'use strict';
 
 const Unidades = require('../../../core/unidades');
+const { mismoGrupo } = require('../../../core/versiones');
 const { conErrores, abrirDocumento, leerJson, fallo, malaPeticion, sinPlantilla, CURSO_RE, cursoSiguiente } = require('./comun');
 const { SIN_PERMISO } = require('../usuario');
 
@@ -201,7 +202,7 @@ const CREAR = conErrores(async (peticion, parametros) => {
   // pueden pasarla las dos. El índice de `documentos` en repositorio/mongo.js no es único, y ese
   // fichero no es de este evolutivo; queda anotado en el informe.
   const iguales = await repo.documentos.listar({ tipo: origen.tipo, departamento: origen.departamento, curso });
-  const mismo = iguales.find((d) => (d.ciclo || null) === (origen.ciclo || null));
+  const mismo = iguales.find((d) => mismoGrupo(d, { ...origen, curso }));
   if (mismo) {
     return fallo(
       409, 'conflicto',

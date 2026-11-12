@@ -1160,10 +1160,10 @@ prueba('la memoria no exige ciclo —es del departamento entero— y la PD sí',
   assert.equal(sinCiclo.status, 201);
   assert.equal((await sinCiclo.json()).documento.ciclo, null, 'una memoria sin ciclo se guarda con ciclo nulo');
 
-  // Con ciclo también entra: quien lo mande no se lleva un error por mandarlo.
+  // Con ciclo también entra, pero el ciclo se ignora: la memoria es del departamento.
   const conCiclo = await subir(u.jefa, await docxMemoria(), { ciclo: 'DAW' });
   assert.equal(conCiclo.status, 201);
-  assert.equal((await conCiclo.json()).documento.ciclo, 'daw');
+  assert.equal((await conCiclo.json()).documento.ciclo, null);
 
   // La PD sin ciclo, 400: sin él la conciliación de los módulos es ambigua (docs/api.md).
   const pd = await subir(u.jefa, await docxPd(), { tipo: 'programacion_didactica', ciclo: null });
