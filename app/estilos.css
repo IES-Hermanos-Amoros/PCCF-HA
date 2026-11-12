@@ -1195,3 +1195,6 @@ del > mark.quita { text-decoration-thickness: 2px; }
    `.linea-estructura` ya es un flex con `wrap`. */
 .ayuda-plantilla { border-left: 2px solid var(--ambar); padding-left: 8px; font-size: 12.5px; }
 .ayuda-plantilla > span { color: var(--texto); }
+
+/* Un valor que no se puede leer, junto al campo donde se escribió. */
+.error-campo { display: block; color: var(--rojo); font-size: 0.85em; margin-top: 2px; }
