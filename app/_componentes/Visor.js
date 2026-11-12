@@ -424,7 +424,15 @@ export default function Visor({
   // Lo llama el editor después de cada autoguardado correcto. El `origen` lo pone
   // el servidor en la respuesta del PATCH (`modificado`), y es lo que hace que el
   // progreso por revisión se mueva al reescribir un apartado heredado.
-  const alGuardar = useCallback(({ relleno, origen }) => {
+  const alGuardar = useCallback(({ relleno, origen, valores, updatedAt }) => {
+    // El apartado cargado se pone al día con lo guardado: la vista Cambios y el editor, al volver a
+    // montarse, parten de él y no pueden enseñar el texto de cuando se abrió.
+    if (nodo && valores) {
+      setApartado((previo) => (previo && previo.seccion === nodo.seccion
+        && (previo.unidadId || null) === (nodo.unidadId || null)
+        ? { ...previo, valores, updatedAt: updatedAt || previo.updatedAt, origen: origen || previo.origen }
+        : previo));
+    }
     anotar(nodo ? nodo.clave : null, origen === undefined ? { relleno } : { relleno, origen });
   }, [anotar, nodo]);
 
