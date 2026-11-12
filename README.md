@@ -30,6 +30,8 @@ Fase de pruebas de concepto.
 
 ## Cómo se levanta
 
+Guía completa, paso a paso y con los fallos habituales: [`docs/arranque-local.md`](docs/arranque-local.md). Lo que sigue es el resumen.
+
 Lo más corto, con la programación de verdad dentro y sin instalar nada más:
 
 ```bash
