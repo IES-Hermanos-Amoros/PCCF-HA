@@ -155,6 +155,41 @@
     return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
   }
 
+  // Quién cambia la estructura de UN APARTADO concreto: los campos que lleva, su nombre y su orden.
+  // Es la regla de la estructura propia de un módulo (core/estructura-modulo.js), y es otra pregunta
+  // que `puedeCambiarEstructura`, que gobierna la plantilla común del documento entero.
+  //
+  //   edita                  'jefe_departamento' | 'docentes_del_modulo' | null, del apartado
+  //   esDocenteDeLaUnidad    el usuario lleva la unidad de este apartado
+  //
+  // El departamento decidió que cada docente edita libre la estructura de SU módulo y no toca la
+  // común. Por eso:
+  //
+  //   · un apartado de módulo lo cambian el soporte, la jefatura del departamento —en cualquier
+  //     módulo, lo lleve o no, como en `reglaEdicion`— y el docente que lleva esa unidad;
+  //   · un apartado común solo el soporte y la jefatura del departamento. NI SIQUIERA QUIEN TENGA EL
+  //     APARTADO ASIGNADO: asignarlo delega el CONTENIDO (`reglaEdicion`), pero la forma de lo común
+  //     es de la jefatura, y quien lo escribe no decide qué campos tiene;
+  //   · la jefatura de estudios, nunca, en ninguno: aprueba, no cambia el documento.
+  //
+  // No recibe `tieneApartadoAsignado` a propósito: que no se pueda pasar es lo que garantiza que no
+  // se tenga en cuenta. Y el `return false` final es el de `reglaEdicion`: un `edita` que no sea uno
+  // de los dos valores conocidos no lo cambia nadie.
+  function reglaEstructuraPropia(usuario, { edita, esDocenteDeLaUnidad } = {}) {
+    if (!usuario || !estaActivo(usuario)) return false;
+    if (usuario.rol === 'admin') return true;
+    if (usuario.rol === 'jefe_estudios') return false;
+
+    if (edita === 'docentes_del_modulo') {
+      if (usuario.rol === 'jefe_departamento') return true;
+      return usuario.rol === 'docente' && !!esDocenteDeLaUnidad;
+    }
+
+    if (edita === 'jefe_departamento') return usuario.rol === 'jefe_departamento';
+
+    return false;
+  }
+
   // Quién configura las COMPROBACIONES de un documento: qué comprobaciones de criterio del centro
   // se le aplican, con qué severidad, y con qué convenio se cuentan las ponderaciones de los
   // criterios (core/validaciones.js).
@@ -258,6 +293,7 @@
     puedeRepartirUnidades,
     puedeAsignarApartados,
     puedeCambiarEstructura,
+    reglaEstructuraPropia,
     puedeConfigurarComprobaciones,
     puedeActivarVersion,
     puedeBorrarVersion,

@@ -709,6 +709,7 @@ prueba('quien está de baja no ve ni edita nada, sea del rango que sea', () => {
     assert.strictEqual(P.reglaEdicion(baja, { edita: 'jefe_departamento' }), false, rol + ' edita');
     assert.strictEqual(P.reglaCompartido(baja, { comun: true, editaApartadoComun: true, tieneApartadoAsignado: true }), false, rol + ' compartido');
     assert.strictEqual(P.puedeRepartirUnidades(baja, { departamento: DEP }), false, rol + ' reparte');
+    assert.strictEqual(P.reglaEstructuraPropia(baja, { edita: 'docentes_del_modulo', esDocenteDeLaUnidad: true }), false, rol + ' estructura');
   }
 });
 
@@ -919,6 +920,22 @@ prueba('el esqueleto de la pantalla trae todas las filas, tambien las que solo s
   assert.ok(!ids(sin).includes('intermodular'));
   assert.deepStrictEqual(ids(con).sort(), est.map((c) => c.id).sort());
   assert.ok(est.some((c) => c.solo_si_hay), 'la estructura original no se toca');
+});
+
+// ------------------------------------------------ reglaEstructuraPropia
+
+prueba('reglaEstructuraPropia: la forma de un modulo es del modulo, la de lo comun es de la jefatura', () => {
+  const caso = (rol, edita, esDocenteDeLaUnidad) => P.reglaEstructuraPropia(usuario(rol), { edita, esDocenteDeLaUnidad });
+  assert.strictEqual(caso('docente', 'docentes_del_modulo', true), true);
+  assert.strictEqual(caso('docente', 'docentes_del_modulo', false), false, 'el modulo de otro no');
+  assert.strictEqual(caso('jefe_departamento', 'docentes_del_modulo', false), true);
+  assert.strictEqual(caso('docente', 'jefe_departamento', true), false, 'lo comun no, ni llevando la unidad');
+  assert.strictEqual(P.reglaEstructuraPropia(usuario('docente'), { edita: 'jefe_departamento', tieneApartadoAsignado: true }), false,
+    'ni con el apartado asignado: se delega el contenido, no la forma');
+  assert.strictEqual(caso('jefe_departamento', 'jefe_departamento', false), true);
+  assert.strictEqual(caso('admin', 'jefe_departamento', false), true);
+  for (const edita of ['docentes_del_modulo', 'jefe_departamento']) assert.strictEqual(caso('jefe_estudios', edita, true), false);
+  assert.strictEqual(caso('docente', 'otro', true), false, 'un edita desconocido no lo cambia nadie');
 });
 
 // ----------------------------------------------------------------- resumen

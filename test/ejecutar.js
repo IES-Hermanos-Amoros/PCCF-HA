@@ -68,6 +68,7 @@ const SUITES = [
   { archivo: 'test/editor-tablas.js', nombre: 'editor de tablas y alta de campos' },
   { archivo: 'test/modelos-tabla.js', nombre: 'modelos de tabla: la regla, el PDF, el Word y la puerta' },
   { archivo: 'test/tablas-adopcion.js', nombre: 'adoptar el modelo para una tabla ya escrita' },
+  { archivo: 'test/estructura-modulo.js', nombre: 'estructura propia de un modulo: la regla, la puerta y quien la cambia' },
 
   // --- E7: aprobar, coordinar y los otros documentos ----------------------
   { archivo: 'test/estados.js', nombre: 'estados del documento, PCCF y memoria' },
@@ -78,6 +79,9 @@ const SUITES = [
   { archivo: 'test/versiones.js', nombre: 'versiones del documento: alternativas, activa y copia del Word' },
 
   // --- agrupar tablas por su forma (solo propone) ---------------------------
+  // --- la estructura que ve cada módulo, congelada antes de dejar que un módulo tenga la suya ---
+  { archivo: 'test/estructura-modulos-hoy.js', nombre: 'estructura por módulo: la puerta congelada (necesita la base local)' },
+
   { archivo: 'test/tablas-forma.js', nombre: 'propuesta de grupos de tablas por forma' },
 ];
 
