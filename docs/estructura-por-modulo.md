@@ -47,6 +47,11 @@ su cabecera.
 La forma concreta del dato vive en `core/estructura-modulo.js`, con su puerta de validación y sus
 motivos escritos para que los lea una persona.
 
+**UN APARTADO SE RETIRA CON SUS HIJOS**, que es el criterio que ya aplica `core/plantilla.js` a la
+plantilla común, y restaurarlo devuelve los hijos que no se hubieran retirado por separado. No se
+escribe nada en los hijos al retirar al padre: se ocultan por colgar de un retirado y su contenido se
+conserva. Que los dos criterios no se separen es lo que hay que vigilar.
+
 ## 4. Quién cambia qué
 
 | dónde | quién cambia la forma | a quién afecta |
@@ -90,7 +95,15 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
   los campos que solo existían en la propia.
 - **Las propuestas pedagógicas y la memoria no tienen módulos.** La regla no les afecta hoy, pero
   conviene no escribirla de forma que dé por hecho que todo documento tiene unidades.
-- **Qué pasa al retirar un apartado que tiene hijos**, en un módulo y en lo común. El criterio sale
-  del que ya aplica `app/_lib/rutas/estructura.js` a la plantilla común; que los dos no se separen es
-  lo que hay que vigilar.
+- **Las operaciones todavía no existen.** El núcleo tiene la forma, la regla y la puerta, y la ruta
+  guarda la estructura entera que se le manda; lo que no hay es «retira este apartado», «muévelo»,
+  con sus avisos de operación. Cuando se escriban hay que traerse los que ya tiene
+  `core/plantilla.js` —entre ellos la negativa a restaurar un hijo bajo un padre retirado— y no
+  inventar otros.
+- **Nadie lee la regla todavía.** La pantalla del apartado, el PDF y el Word siguen pintando la
+  estructura común para todos. Hasta que la lean, esto se guarda y no se ve, y por eso la puerta
+  congelada sigue en verde: mide los módulos sin estructura propia, que hoy son todos.
+- **Dónde vive el desvío de un apartado COMÚN.** El permiso ya deja pasar a quien lo tenga asignado,
+  pero la puerta lo rechaza después, y con razón: un desvío de algo común no cabe en la unidad de un
+  módulo. Necesita sitio a nivel de documento, y eso no está decidido.
 - **El aviso de alcance de un apartado común** está decidido aquí y todavía no construido.
