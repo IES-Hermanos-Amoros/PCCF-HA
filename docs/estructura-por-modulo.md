@@ -95,6 +95,20 @@ sección **de módulo** afectarían a los once a la vez. Por eso ahí siguen sie
 docente reforma su módulo por la otra ruta. Es una distinción que alguien borrará por limpieza si no
 está escrito el porqué.
 
+### 4.2 El botón que puede dar error se queda, y se explica
+
+Retirar, restaurar o borrar un apartado exige poder configurar **cada** apartado de su subárbol
+(`puedeConfigurarRama` en `app/_lib/rutas/estructura.js`): si dentro hay uno que no es de quien mira,
+no se retira. Pero la lectura `GET …/estructura?seccion=` solo contesta por **ese** apartado, no por
+lo que tiene dentro, así que la pantalla puede ofrecer «retirar» y el servidor contestar 403 con su
+motivo.
+
+**El departamento ha decidido dejarlo así**, y el argumento es el tamaño: hoy esto solo puede ocurrir
+en **un** apartado de la PD de DAW —«Justificación de la programación», el único apartado común de
+nivel medio con un hijo dentro—, nadie pierde nada, y el aviso del servidor explica el motivo. La
+alternativa, que la lectura devolviera también un `puedeCambiarRama`, está escrita aquí por si el
+número crece cuando el departamento empiece a anidar apartados, que ahora ya puede.
+
 ## 5. La red antes del cambio
 
 Antes de tocar nada se congela lo que la aplicación hace hoy: por cada documento y cada módulo, el
@@ -116,14 +130,9 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
   campo que desaparece se queda guardado sin que nadie lo lea; no está decidido si eso vale.
 - **Las propuestas pedagógicas y la memoria no tienen módulos.** La regla no les afecta hoy, pero
   conviene no escribirla de forma que dé por hecho que todo documento tiene unidades.
-- **Un apartado que el propio módulo añade no está en la plantilla común**, así que el servidor no
-  sabe contestar por él a `GET …/estructura?seccion=` y su tarjeta no puede configurar sus campos.
-  Funciona retirarlo y restaurarlo; configurar sus campos, no.
-- **La regla de la rama no viaja en la lectura.** `puedeConfigurarRama` decide en la escritura que
-  retirar, restaurar o borrar exige poder configurar **cada** apartado del subárbol, pero el
-  `?seccion=` no lo dice. Así que la pantalla puede ofrecer «restaurar» en un común con hijos que no
-  son de quien mira, y el servidor contestará 403 con su motivo. Se arregla devolviendo también un
-  `puedeCambiarRama` en la lectura.
+- **Las casillas de un apartado propio del módulo** se pueden configurar desde la pieza en curso; lo
+  que vive dentro de su propio `anadidos[i].campos` y no en `secciones`, porque un apartado propio no
+  tiene nada común de lo que desviarse.
 - **El borrado no exige confirmación en el servidor.** La respuesta dice cuánto contenido se pierde y
   la pantalla confirma, pero la ruta no pide un `{ confirmar: true }` como sí hace la de versiones. Se
   dejó así para no romper la pantalla mientras se construía; ya se puede cerrar.
