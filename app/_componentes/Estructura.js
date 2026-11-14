@@ -494,6 +494,7 @@ export default function Estructura({
         onCambiado={onCambiado}
         enviar={enviarAlModulo}
         alcance={fraseAlcance}
+        dondeSeRecupera={enElModulo ? '«Quitados de este módulo», aquí abajo' : null}
       />
       {/* Lo que este módulo ha quitado, para devolverlo. En la plantilla eso vive en la portada
           del documento; un módulo no tiene portada propia, y es aquí donde se echó de menos. */}

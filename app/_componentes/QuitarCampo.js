@@ -61,7 +61,13 @@ function motivoSinMover(c, vigentes, sentido) {
 // `alcance` es la frase del aviso de alcance, que sale en la confirmación ANTES de quitar.
 export function QuitarCampos({
   documentoId, seccion, tituloApartado, fila, plantillaVersion, enTodas, onCambiado, enviar, alcance,
+  dondeSeRecupera,
 }) {
+  // DONDE SE RECUPERA NO ES EL MISMO SITIO SIEMPRE: lo retirado de la plantilla vuelve desde la
+  // portada del documento, y lo que un modulo ha quitado vuelve desde «Quitados de este modulo», que
+  // esta en esta misma tarjeta. Decir «la portada» en un modulo manda a la persona a un sitio donde
+  // no va a encontrar nada.
+  const donde = dondeSeRecupera || 'la portada del documento';
   const mandar = enviar || ((accion, opciones) => cambiarEstructura(documentoId, accion, opciones));
   const confirma = useConfirmacion();
   const [enviando, setEnviando] = useState(false);
@@ -148,7 +154,7 @@ export function QuitarCampos({
         cuerpo: { esperaPlantillaVersion: plantillaVersion },
       });
       setAviso(`Campo «${nombre(c)}» quitado de «${tituloApartado}». No se ha borrado: lo escrito`
-        + ' sigue guardado y vuelve al restaurarlo desde la portada del documento.'
+        + ` sigue guardado y vuelve al restaurarlo desde ${donde}.`
         + (campos.length < 2 ? ' El apartado se ha quedado sin campos.' : '')
         + yEnTodas(r, enTodas));
       confirma.terminar();
@@ -270,7 +276,7 @@ export function QuitarCampos({
                   {enTodas ? `, y en ${enTodas} a la vez` : ''}
                   {campos.length === 1 ? ', y el apartado se queda sin campos' : ''}
                   . <strong>No se borra nada</strong>: lo escrito se conserva entero y vuelve al
-                  restaurarlo desde la portada del documento.
+                  restaurarlo desde {donde}.
                 </p>
                 <p className="confirmacion-botones">
                   <button className="mini" type="button" ref={confirma.refPaso} onClick={() => quitar(c)} disabled={enviando}>

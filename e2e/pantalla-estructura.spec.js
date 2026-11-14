@@ -25,6 +25,7 @@
 // a las demás.
 
 const { test, expect } = require('@playwright/test');
+const JSZip = require('jszip');
 const {
   entrarComo, salir, personas, q, leerJson, elegirApartadoDeModulo, docentesDeUnidad, fijarDocentes, huellaDeLaBase,
 } = require('./apoyo');
@@ -431,6 +432,202 @@ test.describe('la estructura desde la pantalla', () => {
         expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
       }
       await fijarDocentes(page, doc._id, mio.unidadId, docentesAntes);
+    }
+    expect(await huellaDeLaBase(page, doc._id), 'la base tiene que quedar como estaba').toEqual(antesDeTodo);
+  });
+
+  // LAS CASILLAS DE UN APARTADO QUE EL MÓDULO SE HA CREADO. El docente que lleva un módulo crea un
+  // apartado solo en el suyo y le pone las casillas que necesite. Se PULSA todo; la API solo se lee para
+  // comprobar. Tres cosas hay que demostrar, y las tres están aquí:
+  //
+  //   1. que la pantalla ofrece añadir, renombrar, retirar y restaurar casillas del apartado propio;
+  //   2. que RETIRAR NO BORRA: la casilla sigue en la estructura marcada `retirado`, y lo escrito en ella
+  //      vuelve al restaurarla (si la pantalla mandara la lista sin ella, el texto quedaría huérfano);
+  //   3. que nada de eso sale del módulo: ni el otro módulo, ni la versión de la plantilla, ni su Word.
+  test('quien lleva un módulo pone casillas a un apartado suyo, y lo escrito sale en el Word de ese módulo y no en el de otro', async ({ page }) => {
+    test.setTimeout(300_000);
+    const TITULO = 'Taller de depuración';
+    const CASILLA = 'Pasos para reproducir el fallo';
+    const RENOMBRADA = 'Cómo reproducir el fallo';
+    const TEXTO = 'Texto escrito en la casilla propia del taller de depuracion';
+    const ESPERA = { timeout: 180_000 };
+    await salir(page);
+    await entrarComo(page, 'jefe_departamento');
+    const { doc, mio, ajeno, unidades } = await elegirApartadoDeModulo(page);
+    const lucia = (await personas(page)).find((p) => p.nombre.includes('Lucía'));
+    const antesDeTodo = await huellaDeLaBase(page, doc._id);
+    const docentesAntes = await docentesDeUnidad(page, doc._id, mio.unidadId);
+    const plantillaAntes = (await leerJson(await page.request.get(`/api/documentos/${doc._id}/estructura`))).plantillaVersion;
+    const propioId = `${mio.seccion}/m_taller-de-depuracion`;
+    const propioEn = (e) => ((e && e.apartados && e.apartados.anadidos) || []).find((a) => a.id === propioId);
+    const estructuraDelMio = async () => (await leerJson(await page.request.get(rutaDelModulo(doc._id, mio.unidadId)))).estructura;
+    const word = async (unidad) => {
+      const r = await page.request.get(`/api/documentos/${doc._id}/docx?${q({ unidad })}`, ESPERA);
+      expect(r.status(), 'el Word se exporta').toBe(200);
+      return (await JSZip.loadAsync(await r.body())).file('word/document.xml').async('string');
+    };
+    let escrito = false;
+
+    try {
+      await fijarDocentes(page, doc._id, mio.unidadId, [lucia._id]);
+      const modulosAntes = await fotoDeLosModulos(page, doc._id, unidades);
+      const wordAjenoAntes = await word(ajeno.unidadId);
+      const wordMioAntes = await word(mio.unidadId);
+      expect(wordMioAntes).not.toContain(TITULO);
+
+      await salir(page);
+      await entrarComo(page, 'docente', lucia.nombre);
+      let permiso = esperarPermiso(page);
+      await page.goto(enlace(doc._id, mio.seccion, mio.unidadId));
+      await permiso;
+
+      // CREA EL APARTADO, y la pantalla dice el alcance antes de guardar: solo este módulo.
+      await expect(alcanceDicho(page)).toContainText(/Esto cambia solo este módulo y afecta a 1 persona/);
+      await page.getByLabel('Añadir un subapartado').fill(TITULO);
+      await page.getByRole('button', { name: 'Añadir', exact: true }).click();
+      // El enlace de abrir lleva a un apartado que el árbol aún tiene que conocer: se espera a verlo en la
+      // barra lateral, que es lo que haría quien mira, y no se pulsa a ciegas en el mismo instante.
+      await expect(page.getByRole('tree').getByText(TITULO)).toBeVisible();
+      permiso = esperarPermiso(page);
+      await page.getByRole('button', { name: `Abrir «${TITULO}» para escribir en él` }).click();
+      await permiso;
+      await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText(TITULO);
+      expect(propioEn(await estructuraDelMio()), 'el apartado propio tiene que estar en la estructura del módulo').toBeTruthy();
+
+      // Ve la tarjeta del apartado propio con su alcance, y la lista de sus casillas (la que nace con él).
+      await expect(tarjeta(page)).toBeVisible();
+      await expect(alcanceDicho(page)).toContainText(/Esto cambia solo este módulo/);
+      await expect(page.getByRole('list', { name: `Campos de «${TITULO}»` })).toContainText('Texto');
+
+      // AÑADE UNA CASILLA. El alcance se repite en el propio formulario, antes de guardar.
+      await page.getByRole('button', { name: /^Añadir un campo/ }).click();
+      await expect(page.getByRole('note', { name: 'Alcance del cambio' }).last()).toContainText(/Esto cambia solo este módulo/);
+      await page.getByLabel('Nombre del campo').fill(CASILLA);
+      await page.getByRole('button', { name: 'Añadir el campo' }).click();
+      await expect(page.getByText('Campo añadido: ')).toBeVisible();
+      const lista = page.getByRole('list', { name: `Campos de «${TITULO}»` });
+      await expect(lista).toContainText(CASILLA);
+      const tras = propioEn(await estructuraDelMio());
+      expect(tras.campos.map((c) => c.etiqueta)).toEqual(['Texto', CASILLA]);
+      const idCasilla = tras.campos[1].id;
+      expect(idCasilla.startsWith('m_')).toBe(true);
+
+      // ESCRIBE dentro de la casilla nueva, en el editor del apartado, y espera a que se guarde.
+      const editor = (etiqueta) => page.locator('section.tarjeta')
+        .filter({ has: page.getByRole('heading', { level: 2, name: etiqueta, exact: true }) })
+        .getByRole('textbox').first();
+      // Un campo de texto vacío se empieza con «+ párrafo».
+      await page.locator('section.tarjeta')
+        .filter({ has: page.getByRole('heading', { level: 2, name: CASILLA, exact: true }) })
+        .getByRole('button', { name: '+ párrafo' }).click();
+      await expect(editor(CASILLA)).toBeVisible();
+      await editor(CASILLA).fill(TEXTO);
+      escrito = true;
+      await expect(page.getByText(/guardado (hace un momento|a las)/).first()).toBeVisible();
+
+      // EL WORD del módulo lleva el apartado y lo escrito; el del otro módulo, ni lo uno ni lo otro.
+      await expect.poll(async () => (await word(mio.unidadId)).includes(TEXTO), { message: 'lo escrito en la casilla no sale en el Word', ...ESPERA }).toBe(true);
+      expect(await word(mio.unidadId)).toContain(TITULO);
+      const wordAjeno = await word(ajeno.unidadId);
+      expect(wordAjeno, 'el Word del otro módulo ha cambiado').toBe(wordAjenoAntes);
+      expect(wordAjeno).not.toContain(TEXTO);
+      expect(wordAjeno).not.toContain(TITULO);
+
+      // LA RENOMBRA: el id no se mueve y lo escrito sigue en su sitio.
+      await page.getByRole('button', { name: `Renombrar el campo «${CASILLA}» de «${TITULO}»` }).click();
+      await page.getByLabel(`Nuevo nombre del campo «${CASILLA}»`).fill(RENOMBRADA);
+      await page.getByRole('button', { name: 'Guardar nombre' }).click();
+      await expect(page.getByText(/renombrado a «/)).toBeVisible();
+      const renombrada = propioEn(await estructuraDelMio()).campos.find((c) => c.id === idCasilla);
+      expect(renombrada.etiqueta).toBe(RENOMBRADA);
+      await expect(editor(RENOMBRADA)).toHaveValue(TEXTO);
+
+      // LA RETIRA, y la confirmación repite el alcance antes del «sí». RETIRAR NO BORRA: la casilla sigue
+      // en la lista de la estructura, marcada, y el texto deja de salir en el Word pero no se pierde.
+      await page.getByRole('button', { name: `Quitar el campo «${RENOMBRADA}» de «${TITULO}»` }).click();
+      const confirmacion = page.getByRole('group', { name: `Quitar el campo «${RENOMBRADA}»` });
+      await expect(confirmacion).toContainText(/Esto cambia solo este módulo/);
+      await confirmacion.getByRole('button', { name: `Sí, quitar «${RENOMBRADA}»` }).click();
+      await expect(page.getByText(/quitado de «/)).toBeVisible();
+      const retirada = propioEn(await estructuraDelMio());
+      expect(retirada.campos.map((c) => c.id), 'retirar no quita la casilla de la lista').toEqual(tras.campos.map((c) => c.id));
+      expect(retirada.campos.find((c) => c.id === idCasilla).retirado).toBe(true);
+      await expect.poll(async () => (await word(mio.unidadId)).includes(TEXTO), { message: 'la casilla retirada sigue en el Word', ...ESPERA }).toBe(false);
+
+      // LA RESTAURA pulsando, y vuelve con lo que tenía escrito.
+      await page.getByRole('button', { name: `Restaurar el campo «${RENOMBRADA}» de «${TITULO}» en este módulo` }).click();
+      await expect(page.getByText(/devuelto a «/)).toBeVisible();
+      expect(propioEn(await estructuraDelMio()).campos.find((c) => c.id === idCasilla).retirado).toBeUndefined();
+      await expect(editor(RENOMBRADA)).toHaveValue(TEXTO);
+      await expect.poll(async () => (await word(mio.unidadId)).includes(TEXTO), { message: 'lo restaurado no vuelve al Word', ...ESPERA }).toBe(true);
+
+      // EL OTRO MÓDULO NO HA CAMBIADO EN NADA, y la versión de la plantilla no se ha movido: es lo que
+      // demuestra que nada de esto fue por la ruta de la plantilla, que lo habría puesto en los once.
+      const despues = await fotoDeLosModulos(page, doc._id, unidades);
+      for (const u of unidades.filter((x) => x !== mio.unidadId)) {
+        expect(despues[u], `el módulo ${u} ha cambiado y no era el del docente`).toBe(modulosAntes[u]);
+      }
+      expect(await word(ajeno.unidadId), 'el Word del otro módulo ha cambiado').toBe(wordAjenoAntes);
+      expect((await leerJson(await page.request.get(`/api/documentos/${doc._id}/estructura`))).plantillaVersion, 'la versión de la plantilla no se mueve').toBe(plantillaAntes);
+    } finally {
+      await salir(page);
+      await entrarComo(page, 'docente', lucia.nombre);
+      if (escrito) {
+        // Lo escrito se deja vacío mientras la casilla existe: una vez vuelto a la común, nadie lo vería.
+        const ruta = `/api/documentos/${doc._id}/apartado?${q({ seccion: propioId, unidad: mio.unidadId })}`;
+        const ahora = await page.request.get(ruta);
+        if (ahora.status() === 200) {
+          const a = await ahora.json();
+          const vacio = Object.keys(a.valores || {}).reduce((o, id) => { o[id] = []; return o; }, {});
+          await page.request.patch(ruta, { data: { valores: vacio, esperaUpdatedAt: a.updatedAt } });
+        }
+      }
+      await salir(page);
+      await entrarComo(page, 'jefe_departamento');
+      const v = await leerJson(await page.request.get(rutaDelModulo(doc._id, mio.unidadId)));
+      if (v.estructura) {
+        const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null } });
+        expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
+      }
+      await fijarDocentes(page, doc._id, mio.unidadId, docentesAntes);
+    }
+    expect(await huellaDeLaBase(page, doc._id), 'la base tiene que quedar como estaba').toEqual(antesDeTodo);
+  });
+
+  test('un docente que no lleva el módulo no ve los controles de las casillas de un apartado propio', async ({ page }) => {
+    test.setTimeout(180_000);
+    await salir(page);
+    await entrarComo(page, 'jefe_departamento');
+    const { doc, mio } = await elegirApartadoDeModulo(page);
+    const antesDeTodo = await huellaDeLaBase(page, doc._id);
+    const propioId = `${mio.seccion}/m_taller-ajeno`;
+    try {
+      // El apartado propio se prepara por la API (no es lo que se prueba): lo que se prueba es qué ve quien mira.
+      const leida = await leerJson(await page.request.get(rutaDelModulo(doc._id, mio.unidadId, `?${q({ seccion: mio.seccion })}`)));
+      const puesto = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), {
+        data: {
+          estructura: { apartados: { anadidos: [{ id: propioId, titulo: 'Taller ajeno', padre: mio.seccion, campos: [{ id: 'm_texto', tipo: 'texto_largo', etiqueta: 'Texto' }] }] } },
+          esperaUpdatedAt: leida.updatedAt,
+          esperaPlantillaVersion: leida.plantillaVersion,
+        },
+      });
+      expect(puesto.status(), await puesto.text()).toBe(200);
+
+      await salir(page);
+      await entrarComo(page, 'docente', 'Nerea');
+      const permiso = esperarPermiso(page);
+      await page.goto(enlace(doc._id, propioId, mio.unidadId));
+      await permiso;
+      await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toContainText('Taller ajeno');
+      await expect(tarjeta(page)).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /^Añadir un campo/ })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /^Quitar el campo/ })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /^Renombrar el campo/ })).toHaveCount(0);
+    } finally {
+      await salir(page);
+      await entrarComo(page, 'jefe_departamento');
+      const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null } });
+      expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
     }
     expect(await huellaDeLaBase(page, doc._id), 'la base tiene que quedar como estaba').toEqual(antesDeTodo);
   });

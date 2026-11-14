@@ -32,6 +32,7 @@ const limpiar = (texto) => String(texto == null ? '' : texto).replace(/\s+/g, ' 
 // candados); `estructura` es la del módulo, o null. Cada campo devuelto lleva `propio` si lo añadió el
 // módulo. Un campo retirado en lo común no se restaura desde un módulo: lo común manda.
 export function camposDelModulo(fila, estructura, seccion) {
+  if (apartadoPropio(estructura, seccion)) return camposDelApartadoPropio(estructura, seccion);
   const comunes = fila && Array.isArray(fila.campos) ? fila.campos : [];
   const cerrado = !fila || fila.retirado || fila.repetidor;
   const resueltos = EstructuraModulo.camposDeSeccion(
@@ -61,10 +62,115 @@ export function camposDelModulo(fila, estructura, seccion) {
 }
 
 // La fila del apartado con los campos del módulo en lugar de los comunes: es lo que reciben
-// `QuitarCampos` y `AnadirCampo`, que no saben de dónde salen.
-export const filaDelModulo = (fila, estructura, seccion) => (fila
-  ? { ...fila, campos: camposDelModulo(fila, estructura, seccion) }
-  : fila);
+// `QuitarCampos` y `AnadirCampo`, que no saben de dónde salen. Un apartado PROPIO del módulo no tiene
+// fila en la plantilla (no existe ahí): se le monta una con sus casillas.
+export function filaDelModulo(fila, estructura, seccion) {
+  const propio = apartadoPropio(estructura, seccion);
+  if (propio) {
+    return { seccion, titulo: propio.titulo, retirado: !!propio.retirado, campos: camposDelApartadoPropio(estructura, seccion) };
+  }
+  return fila ? { ...fila, campos: camposDelModulo(fila, estructura, seccion) } : fila;
+}
+
+// ---------------------------------------------------------------- las casillas de un apartado PROPIO
+
+// El apartado propio del módulo con ese id (también un hijo de otro propio, y uno retirado), o null. Sus
+// casillas no están en `secciones` sino dentro de su propio `anadidos[i].campos`: no tiene nada común
+// de lo que desviarse.
+function apartadoPropio(estructura, seccion) {
+  const a = esObjeto(estructura) && esObjeto(estructura.apartados) && Array.isArray(estructura.apartados.anadidos)
+    ? estructura.apartados.anadidos : [];
+  return a.find((x) => esObjeto(x) && x.id === seccion) || null;
+}
+
+// Las casillas de un apartado propio, con lo que se puede hacer a cada una. Los campos salen de la regla
+// del núcleo (`camposDeSeccion`), no de una lectura aparte, así que son los que se pintan y se imprimen.
+function camposDelApartadoPropio(estructura, seccion) {
+  const propio = apartadoPropio(estructura, seccion);
+  const resueltos = EstructuraModulo.camposDeSeccion({ id: seccion, campos: Array.isArray(propio.campos) ? propio.campos : [] }, null);
+  const vigentes = resueltos.campos.filter((c) => !c.retirado);
+  const editable = !propio.retirado;
+  return resueltos.campos.map((c) => {
+    const i = vigentes.findIndex((v) => v.id === c.id);
+    const quitado = !!c.retirado;
+    return {
+      id: c.id,
+      tipo: c.tipo,
+      etiqueta: c.etiqueta || c.id,
+      retirado: quitado,
+      propio: true,
+      puedeRetirar: editable && !quitado && Campos.esCreable(c.tipo),
+      puedeRestaurar: editable && quitado,
+      puedeRenombrar: editable && !quitado,
+      puedeSubir: editable && !quitado && i > 0,
+      puedeBajar: editable && !quitado && i >= 0 && i < vigentes.length - 1,
+    };
+  });
+}
+
+// Aplica una operación sobre las casillas de un apartado PROPIO y devuelve { estructura, campo?, posicion?,
+// total? }, o lanza un Error con el motivo.
+//
+// RETIRAR NO BORRA, Y AQUÍ ES MUY FÁCIL BORRAR SIN QUERER. La puerta del servidor no compara con lo que
+// ya hay guardado: si se mandara una lista de `campos` a la que le falta una casilla, la aceptaría y lo
+// que se hubiera escrito bajo ese id se quedaría huérfano, invisible para siempre. Por eso esta función
+// NUNCA quita una casilla de la lista: retirar es ponerle `retirado: true` y dejarla donde está, y
+// restaurar es quitar esa clave. Si alguien «simplifica» esto con un `filter` o un `splice`, el
+// comprobador del final lo para antes de mandar nada. Mover intercambia posiciones; tampoco quita.
+function componerCampoDePropio(estructura, seccion, operacion) {
+  const desvio = copiaDeApartados(estructura);
+  const propio = desvio.anadidos.find((a) => a.id === seccion);
+  const antes = (Array.isArray(propio.campos) ? propio.campos : []).map((c) => c.id);
+  propio.campos = (Array.isArray(propio.campos) ? propio.campos : []).map((c) => ({ ...c }));
+  const campos = propio.campos;
+  const vigentes = () => campos.filter((c) => !c.retirado);
+  const c = operacion.campo ? campos.find((x) => x.id === operacion.campo) : null;
+  if (operacion.accion !== 'anadir_campo' && !c) {
+    throw new Error(`Este módulo no tiene ninguna casilla «${operacion.campo}» en el apartado.`);
+  }
+  const resultado = {};
+
+  if (operacion.accion === 'retirar_campo') {
+    c.retirado = true;
+  } else if (operacion.accion === 'restaurar_campo') {
+    delete c.retirado;
+    resultado.campo = c.id;
+  } else if (operacion.accion === 'renombrar_campo') {
+    c.etiqueta = limpiar(operacion.etiqueta);
+  } else if (operacion.accion === 'mover_campo') {
+    const v = vigentes();
+    const i = v.findIndex((x) => x.id === c.id);
+    const j = i + operacion.delta;
+    if (i < 0 || j < 0 || j >= v.length) throw new Error('Esa casilla ya no se puede mover en esa dirección.');
+    const a = campos.indexOf(v[i]);
+    const b = campos.indexOf(v[j]);
+    [campos[a], campos[b]] = [campos[b], campos[a]];
+    resultado.posicion = j + 1;
+    resultado.total = v.length;
+  } else if (operacion.accion === 'anadir_campo') {
+    // Los ids ocupados incluyen los retirados: un id no se reutiliza.
+    const ocupados = campos.map((x) => x.id);
+    const hecho = Campos.crearCampo(operacion.peticion, ocupados);
+    if (hecho.motivo) throw new Error(hecho.motivo);
+    const id = EstructuraModulo.idDeCampoPropio(hecho.campo.etiqueta, hecho.campo.tipo, ocupados);
+    const nuevo = { id, tipo: hecho.campo.tipo, etiqueta: hecho.campo.etiqueta };
+    if (hecho.campo.columnas !== undefined && hecho.campo.columnas !== null) nuevo.columnas = hecho.campo.columnas;
+    if (hecho.campo.inicial !== undefined) nuevo.inicial = hecho.campo.inicial;
+    campos.push(nuevo);
+    resultado.campo = id;
+  } else {
+    throw new Error(`Acción de estructura de módulo desconocida: ${operacion.accion}`);
+  }
+
+  // El cerrojo de «no se borra»: todas las casillas de antes siguen en la lista.
+  const despues = new Set(campos.map((x) => x.id));
+  const perdidas = antes.filter((id) => !despues.has(id));
+  if (perdidas.length) {
+    throw new Error(`Este cambio habría borrado la casilla «${perdidas[0]}» y lo que hubiera escrito en ella: no se manda.`);
+  }
+  resultado.estructura = conLosApartados(estructura, desvio);
+  return resultado;
+}
 
 // ---------------------------------------------------------------- componer la estructura nueva
 
@@ -298,6 +404,7 @@ export function componerCambio(estructura, fila, seccion, operacion) {
   if (deApartado && ACCIONES_DE_APARTADO.includes(deApartado[1])) {
     return componerApartado(estructura, seccion, { ...operacion, accion: deApartado[1] });
   }
+  if (apartadoPropio(estructura, seccion)) return componerCampoDePropio(estructura, seccion, operacion);
   const campos = camposDelModulo(fila, estructura, seccion);
   const desvio = copiaDelDesvio(estructura, seccion);
   const c = operacion.campo ? campos.find((x) => x.id === operacion.campo) : null;
