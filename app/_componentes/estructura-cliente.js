@@ -201,6 +201,119 @@ export function puedeCambiarEstructura(estructura, usuario, documento) {
   return Permisos.puedeCambiarEstructura(usuario, documento);
 }
 
+// ================================================================ quién puede, apartado por apartado
+//
+// `puedeCambiarEstructura` de arriba responde por el DOCUMENTO ENTERO (añadir, mover y retirar
+// apartados, borrar lo retirado) y sigue valiendo para eso. Pero configurar UN apartado —sus
+// campos— lo puede quien lo edita: el docente que lleva ese módulo, o quien tiene asignado un
+// apartado común (docs/estructura-por-modulo.md, §4). Preguntar por el documento esconde los
+// controles a quien el servidor ya deja usarlos, así que aquí se pregunta por el apartado, y quien
+// lo contesta es el servidor, dos veces: una por la ruta de la plantilla y otra, si el apartado es
+// de un módulo, por la de ese módulo.
+
+const rutaDelModulo = (documentoId, unidadId) => `${base(documentoId)}/unidades/${encodeURIComponent(unidadId)}/estructura`;
+
+// Lo que el servidor dice de UN apartado, junto, para decidir qué se pinta y a dónde va cada escritura.
+//
+//   plantilla  { puede, alcance }  ¿puede cambiarlo por las rutas de la plantilla (las que cambian a todos)?
+//   modulo     { puede, alcance, estructura, plantillaVersion, updatedAt } | null
+//                                  ¿puede cambiarlo solo en este módulo? Null si el apartado es común.
+//
+// Una lectura que falla se cuenta como «no puede»: es la respuesta segura, y el servidor vuelve a
+// comprobarlo en cada cambio.
+export async function leerPermisoDeApartado(documentoId, seccion, unidadId) {
+  const sinPermiso = () => null;
+  const [plantilla, modulo] = await Promise.all([
+    pedir(`${urlEstructura(documentoId)}?${new URLSearchParams({ seccion })}`).catch(sinPermiso),
+    unidadId
+      ? pedir(`${rutaDelModulo(documentoId, unidadId)}?${new URLSearchParams({ seccion })}`).catch(sinPermiso)
+      : Promise.resolve(null),
+  ]);
+  return {
+    clave: `${seccion}|${unidadId || ''}`,
+    plantilla: {
+      puede: !!(plantilla && plantilla.puedeCambiarApartado),
+      alcance: (plantilla && plantilla.alcance) || null,
+    },
+    modulo: modulo ? {
+      puede: !!modulo.puedeCambiar,
+      alcance: modulo.alcance || null,
+      estructura: modulo.estructura || null,
+      plantillaVersion: modulo.plantillaVersion,
+      updatedAt: modulo.updatedAt,
+    } : null,
+  };
+}
+
+// ¿Puede esta persona configurar este apartado, por la vía que sea?
+export const puedeCambiarApartado = (permiso) => !!permiso
+  && ((permiso.plantilla && permiso.plantilla.puede) || (permiso.modulo && permiso.modulo.puede));
+
+// El alcance de un apartado ya retirado, para decirlo antes de borrarlo para siempre. Null si no se
+// ha podido leer: el aviso sale entonces sin la lista de personas, y no se impide nada.
+export async function leerAlcance(documentoId, seccion) {
+  try {
+    const r = await pedir(`${urlEstructura(documentoId)}?${new URLSearchParams({ seccion })}`);
+    return r.alcance || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ================================================================ A DÓNDE VA CADA ESCRITURA
+//
+// Es la decisión que no puede equivocarse, porque se equivoca en silencio: un cambio que el docente
+// cree suyo y que sale en los once módulos, o al revés. Son tres casos y se deciden aquí, una vez:
+//
+//   · apartado COMÚN                              → 'plantilla'. Tiene una sola copia: configurarla ES
+//                                                   cambiar la definición del documento.
+//   · apartado de MÓDULO, cambiado por quien lleva  → 'modulo'. Es el PUT de la estructura de ESA unidad
+//     ese módulo (o por la jefatura que elige        y solo cambia ese módulo.
+//     «solo este módulo»)
+//   · apartado de MÓDULO, cambiado por la jefatura  → 'plantilla', como siempre. Lo ven los N módulos.
+//     con intención de cambiarlos todos
+//
+// Y las dos reglas que lo protegen:
+//
+//   1. Un apartado de módulo solo va a la plantilla si quien lo cambia puede cambiar el DOCUMENTO
+//      entero (`puedeDocumento`) y lo ha pedido (`quiereTodos`). El permiso de la plantilla sobre un
+//      apartado de módulo es solo de la jefatura, pero aquí no se confía en eso: si un docente
+//      llegara con `quiereTodos` puesto, iría igualmente a su módulo.
+//   2. La jefatura que NO ha dicho nada va a la plantilla (`quiereTodos` por omisión), que es lo que
+//      hacía antes. Elegir «solo este módulo» es un gesto suyo, nunca un valor por omisión.
+//
+// Devuelve 'modulo', 'plantilla' o null (no puede cambiar nada aquí: no se pinta la tarjeta).
+export function destinoDeLaEscritura({
+  apartadoDeModulo, puedeDocumento, puedePlantilla, puedeModulo, quiereTodos,
+}) {
+  if (!apartadoDeModulo) return puedePlantilla ? 'plantilla' : null;
+  if (puedeDocumento && puedePlantilla && quiereTodos) return 'plantilla';
+  if (puedeModulo) return 'modulo';
+  return null;
+}
+
+// ================================================================ el aviso de alcance
+//
+// «Esto cambia los 11 módulos y afecta a 4 personas (…)», con el número delante, y dicho ANTES de
+// pulsar. El servidor manda `alcance` ({ comun, modulos, personas, mensaje }); la frase se compone
+// aquí para tener los números en un sitio fijo de la oración y no enterrados en el mensaje. No
+// impide nada: avisa.
+const SINGULARES_FEMENINOS = /^(materia|unidad)/;
+
+export function fraseDeAlcance(alcance, comoSeLlaman) {
+  if (!alcance) return null;
+  const modulos = Number(alcance.modulos) || 0;
+  const nombre = comoSeLlaman || 'unidad';
+  const lo = modulos > 1
+    ? `Esto cambia ${todasLasUnidades(modulos, comoSeLlaman)}`
+    : `Esto cambia solo ${SINGULARES_FEMENINOS.test(nombre) ? 'esta' : 'este'} ${nombre}`;
+  const personas = Array.isArray(alcance.personas) ? alcance.personas : [];
+  if (!personas.length) return `${lo} y no lo escribe nadie todavía.`;
+  const nombres = personas.map((p) => p.nombre).filter(Boolean);
+  const lista = nombres.length > 6 ? `${nombres.slice(0, 6).join(', ')} y ${nombres.length - 6} más` : nombres.join(', ');
+  return `${lo} y afecta a ${plural(personas.length, 'persona', 'personas')}${lista ? ` (${lista})` : ''}.`;
+}
+
 // ================================================================ las cuentas del árbol
 //
 // Lo que el servidor manda por apartado (`puedeSubir`, `puedeBajar`,

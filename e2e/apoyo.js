@@ -50,4 +50,77 @@ async function buscarDocumento(page, { tipo, ciclo, curso } = {}) {
     && (!curso || String(d.curso) === String(curso))) || null;
 }
 
-module.exports = { ROLES, personas, entrarComo, salir, documentos, buscarDocumento };
+// ---------------------------------------------------------------- lo que comparten las pruebas de estructura
+
+const q = (o) => Object.entries(o).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+
+async function leerJson(r) {
+  expect(r.status(), await r.text()).toBe(200);
+  return r.json();
+}
+
+// Los apartados de módulo que tienen contenido, con su módulo: una hoja por (apartado, módulo).
+async function hojasDeModulo(page, documentoId) {
+  const { arbol } = await leerJson(await page.request.get(`/api/documentos/${documentoId}/arbol`));
+  const out = [];
+  const ver = (n) => {
+    if (!n || typeof n !== 'object') return;
+    if (n.edita === 'docentes_del_modulo' && n.unidadId && n.contenido) out.push(n);
+    (n.hijos || []).forEach(ver);
+  };
+  ver(arbol);
+  return out;
+}
+
+// La PD de DAW 26-27, un apartado de módulo con un campo que se pueda quitar y DOS módulos que lo tienen:
+// el del docente (`mio`) y otro cualquiera (`ajeno`), que es el que no tiene que cambiar.
+async function elegirApartadoDeModulo(page) {
+  const doc = await buscarDocumento(page, { tipo: 'programacion_didactica', ciclo: 'daw', curso: '2026-27' });
+  expect(doc, 'hace falta la PD de DAW 26-27').toBeTruthy();
+  const estructura = await leerJson(await page.request.get(`/api/documentos/${doc._id}/estructura`));
+  const hojas = await hojasDeModulo(page, doc._id);
+  for (const mio of hojas) {
+    const fila = estructura.apartados.find((a) => a.seccion === mio.seccion);
+    const campo = fila && fila.campos.find((c) => c.puedeRetirar && !c.retirado);
+    const ajeno = hojas.find((h) => h.seccion === mio.seccion && h.unidadId !== mio.unidadId);
+    if (campo && ajeno) {
+      const unidades = [...new Set(hojas.map((h) => h.unidadId))];
+      return { doc, mio, ajeno, campo, unidades };
+    }
+  }
+  throw new Error('no hay un apartado de módulo con un campo que se pueda quitar');
+}
+
+// Quién lleva un módulo ahora, para devolverlo como estaba; y fijarlo.
+async function docentesDeUnidad(page, documentoId, unidadId) {
+  const { unidades } = await leerJson(await page.request.get(`/api/documentos/${documentoId}/unidades`));
+  const u = unidades.find((x) => x.unidadId === unidadId) || {};
+  return (u.docentes || []).map((d) => (typeof d === 'string' ? d : d._id || d.id));
+}
+
+async function fijarDocentes(page, documentoId, unidadId, ids) {
+  const r = await page.request.put(`/api/documentos/${documentoId}/unidades/${encodeURIComponent(unidadId)}/docentes`, { data: { docentes: ids } });
+  expect(r.status(), await r.text()).toBeLessThan(400);
+}
+
+// Cuántos módulos, cuántas unidades con docente, asignaciones de apartados comunes y estructuras propias
+// hay: es la forma de comprobar al terminar que la base ha quedado como estaba.
+async function huellaDeLaBase(page, documentoId) {
+  const { unidades } = await leerJson(await page.request.get(`/api/documentos/${documentoId}/unidades`));
+  const asg = await leerJson(await page.request.get(`/api/documentos/${documentoId}/asignaciones`));
+  const propias = [];
+  for (const u of unidades) {
+    const e = await leerJson(await page.request.get(`/api/documentos/${documentoId}/unidades/${encodeURIComponent(u.unidadId)}/estructura`));
+    if (e.estructura) propias.push(u.unidadId);
+  }
+  return {
+    unidadesConDocente: unidades.filter((u) => (u.docentes || []).length).map((u) => u.unidadId),
+    apartadosAsignados: (asg.apartados || []).filter((a) => (a.personas || []).length).map((a) => a.seccion),
+    estructurasPropias: propias,
+  };
+}
+
+module.exports = {
+  ROLES, personas, entrarComo, salir, documentos, buscarDocumento,
+  q, leerJson, hojasDeModulo, elegirApartadoDeModulo, docentesDeUnidad, fijarDocentes, huellaDeLaBase,
+};

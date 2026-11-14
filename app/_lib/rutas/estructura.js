@@ -17,7 +17,9 @@
 //   DELETE /api/documentos/[id]/estructura/apartado?seccion=                BORRAR un apartado retirado y todo lo escrito en él
 //   DELETE /api/documentos/[id]/estructura/apartado/campo?seccion=&campo=   BORRAR un campo retirado y lo escrito en él
 //
-// Los dos DELETE son los únicos cambios que destruyen contenido. Se explican más abajo, en «BORRAR».
+// Los dos DELETE son los únicos cambios que destruyen contenido. Se explican más abajo, en «BORRAR»: la
+// respuesta dice a quién afecta (`alcance`) y cuánto se ha perdido (`contenido`, `filasBorradas`,
+// `comentariosBorrados`), con el mismo recuento que el GET enseña antes de pulsar en cada retirado.
 //
 // Es la mitad de servidor del E6 (docs/plan.md §5), y su criterio de aceptación tiene dos mitades:
 //
@@ -84,16 +86,28 @@
 // estructura propia de cada módulo (docs/estructura-por-modulo.md), que existe justo para que un docente
 // reforme SU módulo sin tocar los otros diez. Así que, por estas rutas:
 //
-//   · apartado común       -> entra quien pueda editarlo: la jefatura, el soporte y quien lo tenga asignado
+//   · apartado común       -> entra quien pueda editarlo: la jefatura, el soporte y quien lo tenga asignado,
+//                             para todo: campos, y retirar, restaurar, mover, añadir hijo y borrar
 //   · sección de módulo    -> solo el soporte y la jefatura del departamento (`puedeCambiarEstructura`),
 //                             porque cambia los once. El docente que lleva el módulo lo reforma por la
 //                             otra ruta, PUT .../unidades/[unidad]/estructura (estructura-modulo.js).
 //
-// Qué se abre al apartado y qué sigue siendo del documento. Se abre lo que configura UN apartado: renombrarlo
-// y sus campos (añadir, quitar, devolver, renombrar, mover y borrar uno retirado). Sigue siendo de la
-// jefatura lo que decide qué apartados tiene el documento —añadir, mover, retirar, restaurar y borrar un
-// apartado— y las filas de la ficha: ninguna es de un apartado, y un apartado que su propia dueña pudiera
-// retirar o borrar se llevaría su contenido y su reparto. La jefatura de estudios no cambia nada: aprueba.
+// Qué se abre al apartado y qué sigue siendo del documento. El centro ha dicho que el documento es
+// totalmente configurable por quien tiene permisos en cada apartado, SEA CUAL SEA, y que se debe poder
+// eliminar un apartado. Así que se abre todo lo que se hace sobre un apartado COMÚN: renombrarlo, sus
+// campos (añadir, quitar, devolver, renombrar, mover y borrar uno retirado) y el apartado como tal
+// —añadir un hijo suyo, moverlo entre sus hermanos, retirarlo, restaurarlo y borrar lo retirado—.
+//
+// Lo que se comprueba cuando se actúa sobre el apartado entero (retirar, restaurar y borrar), porque se
+// lleva consigo su subárbol: que quien pregunta pueda configurar CADA apartado de la rama, y que ninguno
+// sea un bloque de módulos ni cuelgue de uno (`puedeConfigurarRama`). Sin eso, retirar un apartado común que
+// contiene el bloque de unidades se llevaría las secciones de los once módulos, que no son de quien lo tiene.
+// Añadir un hijo se decide por el padre (va en el cuerpo), y un apartado nuevo sin padre —al final del
+// documento— no es de nadie, así que sigue siendo de la jefatura, igual que las filas de la ficha.
+// La jefatura de estudios no cambia nada: aprueba.
+//
+// El apartado que se restaura está retirado, y la plantilla que ve el resto de la aplicación ya lo ha
+// podado: por eso el permiso se decide sobre la plantilla ENTERA (`plantillaCompleta`).
 //
 // Se comprueba en el servidor, como todo (docs/api.md). El 403 va antes que el cuerpo (400) y que el 404 de
 // un apartado que no existe: quien no puede ni mirar no se entera de qué apartados hay.
@@ -118,10 +132,15 @@ const {
 
 // ---------------------------------------------------------------- quién, por apartado
 
-// Los cambios que configuran UN apartado (ver «QUIÉN PUEDE»). El resto es del documento entero.
+// Los cambios que configuran UN apartado (ver «QUIÉN PUEDE»). El resto —las filas de la ficha, y añadir
+// un apartado sin padre— es del documento entero.
 const TIPOS_DE_APARTADO = new Set([
   'renombrar', 'anadir_campo', 'retirar_campo', 'restaurar_campo', 'renombrar_campo', 'mover_campo', 'borrar_campo',
+  'anadir', 'mover', 'retirar', 'restaurar', 'borrar',
 ]);
+
+// Los que se llevan el subárbol entero del apartado: hay que poder configurar toda la rama.
+const TIPOS_DE_RAMA = new Set(['retirar', 'restaurar', 'borrar']);
 
 // ¿Puede esta persona configurar este apartado por las rutas de la plantilla común? `info` es lo que
 // devuelve `buscarSeccion`. La jefatura y el soporte, siempre; los demás, solo en un apartado COMÚN y si
@@ -131,6 +150,30 @@ function puedeConfigurarApartado(usuario, documento, seccion, info) {
   if (!info || info.deUnidad) return false;
   if (!C.puedeVer(usuario, documento) || !esActiva(documento)) return false;
   return C.reglaEstructuraPropia(usuario, booleanosDeApartado({ usuario, documento, unidad: null, seccion, edita: info.edita }));
+}
+
+// Lo mismo para un cambio que se lleva el subárbol (retirar, restaurar, borrar): tiene que poder
+// configurarse CADA apartado de la rama, y ninguno puede ser un bloque de módulos. `plantilla` es la
+// entera, la que tiene los retirados dentro.
+function puedeConfigurarRama(usuario, documento, seccion, plantilla) {
+  const ids = Plantilla.rama(plantilla, seccion);
+  if (!ids.length) return false;
+  return ids.every((id) => {
+    const info = buscarSeccion(plantilla, id);
+    return !!info && !info.seccion.instancias && puedeConfigurarApartado(usuario, documento, id, info);
+  });
+}
+
+// El apartado por el que se decide el permiso de un cambio. En casi todos va en la URL; al añadir un
+// apartado es su padre y va en el cuerpo, que aquí se mira sin consumirlo. Sin padre, null.
+async function apartadoDelPermiso(tipo, peticion) {
+  if (tipo !== 'anadir') return new URL(peticion.url).searchParams.get('seccion');
+  try {
+    const cuerpo = await peticion.clone().json();
+    return cuerpo && typeof cuerpo.padre === 'string' && cuerpo.padre ? cuerpo.padre : null;
+  } catch (e) {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------- lo que todas comparten
@@ -152,12 +195,17 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
     // Quién pregunta, por apartado cuando el cambio es de un apartado y por documento cuando no. El
     // apartado se lee de la URL, que es lo único que hay antes de leer el cuerpo.
     if (!C.puedeCambiarEstructura(usuario, documento)) {
-      const seccionUrl = new URL(peticion.url).searchParams.get('seccion');
-      const info = porApartado && seccionUrl ? buscarSeccion(documento.plantilla, seccionUrl) : null;
-      if (!porApartado || !puedeConfigurarApartado(usuario, documento, seccionUrl, info)) {
+      const seccionUrl = porApartado ? await apartadoDelPermiso(tipo, peticion) : null;
+      // Sobre la plantilla ENTERA: un apartado retirado, que es el que se restaura o se borra, no está en la podada.
+      const info = seccionUrl ? buscarSeccion(plantillaCompleta, seccionUrl) : null;
+      let puede = porApartado && !!seccionUrl && puedeConfigurarApartado(usuario, documento, seccionUrl, info);
+      // Añadir un hijo a un bloque de módulos lo añadiría en los once; retirar o borrar una rama, lo mismo.
+      if (puede && tipo === 'anadir') puede = !info.seccion.instancias;
+      if (puede && TIPOS_DE_RAMA.has(tipo)) puede = puedeConfigurarRama(usuario, documento, seccionUrl, plantillaCompleta);
+      if (!puede) {
         return SIN_PERMISO(porApartado
           ? 'Solo la jefatura de tu departamento y quien tiene asignado un apartado común cambian su estructura. Una sección de módulo cambia los de todos los módulos a la vez: el docente reforma el suyo desde la estructura del módulo. La jefatura de estudios no edita nada.'
-          : 'Solo la jefatura de tu departamento decide qué apartados tiene el documento. Quien escribe un apartado no los añade, mueve ni retira, y la jefatura de estudios no edita nada.');
+          : 'Solo la jefatura de tu departamento decide esto: las filas de la ficha y los apartados que no cuelgan de ninguno. La jefatura de estudios no edita nada.');
       }
     }
 
@@ -192,9 +240,11 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
     }
 
     // A quién afecta, dicho antes de tocar nada (también en el 400). Solo cuando el cambio es de un apartado.
-    const infoAlcance = pedida.seccion ? buscarSeccion(plantillaCompleta, pedida.seccion) : null;
+    // Al añadir uno, el apartado aún no existe: el alcance es el de su padre, que es donde se cuelga.
+    const idAlcance = pedida.seccion || pedida.padre || null;
+    const infoAlcance = idAlcance ? buscarSeccion(plantillaCompleta, idAlcance) : null;
     const alcance = infoAlcance
-      ? await alcanceDe({ repo, documento, unidad: null, seccion: pedida.seccion, info: infoAlcance })
+      ? await alcanceDe({ repo, documento, unidad: null, seccion: idAlcance, info: infoAlcance })
       : null;
 
     // Un documento sin plantilla no tiene estructura que cambiar. No debería existir —la crean la

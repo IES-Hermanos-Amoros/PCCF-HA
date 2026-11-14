@@ -56,9 +56,13 @@ function motivoSinMover(c, vigentes, sentido) {
   return sentido === 'subir' ? 'Ya es el primero' : 'Ya es el último';
 }
 
+// `enviar` es por dónde va la escritura. Por omisión, las rutas de la plantilla (las que cambian el
+// documento entero); el módulo pasa la suya, que solo cambia ese módulo (Estructura.js decide cuál).
+// `alcance` es la frase del aviso de alcance, que sale en la confirmación ANTES de quitar.
 export function QuitarCampos({
-  documentoId, seccion, tituloApartado, fila, plantillaVersion, enTodas, onCambiado,
+  documentoId, seccion, tituloApartado, fila, plantillaVersion, enTodas, onCambiado, enviar, alcance,
 }) {
+  const mandar = enviar || ((accion, opciones) => cambiarEstructura(documentoId, accion, opciones));
   const confirma = useConfirmacion();
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState(null);
@@ -97,7 +101,7 @@ export function QuitarCampos({
     setError(null);
     setAviso(null);
     try {
-      const r = await cambiarEstructura(documentoId, accion, {
+      const r = await mandar(accion, {
         seccion,
         campo: c.id,
         cuerpo: { ...cuerpo, esperaPlantillaVersion: plantillaVersion },
@@ -138,7 +142,7 @@ export function QuitarCampos({
     setError(null);
     setAviso(null);
     try {
-      const r = await cambiarEstructura(documentoId, 'retirar_campo', {
+      const r = await mandar('retirar_campo', {
         seccion,
         campo: c.id,
         cuerpo: { esperaPlantillaVersion: plantillaVersion },
@@ -260,6 +264,8 @@ export function QuitarCampos({
                     la fila del campo del que habla: antes salía al final de la lista, lejos del
                     campo que se iba a quitar. */}
                 <p>
+                  {/* EL ALCANCE, antes de pulsar y con el número delante. */}
+                  {alcance ? <><strong>{alcance}</strong>{' '}</> : null}
                   «{nombre(c)}» deja de salir en el documento y en el PDF
                   {enTodas ? `, y en ${enTodas} a la vez` : ''}
                   {campos.length === 1 ? ', y el apartado se queda sin campos' : ''}
@@ -413,5 +419,79 @@ export function CamposRetirados({
         </div>
       ) : null}
     </section>
+  );
+}
+
+// ------------------------------------------------- lo que un módulo ha quitado de SU apartado
+
+// En la plantilla, lo retirado se recupera desde la portada del documento. Un módulo no tiene
+// portada propia, y quien reforma su módulo necesita devolver un campo desde donde lo quitó. Solo
+// salen los que se pueden devolver: uno que la jefatura retiró en lo común no vuelve desde un
+// módulo (lo común manda sobre lo retirado).
+export function QuitadosDelModulo({
+  seccion, tituloApartado, fila, plantillaVersion, enviar, onCambiado,
+}) {
+  const [enviando, setEnviando] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [error, setError] = useState(null);
+
+  const quitados = fila && Array.isArray(fila.campos) ? fila.campos.filter((c) => c.retirado && c.puedeRestaurar) : [];
+  if (!quitados.length && !aviso) return null;
+
+  const restaurar = async (c) => {
+    setEnviando(c.id);
+    setError(null);
+    setAviso(null);
+    try {
+      const r = await enviar('restaurar_campo', {
+        seccion,
+        campo: c.id,
+        cuerpo: { esperaPlantillaVersion: plantillaVersion },
+      });
+      setAviso(`Campo «${c.etiqueta}» devuelto a «${tituloApartado}» en este módulo, con lo que tuviera escrito.`);
+      if (onCambiado) await onCambiado('restaurar_campo', r || {});
+    } catch (e) {
+      setError(e);
+    } finally {
+      setEnviando(null);
+    }
+  };
+
+  return (
+    <div className="quitar-campo">
+      {quitados.length ? (
+        <>
+          <div className="linea-estructura">
+            <span className="suave">Quitados de este módulo</span>
+            <span className="chip chip-cod">{quitados.length}</span>
+          </div>
+          <ul className="lista-retirados" aria-label={`Campos quitados de «${tituloApartado}» en este módulo`}>
+            {quitados.map((c) => (
+              <li key={c.id}>
+                <span className="retirado-nombre">{c.etiqueta}</span>
+                <button
+                  className="mini"
+                  type="button"
+                  onClick={() => restaurar(c)}
+                  disabled={!!enviando}
+                  aria-label={`Restaurar el campo «${c.etiqueta}» de «${tituloApartado}» en este módulo`}
+                >
+                  {enviando === c.id ? 'Restaurando…' : 'Restaurar'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <p className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'} role="status">{aviso || ''}</p>
+      {error ? (
+        <div className="nota nota-error" role="alert">
+          <div>
+            {yaDiceQueNoHaCambiado(error) ? null : <strong>No se ha cambiado nada. </strong>}
+            {mensajeDeError(error)}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

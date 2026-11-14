@@ -52,9 +52,11 @@
 import { useEffect, useRef, useState } from 'react';
 import Ayuda from './Ayuda';
 import {
-  avisoDeContenidoSinDestruir, cambiarEstructura, hermanosDe, todasLasUnidades, unidadDelCamino,
-  yaDiceQueNoHaCambiado,
+  avisoDeContenidoSinDestruir, cambiarEstructura, destinoDeLaEscritura, fraseDeAlcance, hermanosDe,
+  todasLasUnidades, unidadDelCamino, yaDiceQueNoHaCambiado,
 } from './estructura-cliente';
+import { escribirEnElModulo, filaDelModulo } from './estructura-modulo-cliente';
+import { QuitadosDelModulo } from './QuitarCampo';
 import AnadirCampo from './AnadirCampo';
 import useConfirmacion from './confirmar-cliente';
 import { BorrarApartado } from './BorrarDefinitivo';
@@ -78,7 +80,7 @@ const cuantos = (n) => (n === 1 ? '1 apartado' : `${n} apartados`);
 
 export default function Estructura({
   documentoId, nodo, camino, fila, plantillaVersion, unidades, onCambiado, onIr,
-  tiposDeCampo, limites, apartado,
+  tiposDeCampo, limites, apartado, permiso, puedeDocumento, comoSeLlamanElDocumento,
 }) {
   const [titulo, setTitulo] = useState(nodo && nodo.titulo ? nodo.titulo : '');
   const [nuevo, setNuevo] = useState('');
@@ -93,6 +95,11 @@ export default function Estructura({
   // campo de texto.
   const [camposNuevos, setCamposNuevos] = useState([]);
 
+  // Solo cuenta para quien puede cambiar el documento entero Y este apartado es de un módulo: ahí
+  // elige si el cambio es para todos o solo para este módulo. Por omisión, para todos, que es lo que
+  // hacía siempre; solo se cambia por un gesto suyo. Ver `destinoDeLaEscritura`.
+  const [quiereTodos, setQuiereTodos] = useState(true);
+
   const refSubir = useRef(null);
   const refBajar = useRef(null);
   // Qué botón de mover se pulsó y en qué posición estaba el apartado: hace falta
@@ -101,6 +108,37 @@ export default function Estructura({
 
   const { i, total } = hermanosDe(camino, nodo);
   const { unidad, etiqueta, cuantas } = unidadDelCamino(camino);
+
+  // A DÓNDE VA CADA ESCRITURA DE ESTA TARJETA. Es lo único de aquí que, si falla, falla en silencio:
+  // un cambio que alguien cree suyo y sale en los once módulos. Se decide en `destinoDeLaEscritura`
+  // (estructura-cliente.js, con las tres reglas escritas) a partir de lo que el SERVIDOR ha dicho de
+  // este apartado (`permiso`):
+  //
+  //   · apartado común                             → las rutas de la plantilla (su única copia);
+  //   · apartado de módulo, quien lleva ese módulo → el PUT de la estructura de ESA unidad;
+  //   · apartado de módulo, la jefatura            → la plantilla (los N módulos), salvo que elija
+  //                                                  «solo este módulo» con el selector de abajo.
+  const deModulo = !!(nodo && nodo.unidadId);
+  const permisoPlantilla = permiso && permiso.plantilla ? permiso.plantilla : null;
+  const permisoModulo = permiso && permiso.modulo ? permiso.modulo : null;
+  const destino = destinoDeLaEscritura({
+    apartadoDeModulo: deModulo,
+    puedeDocumento: !!puedeDocumento,
+    puedePlantilla: !!puedeDocumento || !!(permisoPlantilla && permisoPlantilla.puede),
+    puedeModulo: !!(permisoModulo && permisoModulo.puede),
+    quiereTodos,
+  });
+  const enElModulo = destino === 'modulo';
+  // La tarjeta entera (añadir, mover y retirar apartados) es del documento entero; quien solo
+  // configura un apartado ve el título y los campos, que es lo que el servidor le deja cambiar.
+  const completa = destino === 'plantilla' && !!puedeDocumento;
+  const alcance = enElModulo ? (permisoModulo && permisoModulo.alcance) : (permisoPlantilla && permisoPlantilla.alcance);
+  const nombreDelModulo = comoSeLlamanElDocumento || etiqueta || (nodo && nodo.etiqueta) || null;
+  const fraseAlcance = fraseDeAlcance(alcance, nombreDelModulo);
+  const enviarAlModulo = enElModulo
+    ? (accion, opciones) => escribirEnElModulo(documentoId, nodo.unidadId, fila, { accion, ...opciones })
+    : undefined;
+  const filaDeCampos = enElModulo ? filaDelModulo(fila, permisoModulo.estructura, nodo ? nodo.seccion : '') : fila;
 
   // EL FOCO NO SE PIERDE AL MOVER UN APARTADO.
   //
@@ -122,6 +160,9 @@ export default function Estructura({
   });
 
   if (!nodo || !nodo.seccion) return null;
+  // Sin nada que pueda cambiar aquí, no hay tarjeta (la pantalla tampoco la monta, pero el servidor
+  // manda y esta es la segunda vez que se mira).
+  if (!destino) return null;
 
   // Qué se le puede hacer a este apartado lo dice el servidor, apartado por
   // apartado, en la lectura de la estructura: `puedeSubir` y `puedeBajar` cuentan
@@ -139,7 +180,7 @@ export default function Estructura({
   // que las agrupa —el del camino si estamos dentro de una unidad, o este mismo
   // nodo si lo que se está mirando es el bloque— y nunca de un id escrito aquí.
   const comoSeLlaman = etiqueta || nodo.etiqueta || null;
-  const enTodas = (deUnidades || esBloqueDeUnidades) && cuantasUnidades > 1
+  const enTodas = !enElModulo && (deUnidades || esBloqueDeUnidades) && cuantasUnidades > 1
     ? todasLasUnidades(cuantasUnidades, comoSeLlaman)
     : null;
 
@@ -296,7 +337,43 @@ export default function Estructura({
           tarjeta, y quien se pregunta «esto a qué afecta» lo pregunta aquí, en
           la línea que se lo acaba de decir. El aviso de la retirada sigue
           abajo, en su confirmación. */}
-      {enTodas ? (
+      {/* EL ALCANCE, DICHO ANTES DE TOCAR NADA y con el número delante. Lo manda el servidor
+          (`alcance`) y vale para todo lo que hay debajo: es la respuesta a «¿esto a cuántos
+          afecta?» antes de pulsar. No impide nada. */}
+      {fraseAlcance ? (
+        <div className="nota nota-lock" role="note" aria-label="Alcance del cambio">
+          <div>
+            <strong>{fraseAlcance}</strong>
+            {enElModulo ? ' Los demás no se enteran.' : ''}
+          </div>
+        </div>
+      ) : null}
+
+      {/* LA JEFATURA ELIGE: la tarjeta de un apartado de módulo cambia por omisión los N módulos
+          (como siempre); `solo este módulo` es un gesto suyo. Quien solo lleva el módulo no ve esto:
+          para él no hay otra cosa que elegir. */}
+      {deModulo && puedeDocumento && permisoModulo && permisoModulo.puede ? (
+        <fieldset className="linea-estructura">
+          <legend>¿A quién se aplica el cambio?</legend>
+          <label>
+            <input type="radio" name="alcance-estructura" checked={quiereTodos} onChange={() => setQuiereTodos(true)} />
+            {' '}A todos: cambia la plantilla de {todasLasUnidades(cuantasUnidades || 0, comoSeLlaman)}
+          </label>
+          <label>
+            <input type="radio" name="alcance-estructura" checked={!quiereTodos} onChange={() => setQuiereTodos(false)} />
+            {' '}Solo a este módulo
+          </label>
+        </fieldset>
+      ) : null}
+
+      {enElModulo ? (
+        <p className="ayuda">
+          Aquí cambias los campos de este módulo. Renombrar, mover o retirar el apartado entero en un
+          solo módulo todavía no se hace desde aquí.
+        </p>
+      ) : null}
+
+      {enTodas && !fraseAlcance ? (
         <div className="linea-estructura ayuda-plantilla">
           <span>Esto es la plantilla de {enTodas}.</span>
           <Ayuda sobre={`qué cambia en ${enTodas}`}>
@@ -314,6 +391,7 @@ export default function Estructura({
         </div>
       ) : null}
 
+      {!enElModulo ? (
       <form className="linea-estructura" onSubmit={renombrar}>
         <label htmlFor="estructura-titulo">Título del apartado</label>
         <input
@@ -331,8 +409,9 @@ export default function Estructura({
           {enviando === 'renombrar' ? 'Renombrando…' : 'Renombrar'}
         </button>
       </form>
+      ) : null}
 
-      {admiteHijos ? (
+      {completa && admiteHijos ? (
         <form className="linea-estructura" onSubmit={anadir}>
           <label htmlFor="estructura-nuevo">Añadir un subapartado</label>
           <input
@@ -350,16 +429,16 @@ export default function Estructura({
               de pulsar. El identificador y lo demás, en la ayuda de arriba. */}
           <span className="ayuda">Nace dentro de este apartado, vacío y al final.</span>
         </form>
-      ) : (
+      ) : completa ? (
         <p className="ayuda">
           Aquí dentro no van apartados: esto es una lista de fichas, y lo que tiene dentro son los
           campos de cada ficha. Las fichas se crean en el panel de situaciones de aprendizaje.
         </p>
-      )}
+      ) : null}
 
       {/* Los campos con los que nace el apartado de arriba, y el alta de un campo en ESTE
           apartado. Van fuera del formulario de añadir: llevan sus propios formularios. */}
-      {admiteHijos ? (
+      {completa && admiteHijos ? (
         <CamposDelApartadoNuevo
           tipos={tiposDeCampo}
           limites={limites}
@@ -372,27 +451,43 @@ export default function Estructura({
       <AnadirCampo
         documentoId={documentoId}
         seccion={nodo.seccion}
-        fila={fila}
+        fila={filaDeCampos}
         tipos={tiposDeCampo}
         limites={limites}
         plantillaVersion={plantillaVersion}
         enTodas={enTodas}
         onCambiado={onCambiado}
+        enviar={enviarAlModulo}
+        alcance={fraseAlcance}
       />
       <QuitarCampos
         documentoId={documentoId}
         seccion={nodo.seccion}
         tituloApartado={nodo.titulo}
-        fila={fila}
+        fila={filaDeCampos}
         plantillaVersion={plantillaVersion}
         enTodas={enTodas}
         onCambiado={onCambiado}
+        enviar={enviarAlModulo}
+        alcance={fraseAlcance}
       />
+      {/* Lo que este módulo ha quitado, para devolverlo. En la plantilla eso vive en la portada
+          del documento; un módulo no tiene portada propia, y es aquí donde se echó de menos. */}
+      {enElModulo ? (
+        <QuitadosDelModulo
+          seccion={nodo.seccion}
+          tituloApartado={nodo.titulo}
+          fila={filaDeCampos}
+          plantillaVersion={plantillaVersion}
+          enviar={enviarAlModulo}
+          onCambiado={onCambiado}
+        />
+      ) : null}
 
       {/* LA TABLA DE LA FICHA, solo en un apartado que tiene fichas. Esta tarjeta ya es de quien puede
           cambiar la estructura, así que la pregunta de si se ofrece se reduce a si el apartado abierto
           —y no el anterior, mientras llega— lleva un campo de fichas. */}
-      {apartado && apartado.seccion === nodo.seccion
+      {completa && apartado && apartado.seccion === nodo.seccion
         && (apartado.unidadId || null) === (nodo.unidadId || null)
         && FichaEstructura.seOfrece(true, apartado.campos) ? (
           <EstructuraFicha
@@ -405,6 +500,7 @@ export default function Estructura({
           />
         ) : null}
 
+      {completa ? (
       <div className="linea-estructura">
         <span className="suave">Orden y retirada</span>
         <button
@@ -453,12 +549,15 @@ export default function Estructura({
             : `Es el ${i + 1}.º de ${total} ${total === 1 ? 'apartado' : 'apartados'} de este nivel.`}
         </span>
       </div>
+      ) : null}
 
       {/* Lo que se va a llevar por delante la retirada, dicho en el momento de
           decidirlo: un apartado se va con lo que tenga dentro. */}
-      {confirma.estaAbierta() ? (
-        <div className="confirmacion">
+      {completa && confirma.estaAbierta() ? (
+        <div className="confirmacion" role="group" aria-label="Retirar el apartado">
           <p>
+            {/* EL ALCANCE, antes de confirmar y con el número delante. */}
+            {fraseAlcance ? <><strong>{fraseAlcance}</strong>{' '}</> : null}
             Deja de salir en el documento y en el PDF
             {dentro ? `, y con él ${cuantos(dentro)} que tiene dentro` : ''}
             . <strong>No se borra nada</strong>: lo escrito se conserva entero y vuelve al restaurarlo.
@@ -470,6 +569,7 @@ export default function Estructura({
           por eso no se pliega: si se escondiera, el aviso llegaría tarde. Lo
           que se ha ido a la ayuda de la cabecera es lo de renombrar, que no se
           lleva nada por delante y se sabe en cuanto se ve el identificador. */}
+      {completa ? (
       <p className="suave">
         <strong>Retirar no borra nada</strong>: el apartado deja de salir en el documento y en el
         PDF, su contenido se queda guardado, y se recupera desde{' '}
@@ -478,6 +578,7 @@ export default function Estructura({
         </button>
         , donde salen los apartados retirados.
       </p>
+      ) : null}
 
       {/* El resultado, en una región que los lectores de pantalla anuncian: en el
           prototipo esto era un `toast`, que es exactamente lo que no se oye.

@@ -1463,10 +1463,15 @@ prueba('borrar exige el mismo permiso que los demás cambios de estructura', asy
   await cambio(await retirarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
   const antes = await instantanea(repo, doc._id);
 
-  for (const quien of [u.ana, u.luis, u.estudios]) {
+  // Luis tiene asignada «atencion-a-la-diversidad» y puede configurarla (borrarla incluida); Ana y la
+  // jefatura de estudios no. Y lo que no es de Luis —un común que no lleva, una sección de módulo— le
+  // sigue dando 403 aunque lo mismo lo pudiera hacer en el suyo.
+  for (const quien of [u.ana, u.estudios]) {
     await esError(await borrar(quien, doc._id, 'atencion-a-la-diversidad'), 403, 'sin_permiso');
     await esError(await borrarCampo(quien, doc._id, 'introduccion', 'tabla_normativa'), 403, 'sin_permiso');
   }
+  await esError(await borrarCampo(u.luis, doc._id, 'introduccion', 'tabla_normativa'), 403, 'sin_permiso');
+  await esError(await borrar(u.luis, doc._id, 'modulos/metodologia'), 403, 'sin_permiso');
   await esError(await borrar(null, doc._id, 'atencion-a-la-diversidad'), 401, 'sin_identificar');
   await esError(await borrar(u.pepe, doc._id, 'atencion-a-la-diversidad'), 404, 'no_encontrado');
   assert.deepStrictEqual(await instantanea(repo, doc._id), antes, 'un borrado sin permiso ha cambiado algo');
@@ -1476,8 +1481,8 @@ prueba('borrar exige el mismo permiso que los demás cambios de estructura', asy
   await esError(await borrar(u.jefa, otro._id, 'atencion-a-la-diversidad'), 404, 'no_encontrado');
   assert.equal((await repo.documentos.obtener(otro._id)).plantillaVersion, 1, 'el documento de al lado ha cambiado de versión');
 
-  // El soporte sí.
-  await cambio(await borrar(u.admin, doc._id, 'atencion-a-la-diversidad'));
+  // Quien tiene asignado el apartado lo borra, y el soporte lo demás.
+  await cambio(await borrar(u.luis, doc._id, 'atencion-a-la-diversidad'));
   await cambio(await borrarCampo(u.admin, doc._id, 'introduccion', 'tabla_normativa'));
 });
 

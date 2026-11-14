@@ -19,8 +19,10 @@ import { cambiarEstructura } from './estructura-cliente';
 import { ElegirCampo } from './NuevoCampo';
 
 export default function AnadirCampo({
-  documentoId, seccion, fila, tipos, limites, plantillaVersion, enTodas, onCambiado,
+  documentoId, seccion, fila, tipos, limites, plantillaVersion, enTodas, onCambiado, enviar, alcance,
 }) {
+  // Por dónde va la escritura: las rutas de la plantilla por omisión, o la del módulo (Estructura.js).
+  const mandar = enviar || ((accion, opciones) => cambiarEstructura(documentoId, accion, opciones));
   const [abierto, setAbierto] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState(null);
@@ -39,7 +41,7 @@ export default function AnadirCampo({
     setError(null);
     setAviso(null);
     try {
-      const r = await cambiarEstructura(documentoId, 'anadir_campo', {
+      const r = await mandar('anadir_campo', {
         seccion,
         cuerpo: { campo: peticion, esperaPlantillaVersion: plantillaVersion },
       });
@@ -73,6 +75,11 @@ export default function AnadirCampo({
           {quedan !== undefined && quedan < 1 ? ' Este apartado ya tiene todos los campos que caben.' : ''}
         </span>
       </div>
+      {abierto && alcance ? (
+        <div className="nota nota-lock" role="note" aria-label="Alcance del cambio">
+          <div><strong>{alcance}</strong></div>
+        </div>
+      ) : null}
       {abierto ? (
         <ElegirCampo
           tipos={tipos}
