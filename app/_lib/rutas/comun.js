@@ -233,17 +233,25 @@ function puedeEditarApartado({ usuario, documento, unidad, seccion, edita, conte
   // carpeta.
   if (!contenido) return false;
 
+  return C.reglaEdicion(usuario, booleanosDeApartado({ usuario, documento, unidad, seccion, edita }));
+}
+
+// Los booleanos que esperan `reglaEdicion` y `reglaEstructuraPropia` (core/permisos.js), resueltos
+// contra los datos del servidor. Están aparte de `puedeEditarApartado` para que quien pregunte «¿puede
+// configurarlo?» y quien pregunte «¿puede escribirlo?» partan de la MISMA búsqueda: lo que decide cada
+// regla vive en core/, y esto es solo la consulta.
+function booleanosDeApartado({ usuario, documento, unidad, seccion, edita }) {
   const asignaciones = (documento && documento.asignaciones) || {};
   // Asignar «Evaluación» asigna también sus subapartados, igual que en motor/permisos.js: es como
   // se reparte el trabajo de verdad.
   const asignado = [seccion, C.raizSeccion(seccion)]
     .some((k) => k && (asignaciones[k] || []).includes(usuario._id));
 
-  return C.reglaEdicion(usuario, {
+  return {
     edita,
     esDocenteDeLaUnidad: !!unidad && ((unidad.docentes || []).includes(usuario._id)),
     tieneApartadoAsignado: asignado,
-  });
+  };
 }
 
 // ---------------------------------------------------------------- la plantilla
@@ -498,6 +506,7 @@ module.exports = {
   sinPlantilla,
   plantillaVigente,
   puedeEditarApartado,
+  booleanosDeApartado,
   buscarSeccion,
   seccionesConCampo,
   raDelModulo,

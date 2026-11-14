@@ -29,7 +29,8 @@ const CAMPOS = {
   // la misma decisión que puso el registro de cambios de la estructura DENTRO de `plantilla`
   // (core/plantilla.js, «el registro viaja dentro de plantilla a propósito»).
   documento: ['tipo', 'ciclo', 'curso', 'departamento', 'estado', 'plantilla', 'plantillaVersion', 'anteriorId', 'asignaciones', 'origen', 'comprobaciones', 'activa', 'version', 'subidoPor'],
-  unidad: ['titulo', 'num', 'grupo', 'docentes'],
+  // `estructura` es la estructura propia del módulo (core/estructura-modulo.js); `null` es no tener ninguna.
+  unidad: ['titulo', 'num', 'grupo', 'docentes', 'estructura'],
   apartado: ['valores', 'origen', 'revisadoPor', 'revisadoEn'],
   compartido: ['bloque', 'seccion', 'comun', 'responsable', 'modo', 'version'],
   comentario: ['seccion', 'autor', 'texto'],

@@ -69,6 +69,7 @@ const SUITES = [
   { archivo: 'test/modelos-tabla.js', nombre: 'modelos de tabla: la regla, el PDF, el Word y la puerta' },
   { archivo: 'test/tablas-adopcion.js', nombre: 'adoptar el modelo para una tabla ya escrita' },
   { archivo: 'test/estructura-modulo.js', nombre: 'estructura propia de un modulo: la regla, la puerta y quien la cambia' },
+  { archivo: 'test/estructura-modulo-ruta.js', nombre: 'estructura propia de un modulo: la ruta que la guarda' },
 
   // --- E7: aprobar, coordinar y los otros documentos ----------------------
   { archivo: 'test/estados.js', nombre: 'estados del documento, PCCF y memoria' },

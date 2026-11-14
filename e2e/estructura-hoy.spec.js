@@ -8,9 +8,18 @@
 //   · un docente recibe 403, TAMBIÉN en un apartado de un módulo que lleva él
 //   · la jefatura de estudios recibe 403
 //
-// DOCUMENTAN EL ANTES. Cuando entre el cambio, la prueba del docente que lleva el módulo tendrá que
-// cambiar de signo en las rutas de campo de SU módulo (y solo en las suyas): eso es lo que se quiere ver.
-// El 403 sobre los módulos de otro y sobre la estructura común no debería moverse.
+// LO QUE SE ABRIÓ Y LO QUE SIGUE CERRADO. Cuando un módulo pasó a poder llevar estructura propia, el
+// departamento decidió que quien puede editar un apartado puede configurarlo (`reglaEstructuraPropia`
+// ya es la de `reglaEdicion`). Eso se abrió por una ruta NUEVA, PUT .../unidades/[unidad]/estructura, que
+// prueba e2e/estructura-propia.spec.js: ahí el docente que lleva el módulo SÍ reforma los campos de su
+// apartado, y los otros diez módulos no cambian.
+//
+// Estas rutas, las de /estructura/apartado/..., siguen cerradas al docente, TAMBIÉN en su módulo, y por eso
+// ninguna prueba de aquí ha cambiado de signo: cambian la PLANTILLA COMÚN, y un campo añadido ahí sale en los
+// once módulos a la vez. Abrírselas al docente de uno sería justo lo que la estructura propia existe para
+// evitar. Lo que sigue pendiente de decidir, y no se ha abierto, es que quien tiene asignado un apartado
+// COMÚN pueda cambiar sus campos por estas rutas (la regla ya lo permitiría; la ruta, con
+// `puedeCambiarEstructura`, no).
 //
 // Las rutas están en app/_lib/rutas/estructura.js. Lo que se cambia se deshace en un `finally`: el
 // campo que se crea se retira y se borra, y el reparto de módulos vuelve a como estaba. Lo único que
