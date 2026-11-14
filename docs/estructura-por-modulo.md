@@ -75,6 +75,26 @@ La regla recibe booleanos ya resueltos, como `reglaEdicion` y `reglaCompartido`:
 la aplicación no tienen delante los mismos datos, y lo que no puede duplicarse es la regla, no la
 búsqueda.
 
+### 4.1 Un común no tiene desvío, porque solo tiene una copia
+
+Medido en la PD de DAW 26-27: **37 apartados comunes, cada uno con UNA instancia**, y 19 secciones de
+módulo con **11 instancias cada una**.
+
+Un apartado de módulo es una definición con once copias, así que lo que reforma un docente es **su**
+copia, y eso es lo que guarda `unidad.estructura`. Un apartado común tiene una sola copia, así que
+**no hay nada que reconciliar: configurar la única copia que existe ES cambiar la definición del
+documento**, y eso ya lo hacen las rutas de `app/_lib/rutas/estructura.js`. Lo único que hacía falta
+era que por ellas entrara quien tiene el apartado asignado, no solo la jefatura.
+
+Esto estuvo escrito al revés, como si faltara inventar un sitio a nivel de documento donde guardar el
+desvío de un común. Queda aquí el error y no solo su corrección, porque la causa es la que se repite:
+**se arrastró la maquinaria de los módulos a un caso que no la necesita.**
+
+Y por estas rutas hay un límite que no se puede perder: cambian la definición COMÚN, así que para una
+sección **de módulo** afectarían a los once a la vez. Por eso ahí siguen siendo de la jefatura, y el
+docente reforma su módulo por la otra ruta. Es una distinción que alguien borrará por limpieza si no
+está escrito el porqué.
+
 ## 5. La red antes del cambio
 
 Antes de tocar nada se congela lo que la aplicación hace hoy: por cada documento y cada módulo, el
@@ -103,7 +123,6 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
 - **Nadie lee la regla todavía.** La pantalla del apartado, el PDF y el Word siguen pintando la
   estructura común para todos. Hasta que la lean, esto se guarda y no se ve, y por eso la puerta
   congelada sigue en verde: mide los módulos sin estructura propia, que hoy son todos.
-- **Dónde vive el desvío de un apartado COMÚN.** El permiso ya deja pasar a quien lo tenga asignado,
-  pero la puerta lo rechaza después, y con razón: un desvío de algo común no cabe en la unidad de un
-  módulo. Necesita sitio a nivel de documento, y eso no está decidido.
+- **El desvío de un apartado COMÚN no existe, y eso ya está resuelto.** Ver 4.1: aquí se dijo
+  durante un tiempo que faltaba sitio donde guardarlo, y era un error de razonamiento.
 - **El aviso de alcance de un apartado común** está decidido aquí y todavía no construido.
