@@ -343,6 +343,147 @@ prueba('reordenar decide por los hijos que se mueven, no por el bloque de unidad
   assert.ok(!j.cambiadas.includes('modulos'), 'el bloque de unidades no es el apartado que decide');
 });
 
+// ---------------------------------------------------------------- las CASILLAS de un apartado propio
+//
+// Un apartado que el módulo ha añadido («Taller de depuración») lleva sus casillas dentro de su propio
+// `anadido`. La pantalla pregunta por él con `GET ?seccion=` antes de ofrecer los controles, y lo tiene que
+// poder configurar quien lleva el módulo con el mismo permiso que cualquier otro apartado de módulo.
+
+const TALLER = 'modulos/m_taller';
+const casilla = (id, etiqueta, extra) => Object.assign({ id, tipo: 'texto_largo', etiqueta }, extra);
+const tallerCon = (campos) => ({
+  apartados: { anadidos: [{ id: TALLER, titulo: 'Taller de depuración', padre: 'modulos', campos }] },
+});
+
+async function conTaller(inicial = [casilla('m_texto', 'Texto')]) {
+  const e = await escenario();
+  const r = await poner(e.u.ana, e.doc._id, PROG, { estructura: tallerCon(inicial) });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  return e;
+}
+
+prueba('GET ?seccion= de un apartado propio: 200, lo puede configurar quien lleva el módulo, y el alcance es un módulo', async () => {
+  const { u, doc } = await escenario();
+  // Antes de que exista, es un 404 como cualquier apartado inventado.
+  await esError(await leer(u.ana, doc._id, PROG, `?seccion=${TALLER}`), 404, 'no_encontrado');
+
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: tallerCon([casilla('m_texto', 'Texto')]) })).status, 200);
+  const r = await leer(u.ana, doc._id, PROG, `?seccion=${TALLER}`);
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const g = await r.json();
+  assert.equal(g.seccion, TALLER);
+  assert.equal(g.puedeCambiar, true);
+  assert.equal(g.alcance.comun, false);
+  assert.equal(g.alcance.modulos, 1);
+  assert.equal(g.alcance.titulo, 'Taller de depuración');
+  assert.ok(g.alcance.personas.some((p) => p.nombre === 'Ana'));
+  assert.ok(!g.alcance.personas.some((p) => p.nombre === 'Luis'), 'no afecta a quien tiene un común asignado');
+
+  // La jefatura del departamento y el soporte, sí. El docente de otro módulo y la jefatura de estudios, no.
+  for (const quien of [u.jefa, u.admin]) {
+    assert.equal((await (await leer(quien, doc._id, PROG, `?seccion=${TALLER}`)).json()).puedeCambiar, true);
+  }
+  for (const quien of [u.luis, u.estudios]) {
+    const o = await (await leer(quien, doc._id, PROG, `?seccion=${TALLER}`)).json();
+    assert.equal(o.puedeCambiar, false);
+    assert.equal(o.alcance.modulos, 1);
+  }
+  // Un apartado propio es de ESE módulo: en otro no existe.
+  await esError(await leer(u.jefa, doc._id, OTRO, `?seccion=${TALLER}`), 404, 'no_encontrado');
+  // Y quien no ve el documento sigue sin verlo.
+  await esError(await leer(u.pepe, doc._id, PROG, `?seccion=${TALLER}`), 404, 'no_encontrado');
+});
+
+prueba('GET ?seccion= de un apartado propio retirado, o hijo de otro propio, también se resuelve', async () => {
+  const { u, doc } = await escenario();
+  const hijo = { id: TALLER + '/m_nota', titulo: 'Nota', padre: TALLER, campos: [casilla('m_texto', 'Texto')] };
+  const padre = { id: TALLER, titulo: 'Taller de depuración', padre: 'modulos', campos: [casilla('m_texto', 'Texto')], retirado: true };
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: { apartados: { anadidos: [padre, hijo] } } })).status, 200);
+  for (const id of [TALLER, hijo.id]) {
+    const g = await (await leer(u.ana, doc._id, PROG, `?seccion=${id}`)).json();
+    assert.equal(g.puedeCambiar, true, id);
+    assert.equal(g.alcance.modulos, 1, id);
+  }
+});
+
+prueba('casillas de un apartado propio: añadir, renombrar, retirar, restaurar y reordenar, sin tocar otro módulo', async () => {
+  const { repo, u, doc } = await conTaller();
+  const antes = {};
+  for (const m of MODULOS.filter((x) => x !== PROG)) antes[m] = JSON.stringify(await repo.unidades.obtener(doc._id, m));
+  const plantillaAntes = JSON.stringify((await repo.documentos.obtener(doc._id)).plantilla);
+
+  const pasos = [
+    ['añadir', [casilla('m_texto', 'Texto'), casilla('m_pasos', 'Pasos para reproducirlo')]],
+    ['renombrar', [casilla('m_texto', 'Descripción del fallo'), casilla('m_pasos', 'Pasos para reproducirlo')]],
+    ['retirar', [casilla('m_texto', 'Descripción del fallo'), casilla('m_pasos', 'Pasos para reproducirlo', { retirado: true })]],
+    ['restaurar', [casilla('m_texto', 'Descripción del fallo'), casilla('m_pasos', 'Pasos para reproducirlo')]],
+    ['reordenar', [casilla('m_pasos', 'Pasos para reproducirlo'), casilla('m_texto', 'Descripción del fallo')]],
+  ];
+  for (const [nombre, campos] of pasos) {
+    const r = await poner(u.ana, doc._id, PROG, { estructura: tallerCon(campos) });
+    assert.equal(r.status, 200, nombre + ': ' + JSON.stringify(await r.clone().json()));
+    const j = await r.json();
+    assert.deepStrictEqual(j.cambiadas, [TALLER], nombre);
+    assert.equal(j.afectaAlDocumento, false, nombre);
+    assert.equal(j.alcance.length, 1, nombre + ': el apartado propio dice su alcance');
+    assert.equal(j.alcance[0].comun, false, nombre);
+    assert.equal(j.alcance[0].modulos, 1, nombre);
+    assert.deepStrictEqual((await estructuraGuardada(repo, doc, PROG)).apartados.anadidos[0].campos, campos, nombre);
+    const suya = await repo.unidades.obtener(doc._id, PROG);
+    const nodo = EstructuraModulo.apartadosDeModulo(doc.plantilla, suya).secciones.find((s) => s.id === TALLER);
+    assert.deepStrictEqual(
+      EstructuraModulo.camposDeSeccion(nodo, suya).vigentes.map((c) => c.id),
+      campos.filter((c) => !c.retirado).map((c) => c.id), nombre,
+    );
+  }
+  for (const m of MODULOS.filter((x) => x !== PROG)) {
+    assert.equal(JSON.stringify(await repo.unidades.obtener(doc._id, m)), antes[m], `el módulo ${m} ha cambiado`);
+  }
+  assert.equal(JSON.stringify((await repo.documentos.obtener(doc._id)).plantilla), plantillaAntes, 'la plantilla común no se toca');
+});
+
+prueba('casillas de un apartado propio: quien no lleva el módulo, y la jefatura de estudios, 403 y sin escribir', async () => {
+  const { repo, u, doc } = await conTaller();
+  const guardada = JSON.stringify(await estructuraGuardada(repo, doc, PROG));
+  const nueva = tallerCon([casilla('m_texto', 'Texto'), casilla('m_pasos', 'Pasos')]);
+  for (const quien of [u.luis, u.estudios]) {
+    await esError(await poner(quien, doc._id, PROG, { estructura: nueva }), 403, 'sin_permiso');
+  }
+  await esError(await poner(u.pepe, doc._id, PROG, { estructura: nueva }), 404, 'no_encontrado');
+  assert.equal(JSON.stringify(await estructuraGuardada(repo, doc, PROG)), guardada, 'una petición negada no escribe');
+  // La jefatura del departamento y el soporte, sí.
+  assert.equal((await poner(u.jefa, doc._id, PROG, { estructura: nueva })).status, 200);
+});
+
+prueba('casillas de un apartado propio: cada motivo de la puerta sale tal cual, con el alcance de un módulo', async () => {
+  const { repo, u, doc } = await conTaller();
+  const guardada = JSON.stringify(await estructuraGuardada(repo, doc, PROG));
+  const texto = casilla('m_texto', 'Texto');
+  const casos = [
+    [[casilla('texto', 'Texto')], 'm_'],
+    [[texto, casilla('m_texto', 'Otra')], 'no se reutiliza'],
+    [[texto, casilla('m_b', 'texto')], 'no se distinguirían'],
+    [[casilla('m_b', 'B', { tipo: 'auto.ficha_modulo' })], 'auto.ficha_modulo'],
+    [[casilla('m_b', ' ')], 'etiqueta'],
+    [[], 'al menos un campo'],
+  ];
+  for (const [campos, trozo] of casos) {
+    const estructura = tallerCon(campos);
+    const motivo = EstructuraModulo.motivoDeEstructura(estructura, doc.plantilla);
+    assert.ok(motivo && motivo.includes(trozo), `el motivo no dice «${trozo}»: ${motivo}`);
+    const cuerpo = await esError(await poner(u.ana, doc._id, PROG, { estructura }), 400, 'peticion');
+    assert.equal(cuerpo.motivo, motivo);
+    assert.equal(cuerpo.alcance[0].modulos, 1, 'el 400 también dice el alcance de un módulo');
+    assert.equal(cuerpo.alcance[0].comun, false);
+  }
+  // El tope, con las retiradas dentro.
+  const muchas = [];
+  for (let i = 0; i <= EstructuraModulo.MAX_CAMPOS; i += 1) muchas.push(casilla('m_c' + i, 'Casilla ' + i, i < 3 ? { retirado: true } : undefined));
+  const tope = await esError(await poner(u.ana, doc._id, PROG, { estructura: tallerCon(muchas) }), 400, 'peticion');
+  assert.ok(tope.motivo.includes('el máximo son 20'), tope.motivo);
+  assert.equal(JSON.stringify(await estructuraGuardada(repo, doc, PROG)), guardada, 'lo rechazado no escribe');
+});
+
 (async () => {
   for (const { nombre, fn } of pendientes) {
     try {

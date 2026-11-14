@@ -16,6 +16,13 @@
 //
 // Cuerpo: `{ estructura, esperaUpdatedAt?, esperaPlantillaVersion? }`.
 //
+// LOS APARTADOS PROPIOS DEL MÓDULO. Un apartado que el módulo ha añadido no está en la plantilla común, y
+// sus casillas viven en su propio `anadido` (`campos`), no en `secciones`. El `GET ?seccion=` lo
+// resuelve con la misma regla del núcleo que lo pinta (`apartadosDeModulo`) y lo trata como lo que es, un
+// apartado de módulo: lo configura quien lleva el módulo y su alcance es solo este módulo. En el PUT, el
+// id del apartado entra en `cambiadas` porque su `anadido` cambia, y se decide por él como por cualquier
+// otro apartado de módulo.
+//
 // EL ORDEN DE LAS RESPUESTAS (docs/api.md)
 //
 //   401  no sé quién eres
@@ -159,6 +166,34 @@ function puedeConfigurar({ usuario, documento, unidad, seccion, info }) {
   return C.reglaEstructuraPropia(usuario, booleanosDeApartado({ usuario, documento, unidad, seccion, edita: info.edita }));
 }
 
+// ---------------------------------------------------------------- un apartado PROPIO del módulo
+
+// Un apartado que el módulo ha añadido no está en la plantilla común, así que `buscarSeccion` no lo
+// encuentra. Se busca donde lo resuelve la regla del núcleo (`apartadosDeModulo`, que lo marca `propio`)
+// y se le da la forma que `buscarSeccion` da a un apartado de módulo: lo edita quien lleva el módulo, y es
+// de una unidad, que es lo que dice que su alcance es este módulo y no el documento. La regla de quién
+// puede es la de siempre (`reglaEstructuraPropia`); aquí no se copia.
+function apartadoPropio(documento, unidad, idSeccion) {
+  let hallado = null;
+  (function bajar(lista) {
+    for (const s of lista) {
+      if (hallado || !esObjeto(s)) continue;
+      if (s.propio === true && s.id === idSeccion) { hallado = s; return; }
+      bajar(Array.isArray(s.hijos) ? s.hijos : []);
+    }
+  })(EstructuraModulo.apartadosDeModulo(documento.plantilla, unidad).secciones);
+  if (!hallado) return null;
+  return {
+    seccion: hallado,
+    edita: 'docentes_del_modulo',
+    deUnidad: true,
+    campos: Array.isArray(hallado.campos) ? hallado.campos : [],
+  };
+}
+
+// El apartado por su id: de la plantilla común, o uno propio de este módulo.
+const buscarApartado = (documento, unidad, id) => buscarSeccion(documento.plantilla, id) || apartadoPropio(documento, unidad, id);
+
 // ---------------------------------------------------------------- GET
 
 const GET = conErrores(async (peticion, parametros) => {
@@ -178,7 +213,7 @@ const GET = conErrores(async (peticion, parametros) => {
   // de abrir el editor de campos, para avisar si es un apartado común.
   const seccion = new URL(peticion.url).searchParams.get('seccion');
   if (seccion) {
-    const info = buscarSeccion(documento.plantilla, seccion);
+    const info = buscarApartado(documento, unidad, seccion);
     if (!info) return noEncontrado(`Este documento no tiene ningún apartado «${seccion}».`);
     cuerpo.seccion = seccion;
     cuerpo.puedeCambiar = puedeConfigurar({ usuario, documento, unidad, seccion, info });
@@ -217,10 +252,16 @@ const PUT = conErrores(async (peticion, parametros) => {
       if (Object.prototype.hasOwnProperty.call(enNueva, seccion)) {
         return noEncontrado(`Este documento no tiene ningún apartado «${seccion}».`);
       }
-      const resto = { seccion: { titulo: seccion }, edita: 'docentes_del_modulo', deUnidad: true, campos: [] };
+      // O un apartado propio del módulo (sus casillas y su retirada viven en su `anadido`, no en la
+      // plantilla) o un resto que se está quitando. Los dos los decide quien lleva el módulo.
+      const propio = Array.isArray(apartadosDe(nueva).anadidos)
+        ? apartadosDe(nueva).anadidos.find((x) => esObjeto(x) && x.id === seccion) : null;
+      const resto = { seccion: { titulo: (propio && propio.titulo) || seccion }, edita: 'docentes_del_modulo', deUnidad: true, campos: [] };
       if (!puedeConfigurar({ usuario, documento, unidad, seccion, info: resto })) {
         return SIN_PERMISO('No puedes cambiar la estructura de este módulo.');
       }
+      // Un apartado propio también dice su alcance: este módulo y ninguno más.
+      if (propio) alcances.push(await alcanceDe({ repo, documento, unidad, seccion, info: resto }));
       continue;
     }
     const alcance = await alcanceDe({ repo, documento, unidad, seccion, info });

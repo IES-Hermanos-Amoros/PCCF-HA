@@ -132,7 +132,10 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
   conviene no escribirla de forma que dé por hecho que todo documento tiene unidades.
 - **Las casillas de un apartado propio del módulo** se pueden configurar desde la pieza en curso; lo
   que vive dentro de su propio `anadidos[i].campos` y no en `secciones`, porque un apartado propio no
-  tiene nada común de lo que desviarse.
+  tiene nada común de lo que desviarse. `GET …/estructura?seccion=` los resuelve con `apartadosDeModulo`
+  (que los marca `propio`): lo configura quien lleva el módulo y su alcance es un solo módulo. Queda por
+  decidir si la puerta debe negar que una casilla desaparezca de la lista sin haberse retirado: hoy no lo
+  hace, ni aquí ni con los campos añadidos a un apartado común.
 - **El borrado no exige confirmación en el servidor.** La respuesta dice cuánto contenido se pierde y
   la pantalla confirma, pero la ruta no pide un `{ confirmar: true }` como sí hace la de versiones. Se
   dejó así para no romper la pantalla mientras se construía; ya se puede cerrar.

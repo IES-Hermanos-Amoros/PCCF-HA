@@ -587,6 +587,79 @@ prueba('la puerta de apartados: un propio lleva campos, validos y sin repetir', 
   dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { campos: muchos })] }), String(EM.MAX_CAMPOS + 1));
 });
 
+// LAS CASILLAS DE UN APARTADO PROPIO. Viven dentro de su propio `anadido` (`campos`), no en `secciones`:
+// añadir, renombrar, retirar, restaurar y reordenar es devolver la lista de `campos` cambiada, y la puerta
+// la mira entera cada vez.
+const taller = (campos, extra) => ({
+  anadidos: [propioAp('modulos/m_taller', 'Taller de depuración', 'modulos', Object.assign({ campos }, extra))],
+});
+const casillasDeTaller = (campos) => {
+  const unidad = unidadApartados(taller(campos));
+  const nodo = EM.apartadosDeModulo(plantilla(), unidad).secciones.find((s) => s.id === 'modulos/m_taller');
+  return EM.camposDeSeccion(nodo, unidad);
+};
+
+prueba('casillas de un apartado propio: anadir, renombrar, retirar, restaurar y reordenar se aceptan', () => {
+  const base = [propio('m_texto', 'Texto')];
+  assert.strictEqual(motivoAp(taller(base)), null);
+  // Anadir.
+  const dos = base.concat([propio('m_pasos', 'Pasos para reproducirlo')]);
+  assert.strictEqual(motivoAp(taller(dos)), null);
+  assert.deepStrictEqual(casillasDeTaller(dos).vigentes.map((c) => c.id), ['m_texto', 'm_pasos']);
+  // Renombrar: cambia la etiqueta y el id se queda.
+  const renombrada = [propio('m_texto', 'Descripción del fallo'), dos[1]];
+  assert.strictEqual(motivoAp(taller(renombrada)), null);
+  assert.deepStrictEqual(casillasDeTaller(renombrada).vigentes.map((c) => c.etiqueta), ['Descripción del fallo', 'Pasos para reproducirlo']);
+  // Retirar no borra: la casilla sigue en la lista, deja de pintarse.
+  const retirada = [dos[0], propio('m_pasos', 'Pasos para reproducirlo', { retirado: true })];
+  assert.strictEqual(motivoAp(taller(retirada)), null);
+  const r = casillasDeTaller(retirada);
+  assert.deepStrictEqual(r.campos.map((c) => c.id), ['m_texto', 'm_pasos']);
+  assert.deepStrictEqual(r.vigentes.map((c) => c.id), ['m_texto']);
+  // Restaurar es quitar la marca.
+  assert.strictEqual(motivoAp(taller(dos)), null);
+  // Reordenar es el orden de la lista.
+  const alReves = [dos[1], dos[0]];
+  assert.strictEqual(motivoAp(taller(alReves)), null);
+  assert.deepStrictEqual(casillasDeTaller(alReves).vigentes.map((c) => c.id), ['m_pasos', 'm_texto']);
+  // Un apartado con todas las casillas retiradas es valido: retirar no borra.
+  assert.strictEqual(motivoAp(taller([propio('m_texto', 'Texto', { retirado: true })])), null);
+});
+
+prueba('casillas de un apartado propio: cada motivo se dice con palabras de una persona', () => {
+  const t = (campos) => motivoAp(taller(campos));
+  // El id no sigue al nombre: lo acuna el modulo con prefijo, una vez, y no se reutiliza ni retirado.
+  dice(t([propio('texto', 'Texto')]), 'del campo 1 del apartado añadido 1', '«texto»', 'm_');
+  dice(t([propio('m_a', 'A'), propio('m_a', 'B', { retirado: true })]), 'm_a', 'ni siquiera si el otro está retirado', 'contenido se guarda por él');
+  // Dos casillas no se llaman igual, y «igual» es sin mayusculas ni tildes.
+  dice(t([propio('m_a', 'Descripción'), propio('m_b', 'DESCRIPCION ')]), 'distinguir', 'Cambia el nombre de uno, o retira el que sobre');
+  // Un nombre retirado se puede reutilizar, y restaurar la casilla vieja con el nombre ya cogido, no.
+  assert.strictEqual(t([propio('m_a', 'Texto', { retirado: true }), propio('m_b', 'Texto')]), null);
+  dice(t([propio('m_a', 'Texto'), propio('m_b', 'Texto')]), 'distinguir');
+  // Sin casillas no se puede escribir.
+  dice(t([]), 'al menos un campo');
+  // Forma de cada casilla.
+  dice(t([propio('m_a', '  ')]), 'etiqueta');
+  dice(t([propio('m_a', 'x'.repeat(101))]), '101', '100', 'del campo 1 del apartado');
+  dice(t([propio('m_a', 'A', { retirado: 'no' })]), 'verdadero o falso');
+  dice(t([propio('m_a', 'A', { tipo: 'auto.ficha_modulo' })]), 'auto.ficha_modulo', 'crear');
+  dice(t([propio('m_a', 'A', { raro: 1 })]), '«raro»');
+  // «de el» no existe: se contrae.
+  for (const campos of [[propio('texto', 'T')], [propio('m_a', 'x'.repeat(101))], [propio('m_a', 'A'), propio('m_b', 'a')]]) {
+    assert.ok(!/ de el /.test(t(campos)), 'el motivo dice «de el»: ' + t(campos));
+  }
+});
+
+prueba('casillas de un apartado propio: el tope cuenta tambien las retiradas, y el motivo lo dice', () => {
+  const lista = (n, retiradas) => {
+    const l = [];
+    for (let i = 0; i < n; i += 1) l.push(propio('m_c' + i, 'Casilla ' + i, i < retiradas ? { retirado: true } : undefined));
+    return l;
+  };
+  assert.strictEqual(motivoAp(taller(lista(EM.MAX_CAMPOS, 5))), null);
+  dice(motivoAp(taller(lista(EM.MAX_CAMPOS + 1, 5))), String(EM.MAX_CAMPOS + 1), String(EM.MAX_CAMPOS), 'contando los retirados');
+});
+
 prueba('la puerta de apartados: el orden nombra hijos de ese padre, una vez cada uno', () => {
   dice(motivoAp({ orden: { modulos: 'x' } }), 'lista');
   dice(motivoAp({ orden: { modulos: [3] } }), 'id de apartado');

@@ -179,6 +179,8 @@
   const retirado = (x) => !!x && !!x.retirado;
   const camposDe = (seccion) => (esObjeto(seccion) && Array.isArray(seccion.campos) ? seccion.campos : []);
   const tiene = (objeto, clave) => Object.prototype.hasOwnProperty.call(objeto, clave);
+// «de» + el sitio donde se dice algo, contrayendo: «de el apartado» se lee «del apartado».
+const de = (donde) => (String(donde).startsWith('el ') ? 'del ' + String(donde).slice(3) : 'de ' + donde);
 
   // ---------------------------------------------------------------- leer los desvíos
 
@@ -421,17 +423,17 @@
     if (extra.length) return `${donde} lleva ${comillas(extra)}, que no existe en un campo: solo ${comillas(CLAVES_ANADIDO)}.`;
     if (!esCadena(campo.id)) return `${donde} no tiene «id»: es con el que se guarda lo que se escribe en él y no cambia nunca.`;
     if (!campo.id.startsWith(PREFIJO)) {
-      return `el id de ${donde}, «${campo.id}», no empieza por «${PREFIJO}»: los campos de un módulo se distinguen así de los de la plantilla común, para que uno de lo común añadido mañana no comparta el contenido de este.`;
+      return `el id ${de(donde)}, «${campo.id}», no empieza por «${PREFIJO}»: los campos de un módulo se distinguen así de los de la plantilla común, para que uno de lo común añadido mañana no comparta el contenido de este.`;
     }
     if (!Campos().esCreable(campo.tipo)) {
       return `${donde} es de tipo «${campo.tipo}», que no es un tipo de campo que se pueda crear: ${Campos().nombresDeTipos().join(', ')}.`;
     }
     if (!esCadena(campo.etiqueta)) return `${donde} no tiene «etiqueta»: es lo que se pinta del campo.`;
     if (campo.etiqueta.length > LARGO_ETIQUETA) {
-      return `la etiqueta de ${donde} tiene ${campo.etiqueta.length} caracteres: el máximo son ${LARGO_ETIQUETA}.`;
+      return `la etiqueta ${de(donde)} tiene ${campo.etiqueta.length} caracteres: el máximo son ${LARGO_ETIQUETA}.`;
     }
-    if (campo.retirado !== undefined && typeof campo.retirado !== 'boolean') return `«retirado» de ${donde} tiene que ser verdadero o falso.`;
-    if (campo.inicial !== undefined && !esObjeto(campo.inicial)) return `«inicial» de ${donde} no es un objeto.`;
+    if (campo.retirado !== undefined && typeof campo.retirado !== 'boolean') return `«retirado» ${de(donde)} tiene que ser verdadero o falso.`;
+    if (campo.inicial !== undefined && !esObjeto(campo.inicial)) return `«inicial» ${de(donde)} no es un objeto.`;
     return null;
   }
 
@@ -592,17 +594,17 @@
     if (!esCadena(a.padre)) return `${donde} no dice de quién cuelga («padre»): el bloque de módulos o uno de sus apartados.`;
     const local = a.id.startsWith(a.padre + '/') ? a.id.slice(a.padre.length + 1) : null;
     if (local === null || !local.length || local.indexOf('/') >= 0) {
-      return `el id de ${donde}, «${a.id}», no es el de su padre «${a.padre}», una barra y un nombre: así se reconoce de quién cuelga.`;
+      return `el id ${de(donde)}, «${a.id}», no es el de su padre «${a.padre}», una barra y un nombre: así se reconoce de quién cuelga.`;
     }
     if (!local.startsWith(PREFIJO)) {
-      return `el id de ${donde}, «${a.id}», no acaba en un nombre que empiece por «${PREFIJO}»: los apartados de un módulo se distinguen así de los de la plantilla común, para que uno de lo común añadido mañana no comparta el contenido de este.`;
+      return `el id ${de(donde)}, «${a.id}», no acaba en un nombre que empiece por «${PREFIJO}»: los apartados de un módulo se distinguen así de los de la plantilla común, para que uno de lo común añadido mañana no comparta el contenido de este.`;
     }
     if (previos.has(a.id) || (comunes && (comunes.mapa.has(a.id) || a.id === comunes.bloque.id))) {
       return `${donde} se llama «${a.id}», igual que otro apartado: el id de un apartado no se reutiliza ni siquiera si el otro está retirado, porque el contenido se guarda por él.`;
     }
     const m = motivoDeTitulo(a.titulo, donde);
     if (m) return m;
-    if (a.retirado !== undefined && typeof a.retirado !== 'boolean') return `«retirado» de ${donde} tiene que ser verdadero o falso.`;
+    if (a.retirado !== undefined && typeof a.retirado !== 'boolean') return `«retirado» ${de(donde)} tiene que ser verdadero o falso.`;
     if (comunes) {
       const padre = comunes.mapa.get(a.padre);
       if (padre) {
@@ -622,19 +624,19 @@
       return `${donde} no trae «campos»: sin al menos un campo no se puede escribir en el apartado.`;
     }
     if (a.campos.length > MAX_CAMPOS) {
-      return `${donde} trae ${plural(a.campos.length, 'campo', 'campos')}: el máximo son ${MAX_CAMPOS}.`;
+      return `${donde} trae ${plural(a.campos.length, 'campo', 'campos')}: el máximo son ${MAX_CAMPOS}, contando los retirados, porque su contenido sigue guardado bajo su id.`;
     }
     const idsCampo = new Set(RESERVADOS);
     for (let j = 0; j < a.campos.length; j += 1) {
-      const suyo = `el campo ${j + 1} de ${donde}`;
+      const suyo = `el campo ${j + 1} ${de(donde)}`;
       const mc = motivoDeCampoPropio(a.campos[j], suyo);
       if (mc) return mc;
-      if (idsCampo.has(a.campos[j].id)) return `${suyo} se llama «${a.campos[j].id}», igual que otro campo del apartado: el id de un campo no se reutiliza.`;
+      if (idsCampo.has(a.campos[j].id)) return `${suyo} se llama «${a.campos[j].id}», igual que otro campo del apartado: el id de un campo no se reutiliza ni siquiera si el otro está retirado, porque el contenido se guarda por él.`;
       idsCampo.add(a.campos[j].id);
     }
     const choque = choqueDeEtiquetas(a.campos.filter((c) => !retirado(c)));
     if (choque) {
-      return `dos campos de ${donde} se llaman «${choque.etiqueta}»${choque.etiqueta === choque.dueno ? '' : ` y «${choque.dueno}»`}: en la pantalla y en el papel no se distinguirían.`;
+      return `dos campos ${de(donde)} se llaman «${choque.etiqueta}»${choque.etiqueta === choque.dueno ? '' : ` y «${choque.dueno}»`}: en la pantalla y en el papel no se distinguirían. Cambia el nombre de uno, o retira el que sobre.`;
     }
     return null;
   }
