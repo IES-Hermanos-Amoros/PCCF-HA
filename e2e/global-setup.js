@@ -9,17 +9,21 @@
 // que el fichero no deje nada al terminar.
 
 const { huellaDeLaBase, estaLimpia, describirHuella, clienteHttp, COMO_LIMPIAR } = require('./estado-base');
+// Las filas huerfanas no se ven por la API, asi que van aparte. El porque, en el propio fichero.
+const { huerfanos, describir } = require('./apartados-huerfanos');
 
 module.exports = async function globalSetup(config) {
   const url = config.projects[0].use.baseURL;
   const cliente = await clienteHttp(url);
   const huella = await huellaDeLaBase(cliente);
-  if (estaLimpia(huella)) return;
+  const sueltas = await huerfanos();
+  if (estaLimpia(huella) && !sueltas.length) return;
   throw new Error([
     '',
     'LA BASE NO ESTÁ LIMPIA: otra ejecución dejó rastro y las pruebas fallarían por un motivo que no es suyo.',
     'Esto es lo que está sucio:',
     ...describirHuella(huella),
+    ...describir(sueltas),
     '',
     COMO_LIMPIAR,
     '',
