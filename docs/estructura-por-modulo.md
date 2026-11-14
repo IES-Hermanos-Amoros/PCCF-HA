@@ -130,15 +130,18 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
   campo que desaparece se queda guardado sin que nadie lo lea; no está decidido si eso vale.
 - **Las propuestas pedagógicas y la memoria no tienen módulos.** La regla no les afecta hoy, pero
   conviene no escribirla de forma que dé por hecho que todo documento tiene unidades.
-- **Las casillas de un apartado propio del módulo** se pueden configurar desde la pieza en curso; lo
-  que vive dentro de su propio `anadidos[i].campos` y no en `secciones`, porque un apartado propio no
-  tiene nada común de lo que desviarse. `GET …/estructura?seccion=` los resuelve con `apartadosDeModulo`
-  (que los marca `propio`): lo configura quien lleva el módulo y su alcance es un solo módulo. Queda por
-  decidir si la puerta debe negar que una casilla desaparezca de la lista sin haberse retirado: hoy no lo
-  hace, ni aquí ni con los campos añadidos a un apartado común.
+- **Lo escrito en una casilla o un apartado que desaparece.** Cuando un módulo vuelve a la estructura
+  común, o retira un apartado que él mismo creó, la fila con lo escrito **se queda guardada y deja de
+  ser alcanzable**: no se borra, pero nadie la vuelve a ver, y por la API no hay forma de llegar a
+  ella. Es la pregunta de arriba vista desde el otro lado, y sigue sin decidir.
+- **La puerta no comprueba que una casilla no desaparezca de la lista.** Si un cliente mandara una
+  lista de casillas a la que le falta una, el servidor la aceptaría y lo escrito bajo ese id quedaría
+  huérfano. Hoy lo impide el cliente, con un cerrojo en `app/_componentes/estructura-modulo-cliente.js`
+  que no manda nada si falta alguna; cerrarlo de verdad es comparar con lo guardado en la ruta. Pasa
+  igual con los campos añadidos a un apartado común, así que no es de esta pieza.
 - **El borrado no exige confirmación en el servidor.** La respuesta dice cuánto contenido se pierde y
   la pantalla confirma, pero la ruta no pide un `{ confirmar: true }` como sí hace la de versiones. Se
   dejó así para no romper la pantalla mientras se construía; ya se puede cerrar.
-- **La huella que vigila las fugas de la batería** cubre el reparto de docentes, las asignaciones y
-  las estructuras propias. No cubre el estado del documento ni las versiones alternativas, que
-  `salidas-comprobaciones` y `versiones` sí tocan y restauran por su cuenta.
+- **La huella que vigila las fugas de la batería** cubre el reparto de docentes, las asignaciones, las
+  estructuras propias y las filas huérfanas. No cubre el estado del documento ni las versiones
+  alternativas, que `salidas-comprobaciones` y `versiones` sí tocan y restauran por su cuenta.

@@ -151,6 +151,11 @@ node scripts/base-limpia.js --limpiar  # la deja limpia por la API, e imprime qu
 Si una fuga aparece, el aviso del final **informa y no limpia**. Es deliberado: limpiar en silencio
 escondería la prueba culpable, que es justo lo que se quiere ver.
 
+Con una excepción, que tiene su motivo escrito en `e2e/global-teardown.js`: cuando una prueba crea un
+apartado dentro de un módulo y escribe en él, su fila **deja de ser alcanzable por la API** en cuanto el
+módulo vuelve a la estructura común, así que el `finally` de la prueba no puede deshacerla. Esas, y solo
+las que no tienen nada escrito, se barren al terminar la batería, diciendo cuáles.
+
 ### La puerta congelada
 
 ```bash
