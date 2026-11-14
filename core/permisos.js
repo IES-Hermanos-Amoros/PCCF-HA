@@ -157,37 +157,37 @@
 
   // Quién cambia la estructura de UN APARTADO concreto: los campos que lleva, su nombre y su orden.
   // Es la regla de la estructura propia de un módulo (core/estructura-modulo.js), y es otra pregunta
-  // que `puedeCambiarEstructura`, que gobierna la plantilla común del documento entero.
+  // que `puedeCambiarEstructura`, que gobierna los apartados del documento entero (añadir, mover y
+  // retirar apartados).
   //
   //   edita                  'jefe_departamento' | 'docentes_del_modulo' | null, del apartado
   //   esDocenteDeLaUnidad    el usuario lleva la unidad de este apartado
+  //   tieneApartadoAsignado  se le ha asignado este apartado común (o su raíz)
   //
-  // El departamento decidió que cada docente edita libre la estructura de SU módulo y no toca la
-  // común. Por eso:
+  // LA DECISIÓN DEL DEPARTAMENTO: el documento es totalmente configurable por parte de quien tiene
+  // permisos en ese apartado, sea cual sea el apartado. Quien puede ESCRIBIR un apartado puede
+  // CONFIGURAR sus campos, sea de módulo o común:
   //
-  //   · un apartado de módulo lo cambian el soporte, la jefatura del departamento —en cualquier
-  //     módulo, lo lleve o no, como en `reglaEdicion`— y el docente que lleva esa unidad;
-  //   · un apartado común solo el soporte y la jefatura del departamento. NI SIQUIERA QUIEN TENGA EL
-  //     APARTADO ASIGNADO: asignarlo delega el CONTENIDO (`reglaEdicion`), pero la forma de lo común
-  //     es de la jefatura, y quien lo escribe no decide qué campos tiene;
+  //   · un apartado de módulo lo configuran el soporte, la jefatura del departamento —en cualquier
+  //     módulo, lo lleve o no— y el docente que lleva esa unidad;
+  //   · un apartado común, el soporte, la jefatura del departamento y quien lo tenga asignado;
   //   · la jefatura de estudios, nunca, en ninguno: aprueba, no cambia el documento.
   //
-  // No recibe `tieneApartadoAsignado` a propósito: que no se pueda pasar es lo que garantiza que no
-  // se tenga en cuenta. Y el `return false` final es el de `reglaEdicion`: un `edita` que no sea uno
-  // de los dos valores conocidos no lo cambia nadie.
-  function reglaEstructuraPropia(usuario, { edita, esDocenteDeLaUnidad } = {}) {
-    if (!usuario || !estaActivo(usuario)) return false;
-    if (usuario.rol === 'admin') return true;
-    if (usuario.rol === 'jefe_estudios') return false;
-
-    if (edita === 'docentes_del_modulo') {
-      if (usuario.rol === 'jefe_departamento') return true;
-      return usuario.rol === 'docente' && !!esDocenteDeLaUnidad;
-    }
-
-    if (edita === 'jefe_departamento') return usuario.rol === 'jefe_departamento';
-
-    return false;
+  // (Antes un apartado común lo configuraba solo la jefatura, aunque otra persona lo tuviera
+  // asignado: asignarlo delegaba el contenido y no la forma. El departamento lo ha cambiado.)
+  //
+  // HOY CONTESTA EXACTAMENTE LO MISMO QUE `reglaEdicion`, y por eso no repite su cuerpo: la delega.
+  // Quedan dos nombres y una sola regla. Hay dos preguntas —quién escribe y quién configura— y es
+  // útil que el sitio que llama diga cuál está haciendo; pero la decisión es que la respuesta sea la
+  // misma, y dos cuerpos iguales son justo lo que se separa sin que nadie se entere (el mockup v1,
+  // arriba). Si el día de mañana el departamento quiere que configurar sea más (o menos) que
+  // escribir, este es el único sitio que se toca, y la diferencia queda escrita aquí y no en un
+  // `if` perdido en una ruta.
+  //
+  // Lo que NO cubre esta regla, porque no es de permisos: que el apartado exista, que no esté
+  // retirado y que la versión sea la activa. Eso lo comprueba la ruta.
+  function reglaEstructuraPropia(usuario, datos) {
+    return reglaEdicion(usuario, datos);
   }
 
   // Quién configura las COMPROBACIONES de un documento: qué comprobaciones de criterio del centro

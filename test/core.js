@@ -924,18 +924,51 @@ prueba('el esqueleto de la pantalla trae todas las filas, tambien las que solo s
 
 // ------------------------------------------------ reglaEstructuraPropia
 
-prueba('reglaEstructuraPropia: la forma de un modulo es del modulo, la de lo comun es de la jefatura', () => {
-  const caso = (rol, edita, esDocenteDeLaUnidad) => P.reglaEstructuraPropia(usuario(rol), { edita, esDocenteDeLaUnidad });
-  assert.strictEqual(caso('docente', 'docentes_del_modulo', true), true);
-  assert.strictEqual(caso('docente', 'docentes_del_modulo', false), false, 'el modulo de otro no');
-  assert.strictEqual(caso('jefe_departamento', 'docentes_del_modulo', false), true);
-  assert.strictEqual(caso('docente', 'jefe_departamento', true), false, 'lo comun no, ni llevando la unidad');
-  assert.strictEqual(P.reglaEstructuraPropia(usuario('docente'), { edita: 'jefe_departamento', tieneApartadoAsignado: true }), false,
-    'ni con el apartado asignado: se delega el contenido, no la forma');
-  assert.strictEqual(caso('jefe_departamento', 'jefe_departamento', false), true);
-  assert.strictEqual(caso('admin', 'jefe_departamento', false), true);
-  for (const edita of ['docentes_del_modulo', 'jefe_departamento']) assert.strictEqual(caso('jefe_estudios', edita, true), false);
-  assert.strictEqual(caso('docente', 'otro', true), false, 'un edita desconocido no lo cambia nadie');
+prueba('reglaEstructuraPropia: quien puede editar un apartado puede configurarlo, sea de modulo o comun', () => {
+  const caso = (rol, datos) => P.reglaEstructuraPropia(usuario(rol), datos);
+  // Un apartado de modulo: el docente que lleva la unidad, no el de otro.
+  assert.strictEqual(caso('docente', { edita: 'docentes_del_modulo', esDocenteDeLaUnidad: true }), true);
+  assert.strictEqual(caso('docente', { edita: 'docentes_del_modulo', esDocenteDeLaUnidad: false }), false, 'el modulo de otro no');
+  assert.strictEqual(caso('jefe_departamento', { edita: 'docentes_del_modulo', esDocenteDeLaUnidad: false }), true);
+  // Un apartado comun: DESDE LA DECISION NUEVA, tambien quien lo tiene asignado. Antes era false.
+  assert.strictEqual(caso('docente', { edita: 'jefe_departamento', tieneApartadoAsignado: true }), true,
+    'quien tiene el apartado comun asignado lo configura');
+  assert.strictEqual(caso('docente', { edita: 'jefe_departamento', tieneApartadoAsignado: false }), false,
+    'sin asignarlo, no');
+  assert.strictEqual(caso('docente', { edita: 'jefe_departamento', esDocenteDeLaUnidad: true }), false,
+    'llevar una unidad no da el apartado comun');
+  assert.strictEqual(caso('jefe_departamento', { edita: 'jefe_departamento' }), true);
+  assert.strictEqual(caso('admin', { edita: 'jefe_departamento' }), true);
+  // La jefatura de estudios aprueba y no cambia nada, en ninguno.
+  for (const edita of ['docentes_del_modulo', 'jefe_departamento']) {
+    assert.strictEqual(caso('jefe_estudios', { edita, esDocenteDeLaUnidad: true, tieneApartadoAsignado: true }), false, 'jefe_estudios ' + edita);
+  }
+  assert.strictEqual(caso('docente', { edita: 'otro', esDocenteDeLaUnidad: true, tieneApartadoAsignado: true }), false,
+    'un edita desconocido no lo cambia nadie');
+  assert.strictEqual(P.reglaEstructuraPropia(null, { edita: 'docentes_del_modulo' }), false);
+  assert.strictEqual(P.reglaEstructuraPropia(usuario('docente'), undefined), false);
+});
+
+prueba('reglaEstructuraPropia contesta lo mismo que reglaEdicion en todas las combinaciones', () => {
+  // Es la decision del departamento hecha prueba: si un dia se separan, que sea a proposito y esta
+  // prueba se cambie con ellas, no que una se mueva sin que la otra se entere.
+  let n = 0;
+  for (const rol of ROLES) {
+    for (const activo of [true, false]) {
+      for (const edita of ['jefe_departamento', 'docentes_del_modulo', null, 'otro']) {
+        for (const esDocenteDeLaUnidad of [true, false]) {
+          for (const tieneApartadoAsignado of [true, false]) {
+            const u = usuario(rol, { activo });
+            const datos = { edita, esDocenteDeLaUnidad, tieneApartadoAsignado };
+            assert.strictEqual(P.reglaEstructuraPropia(u, datos), P.reglaEdicion(u, datos),
+              `${rol} activo=${activo} edita=${edita} unidad=${esDocenteDeLaUnidad} asignado=${tieneApartadoAsignado}`);
+            n += 1;
+          }
+        }
+      }
+    }
+  }
+  assert.ok(n > 100);
 });
 
 // ----------------------------------------------------------------- resumen

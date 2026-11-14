@@ -2,7 +2,7 @@
 //
 //   node test/estructura-modulo.js
 //
-// Son tres cosas y las tres se vigilan aqui:
+// Son cuatro cosas y las cuatro se vigilan aqui (la cuarta, los apartados enteros, va antes de la tercera):
 //
 //   1. LA REGLA: un modulo sigue su propia estructura mientras la tenga, y la comun cuando no la
 //      tenga. Con sus tres casos —sin estructura, con ella, y con una que no desvia nada, que es
@@ -13,6 +13,9 @@
 //   2. LA PUERTA, con cada motivo escrito para una persona: apartado inexistente, comun, retirado o
 //      de fichas; ids que no siguen al nombre; dos campos que se llaman igual; retirar no borra; los
 //      topes.
+//
+//   4. LOS APARTADOS ENTEROS: retirar, renombrar, mover y anadir uno en un modulo solo, con sus
+//      hijos, y su puerta. Es la hermana de la regla de los campos (`apartadosDeModulo`).
 //
 //   3. QUIEN PUEDE CAMBIARLA (`reglaEstructuraPropia` de core/permisos.js), con los cuatro roles y
 //      los dos tipos de apartado.
@@ -328,6 +331,308 @@ prueba('lo que pasa la puerta se lee con la regla: la puerta y la regla dicen lo
   assert.deepStrictEqual(ids(EM.camposDeSeccion(seccion(p, OBJ), unidadCon(secciones)).vigentes), ['m_a', 'texto', 'resumen']);
 });
 
+// ---------------------------------------------------------------- 4. los apartados enteros
+
+// La plantilla de juguete con un apartado de modulo que tiene hijos (objetivos > detalle, extra).
+const DET = OBJ + '/detalle';
+const EXT = OBJ + '/extra';
+const plantillaConHijos = () => {
+  const p = plantilla();
+  seccion(p, OBJ).hijos = [
+    { id: DET, titulo: 'Detalle', campos: [{ id: 'texto', tipo: 'texto_largo', etiqueta: 'Detalle' }] },
+    { id: EXT, titulo: 'Extra', campos: [{ id: 'texto', tipo: 'texto_largo', etiqueta: 'Extra' }] },
+  ];
+  return p;
+};
+const unidadApartados = (apartados) => ({ id: 'daw-0485', estructura: { apartados } });
+const apartados = (p, apart) => EM.apartadosDeModulo(p, unidadApartados(apart));
+const motivoAp = (apart, p) => EM.motivoDeEstructura({ apartados: apart }, p || plantilla());
+const propioAp = (id, titulo, padre, extra) => Object.assign({
+  id, titulo, padre: padre || 'modulos', campos: [propio('m_texto', 'Texto')],
+}, extra);
+const MP = 'modulos/m_proyecto';
+
+prueba('apartados: un modulo sin estructura sigue la comun, con las MISMAS referencias', () => {
+  const p = plantilla();
+  const bloque = seccion(p, 'modulos');
+  const sinDesvio = [{ id: 'x' }, null, undefined, { id: 'x', estructura: {} },
+    { id: 'x', estructura: { apartados: { cambios: {}, anadidos: [], orden: { modulos: [] } } } }];
+  for (const unidad of sinDesvio) {
+    const r = EM.apartadosDeModulo(p, unidad);
+    assert.strictEqual(r.origen, 'comun', JSON.stringify(unidad));
+    assert.strictEqual(r.bloque, 'modulos');
+    assert.strictEqual(r.secciones, bloque.hijos, 'la misma lista, no una copia');
+    assert.deepStrictEqual(ids(r.vigentes), [OBJ, EVA, 'modulos/fichas'], 'el retirado no se pinta');
+  }
+  assert.strictEqual(EM.estructuraDeModulo({ id: 'x', estructura: { apartados: { cambios: {} } } }), null);
+});
+
+prueba('apartados: un documento sin modulos no tiene apartados de modulo, y no se rompe', () => {
+  const sinModulos = { version: 1, secciones: [{ id: 'a', titulo: 'A', campos: [] }] };
+  const r = EM.apartadosDeModulo(sinModulos, unidadApartados({ cambios: { a: { retirado: true } } }));
+  assert.deepStrictEqual(r, { origen: 'comun', bloque: null, secciones: [], vigentes: [] });
+  assert.deepStrictEqual(EM.apartadosDeModulo(null, null).vigentes, []);
+  dice(motivoAp({ cambios: { a: { retirado: true } } }, sinModulos), 'no tiene m', 'dulos');
+});
+
+prueba('apartados: retirar un apartado en un modulo no lo retira en los otros diez, y restaurar lo devuelve', () => {
+  const p = plantilla();
+  const retirado = unidadApartados({ cambios: { [EVA]: { retirado: true } } });
+  const r = EM.apartadosDeModulo(p, retirado);
+  assert.strictEqual(r.origen, 'propia');
+  assert.deepStrictEqual(ids(r.vigentes), [OBJ, 'modulos/fichas']);
+  assert.deepStrictEqual(ids(r.secciones), [OBJ, EVA, 'modulos/fichas', 'modulos/antiguo'], 'retirar no borra: sigue en la lista');
+  assert.strictEqual(r.secciones.find((s) => s.id === EVA).retirado, true);
+  assert.ok(!seccion(p, EVA).retirado, 'la plantilla comun no se toca');
+  assert.deepStrictEqual(ids(EM.apartadosDeModulo(p, { id: 'daw-0484' }).vigentes), [OBJ, EVA, 'modulos/fichas'], 'los otros modulos no se enteran');
+  // Restaurar es quitar la marca: el apartado vuelve y, si no queda desvio, el modulo cae a la comun.
+  const restaurado = unidadApartados({ cambios: { [EVA]: { retirado: false } } });
+  assert.deepStrictEqual(ids(EM.apartadosDeModulo(p, restaurado).vigentes), [OBJ, EVA, 'modulos/fichas']);
+  const sin = { id: 'x', estructura: { apartados: { cambios: {} } } };
+  assert.strictEqual(EM.apartadosDeModulo(p, sin).origen, 'comun');
+});
+
+prueba('apartados: renombrar cambia el titulo y no el id, y solo en ese modulo', () => {
+  const p = plantilla();
+  const r = apartados(p, { cambios: { [EVA]: { titulo: 'Como se evalua aqui' } } });
+  const eva = r.vigentes.find((s) => s.id === EVA);
+  assert.strictEqual(eva.titulo, 'Como se evalua aqui');
+  assert.strictEqual(eva.id, EVA, 'el id no sigue al nombre: el contenido se guarda por el');
+  assert.strictEqual(seccion(p, EVA).titulo, 'Evaluacion');
+  assert.strictEqual(EM.apartadosDeModulo(p, { id: 'otro' }).vigentes.find((s) => s.id === EVA).titulo, 'Evaluacion');
+  assert.strictEqual(eva.campos, seccion(p, EVA).campos, 'lo que no se cambia se comparte, sin copiar');
+});
+
+prueba('apartados: mover cambia el orden entre hermanos; lo que orden no nombra va detras', () => {
+  const p = plantilla();
+  const r = apartados(p, { orden: { modulos: [EVA, OBJ] } });
+  assert.deepStrictEqual(ids(r.secciones), [EVA, OBJ, 'modulos/fichas', 'modulos/antiguo']);
+  assert.deepStrictEqual(ids(apartados(p, { orden: { modulos: ['modulos/fichas'] } }).vigentes), ['modulos/fichas', OBJ, EVA]);
+  assert.deepStrictEqual(ids(EM.apartadosDeModulo(p, { id: 'otro' }).vigentes), [OBJ, EVA, 'modulos/fichas'], 'los otros no se mueven');
+  // Un apartado que la jefatura anade despues a lo comun le llega al que ya diverge, al final.
+  seccion(p, 'modulos').hijos.push({ id: 'modulos/nuevo', titulo: 'Nuevo', campos: [] });
+  assert.deepStrictEqual(ids(apartados(p, { orden: { modulos: [EVA, OBJ] } }).vigentes), [EVA, OBJ, 'modulos/fichas', 'modulos/nuevo']);
+});
+
+prueba('apartados: anadir uno propio lo pone en su sitio, lleva prefijo y se marca como suyo', () => {
+  const p = plantilla();
+  const proyecto = propioAp(MP, 'Proyecto', 'modulos', { campos: [propio('m_texto', 'Texto'), propio('m_nota', 'Nota')] });
+  const r = apartados(p, { anadidos: [proyecto], orden: { modulos: [MP, OBJ] } });
+  assert.deepStrictEqual(ids(r.vigentes), [MP, OBJ, EVA, 'modulos/fichas']);
+  const nuevo = r.vigentes[0];
+  assert.strictEqual(nuevo.propio, true);
+  assert.strictEqual(nuevo.titulo, 'Proyecto');
+  assert.deepStrictEqual(ids(EM.camposDeSeccion(nuevo, unidadApartados({})).vigentes), ['m_texto', 'm_nota'], 'sus campos los da la misma regla de los campos');
+  assert.deepStrictEqual(ids(EM.apartadosDeModulo(p, { id: 'otro' }).vigentes), [OBJ, EVA, 'modulos/fichas'], 'los otros diez no lo ven');
+  // Retirado el propio: no se pinta, pero sigue.
+  const quitado = apartados(p, { anadidos: [{ ...proyecto, retirado: true }] });
+  assert.ok(quitado.secciones.some((s) => s.id === MP));
+  assert.ok(!quitado.vigentes.some((s) => s.id === MP));
+  // Un anadido que choca con un id comun no se pinta, y uno cuyo padre no existe, tampoco.
+  assert.ok(!apartados(p, { anadidos: [propioAp(EVA, 'Choca')] }).secciones.some((s) => s.propio));
+  assert.ok(!apartados(p, { anadidos: [propioAp('nada/m_x', 'Huerfano', 'nada')] }).secciones.some((s) => s.id === 'nada/m_x'));
+  assert.ok(!apartados(p, { anadidos: [null, { sin: 'id' }] }).secciones.some((s) => s.propio));
+});
+
+prueba('apartados: uno propio puede colgar de otro (propio o comun) y se pinta dentro de su padre', () => {
+  const p = plantilla();
+  const hijo = propioAp(MP + '/m_fase', 'Fase', MP);
+  const r = apartados(p, { anadidos: [propioAp(MP, 'Proyecto'), hijo, propioAp(EVA + '/m_anexo', 'Anexo', EVA)] });
+  assert.deepStrictEqual(ids(r.vigentes.find((s) => s.id === MP).hijos), [MP + '/m_fase']);
+  assert.deepStrictEqual(ids(r.vigentes.find((s) => s.id === EVA).hijos), [EVA + '/m_anexo']);
+});
+
+prueba('apartados: lo que la comun retira no lo resucita un modulo', () => {
+  const p = plantilla();
+  const r = apartados(p, { cambios: { 'modulos/antiguo': { retirado: false, titulo: 'Vuelve' } } });
+  assert.ok(!ids(r.vigentes).includes('modulos/antiguo'));
+  seccion(p, EVA).retirado = true;
+  assert.ok(!ids(apartados(p, { orden: { modulos: [EVA] } }).vigentes).includes(EVA));
+  dice(motivoAp({ cambios: { [EVA]: { titulo: 'Otro' } } }, p), 'Evaluacion', 'retirado', 'jefatura');
+  dice(motivoAp({ cambios: { 'modulos/antiguo': { retirado: true } } }), 'Antiguo', 'retirado', 'jefatura');
+});
+
+prueba('apartados CON HIJOS: retirar el padre se lleva a los hijos, y restaurarlo los devuelve', () => {
+  const p = plantillaConHijos();
+  const sinDesvio = EM.apartadosDeModulo(p, { id: 'x' });
+  assert.deepStrictEqual(ids(sinDesvio.vigentes.find((s) => s.id === OBJ).hijos), [DET, EXT]);
+  // Retirar el padre no escribe nada en los hijos: se ocultan por estar bajo un retirado.
+  const retirado = apartados(p, { cambios: { [OBJ]: { retirado: true } } });
+  assert.ok(!retirado.vigentes.some((s) => s.id === OBJ));
+  const dentro = retirado.secciones.find((s) => s.id === OBJ);
+  assert.strictEqual(dentro.retirado, true);
+  assert.deepStrictEqual(ids(dentro.hijos), [DET, EXT], 'los hijos siguen ahi, con su contenido: retirar no borra');
+  assert.ok(!dentro.hijos.some((h) => h.retirado), 'los hijos no llevan marca propia');
+  // Restaurar el padre: vuelven los que no se retiraron por separado.
+  const restaurado = apartados(p, { cambios: { [OBJ]: { retirado: false }, [EXT]: { retirado: true } } });
+  assert.deepStrictEqual(ids(restaurado.vigentes.find((s) => s.id === OBJ).hijos), [DET], 'el hijo retirado por separado sigue retirado');
+  // Un hijo retirado solo, con el padre en pie.
+  const hijoFuera = apartados(p, { cambios: { [DET]: { retirado: true } } });
+  assert.deepStrictEqual(ids(hijoFuera.vigentes.find((s) => s.id === OBJ).hijos), [EXT]);
+  // Y los hijos se renombran y se mueven entre sus hermanos.
+  const movido = apartados(p, { cambios: { [DET]: { titulo: 'Mas detalle' } }, orden: { [OBJ]: [EXT, DET] } });
+  const hijos = movido.vigentes.find((s) => s.id === OBJ).hijos;
+  assert.deepStrictEqual(hijos.map((h) => h.titulo), ['Extra', 'Mas detalle']);
+  assert.strictEqual(seccion(p, DET).titulo, 'Detalle');
+  // La puerta deja un hijo marcado bajo un padre retirado: es lo que sale de retirar en ese orden.
+  assert.strictEqual(motivoAp({ cambios: { [OBJ]: { retirado: true }, [DET]: { retirado: true } } }, p), null);
+});
+
+prueba('apartados: apartadosDeModulo y la puerta dicen lo mismo, y los campos de dentro siguen su regla', () => {
+  const p = plantilla();
+  const apart = {
+    cambios: { [EVA]: { titulo: 'Evaluacion del modulo' } },
+    anadidos: [propioAp(MP, 'Proyecto')],
+    orden: { modulos: [MP, OBJ] },
+  };
+  const unidad = { id: 'x', estructura: { apartados: apart, secciones: { [OBJ]: { campos: { resumen: { retirado: true } } } } } };
+  assert.strictEqual(EM.motivoDeEstructura(unidad.estructura, p), null);
+  const r = EM.apartadosDeModulo(p, unidad);
+  assert.deepStrictEqual(ids(r.vigentes), [MP, OBJ, EVA, 'modulos/fichas']);
+  const obj = r.vigentes.find((s) => s.id === OBJ);
+  assert.deepStrictEqual(ids(EM.camposDeSeccion(obj, unidad).vigentes), ['texto'], 'camposDeSeccion y apartadosDeModulo se llevan bien');
+  assert.deepStrictEqual(Object.keys(EM.estructuraDeModulo(unidad)).sort(), ['apartados', 'secciones']);
+  assert.deepStrictEqual(Object.keys(EM.estructuraDeModulo(unidadApartados(apart))), ['secciones', 'apartados']);
+});
+
+prueba('apartados: el id de uno propio lleva prefijo, cuelga de su padre, no sigue al nombre y no se reutiliza', () => {
+  assert.strictEqual(EM.idDeApartadoPropio('Proyecto final', 'modulos', []), 'modulos/m_proyecto-final');
+  assert.strictEqual(EM.idDeApartadoPropio('Proyecto final', 'modulos', ['modulos/m_proyecto-final']), 'modulos/m_proyecto-final-2');
+  assert.strictEqual(EM.idDeApartadoPropio('4. Proyecto final', 'modulos/a', ['modulos/a/m_proyecto-final', 'modulos/a/m_proyecto-final-2']), 'modulos/a/m_proyecto-final-3');
+  assert.strictEqual(EM.idDeApartadoPropio('', 'modulos', []), 'modulos/m_seccion');
+  // Los ids de la plantilla nunca llevan guion bajo en su ultimo tramo: no pueden chocar.
+  assert.ok(!/_/.test(Plantilla.slug('Un guion_bajo')));
+});
+
+prueba('la puerta de apartados: lo bueno pasa', () => {
+  assert.strictEqual(motivoAp({ cambios: { [EVA]: { titulo: 'Otro nombre' } } }), null);
+  assert.strictEqual(motivoAp({ cambios: { [EVA]: { retirado: true } } }), null);
+  assert.strictEqual(motivoAp({ cambios: { 'modulos/fichas': { titulo: 'Mis fichas', retirado: true } } }), null, 'un apartado de fichas se retira y se renombra');
+  assert.strictEqual(motivoAp({ orden: { modulos: [EVA, 'modulos/antiguo', OBJ] } }), null, 'un retirado se puede colocar');
+  assert.strictEqual(motivoAp({ anadidos: [propioAp(MP, 'Proyecto')], orden: { modulos: [MP] } }), null);
+  assert.strictEqual(motivoAp({ orden: { modulos: [], [OBJ]: [] }, cambios: { [EVA]: { retirado: true } } }), null, 'una lista vacia en orden no estorba');
+  assert.strictEqual(EM.motivoDeEstructura({ apartados: { orden: { cualquiera: ['x'] } } }), null, 'sin plantilla solo se mide la forma');
+});
+
+prueba('la puerta de apartados: la forma', () => {
+  dice(motivoAp(3), 'no son un objeto');
+  dice(motivoAp({ cambios: {}, extra: 1 }), '«extra»', 'solo');
+  dice(motivoAp({}), 'no cambian nada');
+  dice(motivoAp({ cambios: {}, anadidos: [], orden: { modulos: [] } }), 'no cambian nada');
+  dice(motivoAp({ cambios: [] }), 'cambios');
+  dice(motivoAp({ anadidos: 'x' }), 'no son una lista');
+  dice(motivoAp({ orden: [] }), 'orden');
+  dice(EM.motivoDeEstructura({}), 'secciones', 'apartados');
+  dice(EM.motivoDeEstructura({ secciones: {} }), 'no cambia ning');
+  dice(EM.motivoDeEstructura({ secciones: {}, apartados: { cambios: {} } }), 'no cambian nada');
+  assert.strictEqual(EM.motivoDeEstructura({ secciones: {}, apartados: { cambios: { [EVA]: { retirado: true } } } }, plantilla()), null);
+});
+
+prueba('la puerta de apartados: los cambios a apartados comunes son renombrar o retirar, nada mas', () => {
+  dice(motivoAp({ cambios: { [EVA]: 3 } }), EVA, 'no es un objeto');
+  dice(motivoAp({ cambios: { [EVA]: { campos: [] } } }), '«campos»', 'renombrar o retirar');
+  dice(motivoAp({ cambios: { [EVA]: {} } }), 'no cambia nada');
+  dice(motivoAp({ cambios: { [EVA]: { titulo: '   ' } } }), 'titulo');
+  dice(motivoAp({ cambios: { [EVA]: { titulo: 'x'.repeat(201) } } }), '201', '200');
+  dice(motivoAp({ cambios: { [EVA]: { titulo: '4. Evaluacion' } } }), 'sin n', 'posici');
+  dice(motivoAp({ cambios: { [EVA]: { retirado: 'si' } } }), 'verdadero o falso');
+  dice(motivoAp({ cambios: { 'modulos/inventado': { retirado: true } } }), 'ning', '«modulos/inventado»');
+  dice(motivoAp({ cambios: { [MP]: { retirado: true } }, anadidos: [propioAp(MP, 'Proyecto')] }), 'anadidos');
+});
+
+prueba('la puerta de apartados: lo comun del documento y el propio bloque no son de un modulo', () => {
+  dice(motivoAp({ cambios: { identificacion: { retirado: true } } }), 'Identificacion', 'com', 'jefatura');
+  dice(motivoAp({ cambios: { modulos: { titulo: 'Otros' } } }), 'Modulos', 'com', 'jefatura');
+  dice(motivoAp({ orden: { identificacion: ['x'] } }), 'identificacion');
+  dice(motivoAp({ anadidos: [propioAp('identificacion/m_x', 'X', 'identificacion')] }), 'identificacion');
+});
+
+prueba('la puerta de apartados: uno propio se acuna con prefijo, cuelga de un padre valido y existe una vez', () => {
+  dice(motivoAp({ anadidos: [propioAp('modulos/proyecto', 'Proyecto')] }), '«modulos/proyecto»', 'm_', 'com');
+  dice(motivoAp({ anadidos: [propioAp('proyecto', 'Proyecto')] }), 'padre');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a/b', 'A')] }), 'padre');
+  dice(motivoAp({ anadidos: [{ titulo: 'X', padre: 'modulos', campos: [] }] }), 'id');
+  dice(motivoAp({ anadidos: [{ id: 'modulos/m_a', titulo: 'X', campos: [] }] }), 'padre');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A'), propioAp('modulos/m_a', 'B')] }), 'no se reutiliza');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { retirado: true }), propioAp('modulos/m_a', 'B')] }), 'no se reutiliza');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { raro: 1 })] }), '«raro»');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { retirado: 'no' })] }), 'verdadero o falso');
+  dice(motivoAp({ anadidos: ['x'] }), 'no es un apartado');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', '')] }), 'titulo');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', '3. Algo')] }), 'sin n');
+});
+
+prueba('la puerta de apartados: el padre de uno propio existe, no esta retirado y no es de fichas', () => {
+  dice(motivoAp({ anadidos: [propioAp('nada/m_x', 'X', 'nada')] }), '«nada»');
+  dice(motivoAp({ anadidos: [propioAp('modulos/fichas/m_x', 'X', 'modulos/fichas')] }), 'Fichas', 'ficha');
+  dice(motivoAp({ anadidos: [propioAp('modulos/antiguo/m_x', 'X', 'modulos/antiguo')] }), 'Antiguo', 'retirado');
+  // Cuelga de otro propio solo si va antes: sin ciclos ni apartados sin sitio.
+  assert.strictEqual(motivoAp({ anadidos: [propioAp(MP, 'P'), propioAp(MP + '/m_h', 'H', MP)] }), null);
+  dice(motivoAp({ anadidos: [propioAp(MP + '/m_h', 'H', MP), propioAp(MP, 'P')] }), 'antes');
+  dice(motivoAp({ anadidos: [propioAp(MP, 'P', MP)] }), 'padre');
+  const p = plantilla();
+  seccion(p, 'modulos').retirado = true;
+  dice(motivoAp({ anadidos: [propioAp(MP, 'P')] }, p), 'retirado');
+});
+
+prueba('la puerta de apartados: un propio lleva campos, validos y sin repetir', () => {
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { campos: undefined })] }), 'campos');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { campos: [] })] }), 'al menos un campo');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { campos: [propio('texto', 'T')] })] }), 'm_');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { campos: [propio('m_t', 'T'), propio('m_t', 'U')] })] }), 'm_t', 'no se reutiliza');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { campos: [propio('m_t', 'T'), propio('m_u', 't')] })] }), 'distinguir');
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { campos: [propio('m_t', 'T', { tipo: 'auto.ficha_modulo' })] })] }), 'crear');
+  const muchos = [];
+  for (let i = 0; i <= EM.MAX_CAMPOS; i += 1) muchos.push(propio('m_c' + i, 'Campo ' + i));
+  dice(motivoAp({ anadidos: [propioAp('modulos/m_a', 'A', 'modulos', { campos: muchos })] }), String(EM.MAX_CAMPOS + 1));
+});
+
+prueba('la puerta de apartados: el orden nombra hijos de ese padre, una vez cada uno', () => {
+  dice(motivoAp({ orden: { modulos: 'x' } }), 'lista');
+  dice(motivoAp({ orden: { modulos: [3] } }), 'id de apartado');
+  dice(motivoAp({ orden: { modulos: [EVA, EVA] } }), EVA, 'dos veces');
+  dice(motivoAp({ orden: { modulos: ['fantasma'] } }), '«fantasma»', 'no es hijo');
+  dice(motivoAp({ orden: { nada: [EVA] } }), '«nada»');
+  const p = plantillaConHijos();
+  dice(motivoAp({ orden: { modulos: [DET] } }, p), '«' + DET + '»', 'no es hijo', 'sitio');
+  assert.strictEqual(motivoAp({ orden: { [OBJ]: [EXT, DET] } }, p), null);
+  assert.strictEqual(motivoAp({ anadidos: [propioAp(MP, 'P')], orden: { [MP]: [], modulos: [MP] } }, p), null);
+  dice(motivoAp({ anadidos: [propioAp(MP, 'P')], orden: { [MP]: [OBJ] } }), 'no es hijo');
+  seccion(p, OBJ).retirado = true;
+  dice(motivoAp({ orden: { [OBJ]: [EXT, DET] } }, p), 'retirado');
+});
+
+prueba('la puerta de apartados: el tope de apartados propios', () => {
+  const muchos = [];
+  for (let i = 0; i <= EM.MAX_APARTADOS_PROPIOS; i += 1) muchos.push(propioAp('modulos/m_a' + i, 'Apartado ' + i));
+  dice(motivoAp({ anadidos: muchos }), String(EM.MAX_APARTADOS_PROPIOS + 1), String(EM.MAX_APARTADOS_PROPIOS));
+  assert.strictEqual(motivoAp({ anadidos: muchos.slice(0, EM.MAX_APARTADOS_PROPIOS) }), null);
+});
+
+prueba('la puerta de apartados: dos hermanos visibles no se llaman igual, pero solo si lo ha hecho el modulo', () => {
+  dice(motivoAp({ cambios: { [EVA]: { titulo: 'objetivos' } } }), '«objetivos»', 'distinguir');
+  dice(motivoAp({ anadidos: [propioAp(MP, 'EVALUACION')] }), 'distinguir');
+  dice(motivoAp({ anadidos: [propioAp(MP, 'A'), propioAp('modulos/m_b', 'a')] }), 'distinguir');
+  // Un retirado libera su nombre.
+  assert.strictEqual(motivoAp({ cambios: { [EVA]: { titulo: 'Objetivos' }, [OBJ]: { retirado: true } } }), null);
+  assert.strictEqual(motivoAp({ anadidos: [propioAp(MP, 'Antiguo')] }), null, 'el retirado de la comun no cuenta');
+  // Un parecido que ya traia la comun no se le achaca a quien cambia otra cosa.
+  const p = plantilla();
+  seccion(p, EVA).titulo = 'Objetivos';
+  assert.strictEqual(motivoAp({ cambios: { 'modulos/fichas': { titulo: 'Mis fichas' } } }, p), null);
+});
+
+prueba('la puerta: un propio no se toca desde «secciones», y lo de campos sigue valiendo junto a apartados', () => {
+  const anadido = propioAp(MP, 'Proyecto');
+  dice(EM.motivoDeEstructura({ secciones: { [MP]: { orden: ['m_texto'] } }, apartados: { anadidos: [anadido] } }, plantilla()), 'Proyecto', 'anadidos');
+  dice(EM.motivoDeEstructura({ secciones: { [MP]: { orden: ['m_texto'] } }, apartados: { anadidos: [anadido] } }), 'anadidos');
+  assert.strictEqual(EM.motivoDeEstructura({ secciones: { [OBJ]: { orden: ['resumen'] } }, apartados: { anadidos: [anadido] } }, plantilla()), null);
+  // Un desvio de campos mal hecho se sigue diciendo, aunque los apartados esten bien.
+  dice(EM.motivoDeEstructura({ secciones: { [OBJ]: { orden: ['fantasma'] } }, apartados: { anadidos: [anadido] } }, plantilla()), '«fantasma»');
+  // Retirar un apartado en el modulo no impide dejar guardados los cambios a sus campos: retirar no borra.
+  assert.strictEqual(EM.motivoDeEstructura({ secciones: { [OBJ]: { orden: ['resumen'] } }, apartados: { cambios: { [OBJ]: { retirado: true } } } }, plantilla()), null);
+});
+
 // ---------------------------------------------------------------- 3. quien puede
 
 const ROLES = ['admin', 'jefe_estudios', 'jefe_departamento', 'docente'];
@@ -343,15 +648,17 @@ prueba('apartado de modulo: lo cambian admin, jefe de departamento y el docente 
   assert.strictEqual(puede('docente', 'docentes_del_modulo', undefined), false);
 });
 
-prueba('apartado comun: solo admin y jefe de departamento, ni siquiera quien lo tiene asignado', () => {
+prueba('apartado comun: lo cambian admin, jefe de departamento y quien lo tiene asignado (decision del departamento)', () => {
   assert.strictEqual(puede('admin', 'jefe_departamento', false), true);
   assert.strictEqual(puede('jefe_departamento', 'jefe_departamento', false), true);
-  assert.strictEqual(puede('docente', 'jefe_departamento', false), false);
-  // Aunque se le diga que lleva la unidad, y aunque tenga el apartado asignado (que ni se pregunta).
+  assert.strictEqual(puede('docente', 'jefe_departamento', false), false, 'sin tenerlo asignado, no');
+  // Llevar una unidad no da un apartado comun.
   assert.strictEqual(puede('docente', 'jefe_departamento', true), false);
-  assert.strictEqual(P.reglaEstructuraPropia(usuario('docente'), { edita: 'jefe_departamento', tieneApartadoAsignado: true, esDocenteDeLaUnidad: true }), false);
-  assert.strictEqual(P.reglaEdicion(usuario('docente'), { edita: 'jefe_departamento', tieneApartadoAsignado: true }), true,
-    'el contenido si se delega: lo que no se delega es la forma');
+  // Con el apartado asignado si: quien puede editar el apartado puede configurarlo. Antes era false.
+  const asignado = { edita: 'jefe_departamento', tieneApartadoAsignado: true };
+  assert.strictEqual(P.reglaEstructuraPropia(usuario('docente'), asignado), true);
+  assert.strictEqual(P.reglaEstructuraPropia(usuario('docente'), asignado), P.reglaEdicion(usuario('docente'), asignado),
+    'configurar y escribir contestan lo mismo');
 });
 
 prueba('la jefatura de estudios nunca, en ninguno', () => {
