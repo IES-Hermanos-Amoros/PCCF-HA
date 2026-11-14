@@ -112,17 +112,21 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
   algún módulo ya tiene divergido. La decisión del departamento para las tablas fue: se avisa a quien
   lo añade, y si acepta, se avisa a quien le afecta y se añade vacía. Aquí aún no está aplicada.
 - **Si una estructura propia debe poder volver a la común**, y qué ocurre entonces con lo escrito en
-  los campos que solo existían en la propia.
+  los campos que solo existían en la propia. Hoy se puede (`estructura: null`), y lo escrito en un
+  campo que desaparece se queda guardado sin que nadie lo lea; no está decidido si eso vale.
 - **Las propuestas pedagógicas y la memoria no tienen módulos.** La regla no les afecta hoy, pero
   conviene no escribirla de forma que dé por hecho que todo documento tiene unidades.
-- **Las operaciones todavía no existen.** El núcleo tiene la forma, la regla y la puerta, y la ruta
-  guarda la estructura entera que se le manda; lo que no hay es «retira este apartado», «muévelo»,
-  con sus avisos de operación. Cuando se escriban hay que traerse los que ya tiene
-  `core/plantilla.js` —entre ellos la negativa a restaurar un hijo bajo un padre retirado— y no
-  inventar otros.
-- **Nadie lee la regla todavía.** La pantalla del apartado, el PDF y el Word siguen pintando la
-  estructura común para todos. Hasta que la lean, esto se guarda y no se ve, y por eso la puerta
-  congelada sigue en verde: mide los módulos sin estructura propia, que hoy son todos.
-- **El desvío de un apartado COMÚN no existe, y eso ya está resuelto.** Ver 4.1: aquí se dijo
-  durante un tiempo que faltaba sitio donde guardarlo, y era un error de razonamiento.
-- **El aviso de alcance de un apartado común** está decidido aquí y todavía no construido.
+- **Un apartado que el propio módulo añade no está en la plantilla común**, así que el servidor no
+  sabe contestar por él a `GET …/estructura?seccion=` y su tarjeta no puede configurar sus campos.
+  Funciona retirarlo y restaurarlo; configurar sus campos, no.
+- **La regla de la rama no viaja en la lectura.** `puedeConfigurarRama` decide en la escritura que
+  retirar, restaurar o borrar exige poder configurar **cada** apartado del subárbol, pero el
+  `?seccion=` no lo dice. Así que la pantalla puede ofrecer «restaurar» en un común con hijos que no
+  son de quien mira, y el servidor contestará 403 con su motivo. Se arregla devolviendo también un
+  `puedeCambiarRama` en la lectura.
+- **El borrado no exige confirmación en el servidor.** La respuesta dice cuánto contenido se pierde y
+  la pantalla confirma, pero la ruta no pide un `{ confirmar: true }` como sí hace la de versiones. Se
+  dejó así para no romper la pantalla mientras se construía; ya se puede cerrar.
+- **La huella que vigila las fugas de la batería** cubre el reparto de docentes, las asignaciones y
+  las estructuras propias. No cubre el estado del documento ni las versiones alternativas, que
+  `salidas-comprobaciones` y `versiones` sí tocan y restauran por su cuenta.
