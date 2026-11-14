@@ -51,6 +51,7 @@
 
 const C = require('../../../core/permisos');
 const EstructuraModulo = require('../../../core/estructura-modulo');
+const { alcanceDe } = require('./alcance');
 const {
   conErrores, abrirDocumento, leerJson, buscarSeccion, booleanosDeApartado,
   fallo, malaPeticion, noEncontrado, SIN_PERMISO,
@@ -76,37 +77,8 @@ function apartadosCambiados(actual, nueva) {
   return [...ids].filter((id) => !igual(antes[id], despues[id]));
 }
 
-// ---------------------------------------------------------------- el alcance
-
-// A cuántos módulos y a quién afecta reformar este apartado.
-//
-//   comun      el apartado es del documento entero y no de un módulo
-//   modulos    cuántos módulos lo ven distinto después del cambio: 1, o todos los del documento si es común
-//   personas   quién escribe en lo que se reforma: quien lleva el módulo, o —si es común— quienes lo
-//              tienen asignado y todo el profesorado de los módulos del documento. Solo id y nombre.
-async function alcanceDe({ repo, documento, unidad, seccion, info }) {
-  const comun = !info.deUnidad;
-  const unidades = comun ? await repo.unidades.listar(documento._id) : [unidad];
-  const ids = new Set();
-  for (const u of unidades) for (const id of u.docentes || []) ids.add(id);
-  if (comun) {
-    const asignaciones = documento.asignaciones || {};
-    for (const k of [seccion, C.raizSeccion(seccion)]) for (const id of asignaciones[k] || []) ids.add(id);
-  }
-  const personas = [];
-  for (const id of ids) {
-    let p = null;
-    try { p = await repo.usuarios.obtener(id); } catch (e) { p = null; }
-    if (p) personas.push({ id: String(p._id), nombre: p.nombre || '' });
-  }
-  const titulo = info.seccion.titulo || seccion;
-  const nombres = personas.map((p) => p.nombre).filter(Boolean).join(', ');
-  const quien = personas.length ? ` Lo escriben ${nombres || `${personas.length} personas`}.` : '';
-  const mensaje = comun
-    ? `«${titulo}» es un apartado común: reformarlo cambia el documento entero, los ${unidades.length} módulos a la vez.${quien}`
-    : `«${titulo}» es un apartado de este módulo: reformarlo no cambia los demás.${quien}`;
-  return { seccion, titulo, comun, modulos: unidades.length, personas, mensaje };
-}
+// El alcance (a cuántos módulos y a quién afecta) lo calcula app/_lib/rutas/alcance.js, el mismo que dice
+// el de las rutas de la plantilla común (estructura.js).
 
 // ---------------------------------------------------------------- lo que comparten GET y PUT
 

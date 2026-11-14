@@ -14,12 +14,19 @@
 // prueba e2e/estructura-propia.spec.js: ahí el docente que lleva el módulo SÍ reforma los campos de su
 // apartado, y los otros diez módulos no cambian.
 //
-// Estas rutas, las de /estructura/apartado/..., siguen cerradas al docente, TAMBIÉN en su módulo, y por eso
-// ninguna prueba de aquí ha cambiado de signo: cambian la PLANTILLA COMÚN, y un campo añadido ahí sale en los
-// once módulos a la vez. Abrírselas al docente de uno sería justo lo que la estructura propia existe para
-// evitar. Lo que sigue pendiente de decidir, y no se ha abierto, es que quien tiene asignado un apartado
-// COMÚN pueda cambiar sus campos por estas rutas (la regla ya lo permitiría; la ruta, con
-// `puedeCambiarEstructura`, no).
+// Estas rutas, las de /estructura/apartado/..., siguen cerradas al docente en toda SECCIÓN DE MÓDULO,
+// también en el módulo que lleva, y por eso ninguna prueba de aquí ha cambiado de signo: las pruebas de
+// este fichero eligen siempre apartados de módulo (`hojasDeModulo`), y cambian la PLANTILLA COMÚN, donde un
+// campo añadido sale en los once módulos a la vez. Abrírselas al docente de uno sería justo lo que la
+// estructura propia existe para evitar.
+//
+// LO QUE SE ABRIÓ DESPUÉS. Por estas mismas rutas, en un apartado COMÚN, ya entra quien puede editarlo,
+// incluido quien solo lo tiene asignado (el departamento: el documento es configurable por quien tiene
+// permisos en cada apartado, sea cual sea). Una afirmación de «el docente recibe 403 en un apartado común»
+// ya no sería cierta para el apartado que tiene asignado, y por eso no está aquí: está, con su signo nuevo,
+// en e2e/estructura-comun.spec.js. Sigue cerrado, para el docente, en esa misma batería: el común que no
+// tiene asignado, toda sección de módulo, y añadir, mover o retirar apartados. La jefatura de estudios sigue
+// sin poder nada.
 //
 // Las rutas están en app/_lib/rutas/estructura.js. Lo que se cambia se deshace en un `finally`: el
 // campo que se crea se retira y se borra, y el reparto de módulos vuelve a como estaba. Lo único que

@@ -70,11 +70,37 @@
 // para el cliente que no manda `esperaPlantillaVersion`: no cambia nada salvo en la carrera, donde
 // antes se perdía el cambio de otra persona sin avisar.
 //
-// QUIÉN PUEDE
+// QUIÉN PUEDE: POR APARTADO, Y NO POR DOCUMENTO
 //
-// La jefatura del departamento y el soporte (`core/permisos.js` → `puedeCambiarEstructura`). El
-// docente escribe lo suyo pero no decide qué apartados tiene la programación, y la jefatura de
-// estudios no toca nada: es quien aprueba. Se comprueba en el servidor, como todo (docs/api.md).
+// El departamento decidió que el documento es totalmente configurable por quien tiene permisos en cada
+// apartado, sea cual sea. Un apartado COMÚN tiene una sola copia, así que configurarlo no es guardar un
+// desvío: es cambiar la definición del documento, que es lo que hacen estas rutas. Por eso aquí, y solo
+// aquí, se abre la puerta a quien puede editar ese apartado, incluido quien solo lo tiene asignado
+// (`reglaEstructuraPropia`, con los booleanos resueltos en el servidor por `booleanosDeApartado`).
+//
+// LA DISTINCIÓN QUE NO SE DEBE BORRAR POR LIMPIEZA. Estas rutas cambian la plantilla COMÚN. Para un
+// apartado común eso es lo correcto. Pero un apartado DE MÓDULO existe en once copias (una por módulo) y
+// su definición es una sola: cambiarla por aquí cambia los once a la vez, y se llevaría por delante la
+// estructura propia de cada módulo (docs/estructura-por-modulo.md), que existe justo para que un docente
+// reforme SU módulo sin tocar los otros diez. Así que, por estas rutas:
+//
+//   · apartado común       -> entra quien pueda editarlo: la jefatura, el soporte y quien lo tenga asignado
+//   · sección de módulo    -> solo el soporte y la jefatura del departamento (`puedeCambiarEstructura`),
+//                             porque cambia los once. El docente que lleva el módulo lo reforma por la
+//                             otra ruta, PUT .../unidades/[unidad]/estructura (estructura-modulo.js).
+//
+// Qué se abre al apartado y qué sigue siendo del documento. Se abre lo que configura UN apartado: renombrarlo
+// y sus campos (añadir, quitar, devolver, renombrar, mover y borrar uno retirado). Sigue siendo de la
+// jefatura lo que decide qué apartados tiene el documento —añadir, mover, retirar, restaurar y borrar un
+// apartado— y las filas de la ficha: ninguna es de un apartado, y un apartado que su propia dueña pudiera
+// retirar o borrar se llevaría su contenido y su reparto. La jefatura de estudios no cambia nada: aprueba.
+//
+// Se comprueba en el servidor, como todo (docs/api.md). El 403 va antes que el cuerpo (400) y que el 404 de
+// un apartado que no existe: quien no puede ni mirar no se entera de qué apartados hay.
+//
+// EL ALCANCE SE DICE. Cada respuesta lleva `alcance` (app/_lib/rutas/alcance.js, el mismo cálculo que usa
+// la estructura propia de un módulo): a cuántos módulos y a quién afecta lo que se cambia. El GET, con
+// `?seccion=`, lo dice antes de guardar y dice si quien pregunta puede cambiar ESE apartado.
 //
 // Es CommonJS y no sabe que está dentro de Next (docs/api.md, primera regla de forma).
 
@@ -85,9 +111,27 @@ const { esActiva } = require('../../../core/versiones');
 const Plantilla = require('../../../core/plantilla');
 const Campos = require('../../../core/campos');
 const Arbol = require('../../../core/arbol');
+const { alcanceDe } = require('./alcance');
 const {
-  conErrores, abrirDocumento, leerJson, fallo, malaPeticion, noEncontrado, SIN_PERMISO,
+  conErrores, abrirDocumento, leerJson, buscarSeccion, booleanosDeApartado, fallo, malaPeticion, noEncontrado, SIN_PERMISO,
 } = require('./comun');
+
+// ---------------------------------------------------------------- quién, por apartado
+
+// Los cambios que configuran UN apartado (ver «QUIÉN PUEDE»). El resto es del documento entero.
+const TIPOS_DE_APARTADO = new Set([
+  'renombrar', 'anadir_campo', 'retirar_campo', 'restaurar_campo', 'renombrar_campo', 'mover_campo', 'borrar_campo',
+]);
+
+// ¿Puede esta persona configurar este apartado por las rutas de la plantilla común? `info` es lo que
+// devuelve `buscarSeccion`. La jefatura y el soporte, siempre; los demás, solo en un apartado COMÚN y si
+// pueden editarlo. Una sección de módulo se queda con la jefatura (ver «QUIÉN PUEDE»).
+function puedeConfigurarApartado(usuario, documento, seccion, info) {
+  if (C.puedeCambiarEstructura(usuario, documento)) return true;
+  if (!info || info.deUnidad) return false;
+  if (!C.puedeVer(usuario, documento) || !esActiva(documento)) return false;
+  return C.reglaEstructuraPropia(usuario, booleanosDeApartado({ usuario, documento, unidad: null, seccion, edita: info.edita }));
+}
 
 // ---------------------------------------------------------------- lo que todas comparten
 
@@ -99,13 +143,22 @@ const {
 //
 // `pedir(cuerpo, url)` devuelve la petición de cambio para `Plantilla.aplicar`, o { fallo }.
 function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
+  const porApartado = TIPOS_DE_APARTADO.has(tipo);
   return conErrores(async (peticion, parametros) => {
     const abierto = await abrirDocumento(peticion, parametros);
     if (abierto.fallo) return abierto.fallo;
     const { usuario, documento, repo, plantillaCompleta } = abierto;
 
+    // Quién pregunta, por apartado cuando el cambio es de un apartado y por documento cuando no. El
+    // apartado se lee de la URL, que es lo único que hay antes de leer el cuerpo.
     if (!C.puedeCambiarEstructura(usuario, documento)) {
-      return SIN_PERMISO('Solo la jefatura de tu departamento cambia la estructura del documento. Quien escribe un apartado no decide qué apartados hay, y la jefatura de estudios no edita nada.');
+      const seccionUrl = new URL(peticion.url).searchParams.get('seccion');
+      const info = porApartado && seccionUrl ? buscarSeccion(documento.plantilla, seccionUrl) : null;
+      if (!porApartado || !puedeConfigurarApartado(usuario, documento, seccionUrl, info)) {
+        return SIN_PERMISO(porApartado
+          ? 'Solo la jefatura de tu departamento y quien tiene asignado un apartado común cambian su estructura. Una sección de módulo cambia los de todos los módulos a la vez: el docente reforma el suyo desde la estructura del módulo. La jefatura de estudios no edita nada.'
+          : 'Solo la jefatura de tu departamento decide qué apartados tiene el documento. Quien escribe un apartado no los añade, mueve ni retira, y la jefatura de estudios no edita nada.');
+      }
     }
 
     const { fallo: falloCuerpo, cuerpo } = await leerCuerpo(peticion, cuerpoOpcional);
@@ -138,6 +191,12 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
       }
     }
 
+    // A quién afecta, dicho antes de tocar nada (también en el 400). Solo cuando el cambio es de un apartado.
+    const infoAlcance = pedida.seccion ? buscarSeccion(plantillaCompleta, pedida.seccion) : null;
+    const alcance = infoAlcance
+      ? await alcanceDe({ repo, documento, unidad: null, seccion: pedida.seccion, info: infoAlcance })
+      : null;
+
     // Un documento sin plantilla no tiene estructura que cambiar. No debería existir —la crean la
     // importación y el arrastre, y las dos la ponen—, pero el aviso vale más que el 500 que saldría
     // de intentar recorrerla.
@@ -149,7 +208,7 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
     // que son los que se pueden restaurar— y no sobre la podada que ve el resto de la aplicación.
     const hecho = Plantilla.aplicar(plantillaCompleta, { tipo, ...pedida });
     if (hecho.motivo) {
-      return fallo(400, 'peticion', `${hecho.motivo} No se ha cambiado nada.`, { motivo: hecho.motivo });
+      return fallo(400, 'peticion', `${hecho.motivo} No se ha cambiado nada.`, { motivo: hecho.motivo, alcance });
     }
 
     // Lo que el borrado va a destruir se cuenta ANTES de escribir y se apunta en el cambio: el
@@ -231,6 +290,9 @@ function cambio(tipo, pedir, { estado = 200, cuerpoOpcional = false } = {}) {
         // la plantilla, así que el cambio sale en todas las unidades a la vez. No es un fallo, es
         // lo que es: la respuesta lo dice para que la interfaz lo pueda advertir.
         afectaUnidades: !!hecho.cambio.deUnidades,
+        // A cuántos módulos y a quién afecta (null si el cambio no es de un apartado). Es el cálculo
+        // de la estructura propia de un módulo: la misma pregunta, la misma respuesta.
+        alcance,
         unidades,
         // Cuántos apartados toca el cambio: el de la petición y su subárbol. En «retirar» es de lo
         // que hay que avisar antes de pulsar, y el contenido de todos ellos se conserva.
@@ -382,11 +444,26 @@ const GET = conErrores(async (peticion, parametros) => {
   const camposRetirados = Plantilla.camposRetirados(plantillaCompleta);
   const filas = retirados.length || camposRetirados.length ? await repo.apartados.listar(documento._id) : [];
 
+  // Con `?seccion=`: puede o no puede cambiar ESE apartado, y a quién afecta, para avisar antes de
+  // guardar. `puedeCambiar` sigue siendo el del documento entero (añadir, mover y retirar apartados).
+  const seccion = new URL(peticion.url).searchParams.get('seccion');
+  let deApartado = {};
+  if (seccion) {
+    const info = buscarSeccion(plantillaCompleta, seccion);
+    if (!info) return noEncontrado(`Este documento no tiene ningún apartado «${seccion}».`);
+    deApartado = {
+      seccion,
+      puedeCambiarApartado: esActiva(documento) && puedeConfigurarApartado(usuario, documento, seccion, info),
+      alcance: await alcanceDe({ repo, documento, unidad: null, seccion, info }),
+    };
+  }
+
   return Response.json(
     {
       documentoId: documento._id,
       plantillaVersion: Number(documento.plantillaVersion) || 1,
       puedeCambiar: esActiva(documento) && C.puedeCambiarEstructura(usuario, documento),
+      ...deApartado,
       unidades: unidades.length,
       apartados: Plantilla.estructura(plantillaCompleta),
       // Cada retirado lleva `contenido`: lo que se destruiría si se borrara (`apartados` con su
