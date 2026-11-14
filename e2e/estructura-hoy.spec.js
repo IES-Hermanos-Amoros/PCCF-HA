@@ -34,7 +34,7 @@
 // que solo suben: es por diseño, y no se lee desde ninguna otra prueba.
 
 const { test, expect } = require('@playwright/test');
-const { entrarComo, salir, buscarDocumento } = require('./apoyo');
+const { entrarComo, salir, buscarDocumento, controlDeFuga } = require('./apoyo');
 
 async function arbol(page, id) {
   const r = await page.request.get(`/api/documentos/${id}/arbol`);
@@ -114,6 +114,9 @@ function intentos(page, doc, seccion, campo) {
     'retirar apartado': () => page.request.post(`${base(doc)}/apartado/retirar?${q({ seccion })}`, { data: {} }),
   };
 }
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('quién cambia la estructura (hoy)', () => {
   for (const rol of ['jefe_departamento', 'admin']) {

@@ -23,7 +23,7 @@
 // plantilla (`plantilla.cambios`) y su versión, que solo suben por diseño.
 
 const { test, expect } = require('@playwright/test');
-const { entrarComo, salir, buscarDocumento } = require('./apoyo');
+const { entrarComo, salir, buscarDocumento, controlDeFuga } = require('./apoyo');
 
 const base = (doc) => `/api/documentos/${doc}/estructura`;
 const q = (o) => Object.entries(o).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
@@ -115,6 +115,9 @@ async function elegir(page) {
   expect((ap.campos || []).length, 'el apartado de módulo no tiene campos').toBeGreaterThan(0);
   return { doc, lucia, mia, ajena, modulo, campoDeModulo: ap.campos[0].id };
 }
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('la estructura de un apartado común', () => {
   test('quien tiene asignado un apartado común le añade un campo, y solo a ese', async ({ page }) => {

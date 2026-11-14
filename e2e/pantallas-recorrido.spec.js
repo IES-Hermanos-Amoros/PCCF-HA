@@ -3,7 +3,7 @@
 // Cada prueba recoge los `pageerror` y las respuestas 5xx de lo que visita y las exige vacías al final.
 
 const { test, expect } = require('@playwright/test');
-const { ROLES, entrarComo, salir, documentos, buscarDocumento } = require('./apoyo');
+const { ROLES, entrarComo, salir, documentos, buscarDocumento, controlDeFuga } = require('./apoyo');
 
 // Engancha los vigilantes de errores a la página y devuelve una función que los exige vacíos.
 function vigilar(page) {
@@ -16,6 +16,9 @@ function vigilar(page) {
 }
 
 const PD_DAW = { tipo: 'programacion_didactica', ciclo: 'daw', curso: '2025-26' };
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('portada', () => {
   for (const rol of ROLES) {

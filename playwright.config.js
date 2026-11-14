@@ -14,6 +14,8 @@ const baseURL = process.env.PCCF_E2E_URL || 'http://localhost:3000';
 
 module.exports = defineConfig({
   testDir: './e2e',
+  // Antes de la primera prueba exige la base limpia y, si no, aborta diciendo qué está sucio (e2e/global-setup.js).
+  globalSetup: require.resolve('./e2e/global-setup.js'),
   // En serie y con un solo trabajador: todas las pruebas comparten la misma base de datos, y dos que
   // escriban a la vez sobre el mismo documento se estorban. La velocidad no compensa el falso fallo.
   fullyParallel: false,

@@ -6,9 +6,12 @@
 // como estaba en un `finally`.
 
 const { test, expect } = require('@playwright/test');
-const { ROLES, entrarComo, salir, documentos, buscarDocumento } = require('./apoyo');
+const { ROLES, entrarComo, salir, documentos, buscarDocumento, controlDeFuga } = require('./apoyo');
 
 const SEVERIDADES = ['error', 'aviso', 'info'];
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('validaciones', () => {
   test.setTimeout(240_000);

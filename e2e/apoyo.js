@@ -5,6 +5,7 @@
 // puente que usa la pantalla y abre una sesión normal, de las que el resto de la aplicación entiende.
 
 const { expect } = require('@playwright/test');
+const { huellaDeLaBase: huellaCon, diferencia, clienteHttp, COMO_LIMPIAR } = require('./estado-base');
 
 // Los cuatro roles, tal como los siembra la aplicación.
 const ROLES = ['admin', 'jefe_estudios', 'jefe_departamento', 'docente'];
@@ -103,24 +104,51 @@ async function fijarDocentes(page, documentoId, unidadId, ids) {
   expect(r.status(), await r.text()).toBeLessThan(400);
 }
 
-// Cuántos módulos, cuántas unidades con docente, asignaciones de apartados comunes y estructuras propias
-// hay: es la forma de comprobar al terminar que la base ha quedado como estaba.
-async function huellaDeLaBase(page, documentoId) {
-  const { unidades } = await leerJson(await page.request.get(`/api/documentos/${documentoId}/unidades`));
-  const asg = await leerJson(await page.request.get(`/api/documentos/${documentoId}/asignaciones`));
-  const propias = [];
-  for (const u of unidades) {
-    const e = await leerJson(await page.request.get(`/api/documentos/${documentoId}/unidades/${encodeURIComponent(u.unidadId)}/estructura`));
-    if (e.estructura) propias.push(u.unidadId);
-  }
+// Cuántas unidades con docente, asignaciones de apartados comunes y estructuras propias hay: es la forma
+// de comprobar al terminar que la base ha quedado como estaba. El cálculo vive en estado-base.js, que lo
+// comparten también la comprobación de entrada y scripts/base-limpia.js. Con `documentoId`, solo ese
+// documento; sin él, todos (cada entrada con su documento delante).
+function huellaDeLaBase(page, documentoId = null) {
+  return huellaCon(clienteDePagina(page), documentoId);
+}
+
+// `page.request` con la forma de cliente que espera estado-base.js.
+function clienteDePagina(page) {
+  const envolver = async (r) => ({ status: r.status(), json: await r.json().catch(() => null) });
   return {
-    unidadesConDocente: unidades.filter((u) => (u.docentes || []).length).map((u) => u.unidadId),
-    apartadosAsignados: (asg.apartados || []).filter((a) => (a.personas || []).length).map((a) => a.seccion),
-    estructurasPropias: propias,
+    get: async (ruta) => envolver(await page.request.get(ruta)),
+    put: async (ruta, data) => envolver(await page.request.put(ruta, { data })),
   };
+}
+
+// QUIEN ENSUCIA ES QUIEN FALLA. Se llama una vez al principio de cada fichero que escribe en la base:
+// apunta la huella de TODA la base antes de sus pruebas y, al terminar, exige que sea la misma. Si no lo
+// es, el fallo es de ESTE fichero y dice qué se ha quedado. Sin esto, el rastro lo paga la prueba siguiente.
+// (La base tiene que estar limpia al empezar la batería: lo comprueba global-setup.js.)
+function controlDeFuga(test) {
+  let cliente = null;
+  let antes = null;
+  test.beforeAll(async () => {
+    cliente = await clienteHttp(test.info().project.use.baseURL);
+    antes = await huellaCon(cliente);
+  });
+  test.afterAll(async () => {
+    const despues = await huellaCon(cliente);
+    const lineas = diferencia(antes, despues);
+    if (!lineas.length) return;
+    throw new Error([
+      '',
+      'ESTE FICHERO HA DEJADO RASTRO EN LA BASE: lo que hizo no se deshizo.',
+      ...lineas,
+      '',
+      'Una prueba de este fichero falló o se interrumpió antes de su `finally`, o el `finally` no lo restaura.',
+      COMO_LIMPIAR,
+      '',
+    ].join('\n'));
+  });
 }
 
 module.exports = {
   ROLES, personas, entrarComo, salir, documentos, buscarDocumento,
-  q, leerJson, hojasDeModulo, elegirApartadoDeModulo, docentesDeUnidad, fijarDocentes, huellaDeLaBase,
+  q, leerJson, hojasDeModulo, elegirApartadoDeModulo, docentesDeUnidad, fijarDocentes, huellaDeLaBase, controlDeFuga,
 };

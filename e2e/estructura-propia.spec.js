@@ -19,7 +19,7 @@
 // había guardado nada).
 
 const { test, expect } = require('@playwright/test');
-const { entrarComo, salir, buscarDocumento } = require('./apoyo');
+const { entrarComo, salir, buscarDocumento, controlDeFuga } = require('./apoyo');
 
 const NOTAS = { id: 'm_notas_de_la_prueba', tipo: 'texto_largo', etiqueta: 'Notas de la prueba' };
 const reforma = (seccion) => ({ secciones: { [seccion]: { anadidos: [NOTAS] } } });
@@ -67,6 +67,9 @@ async function elegir(page) {
   const ajeno = hojas.find((h) => h.unidadId !== mio.unidadId);
   return { doc, mio, ajeno, unidades };
 }
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('la estructura propia de un módulo', () => {
   test('un docente reforma su módulo, los otros diez no cambian, y fuera de su módulo recibe 403', async ({ page }) => {

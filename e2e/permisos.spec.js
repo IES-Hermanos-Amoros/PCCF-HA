@@ -11,7 +11,7 @@
 // La prueba reparte un módulo y lo deja como estaba al terminar.
 
 const { test, expect } = require('@playwright/test');
-const { entrarComo, salir, buscarDocumento } = require('./apoyo');
+const { entrarComo, salir, buscarDocumento, controlDeFuga } = require('./apoyo');
 
 async function arbol(page, id) {
   const r = await page.request.get(`/api/documentos/${id}/arbol`);
@@ -33,6 +33,9 @@ function hojasDeModulo(arbolDoc) {
 }
 
 const apartadoUrl = (doc, nodo) => `/api/documentos/${doc}/apartado?seccion=${encodeURIComponent(nodo.seccion)}&unidad=${encodeURIComponent(nodo.unidadId)}`;
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('cada cual en su parte', () => {
   test('un docente edita su módulo y no el de otro', async ({ page }) => {

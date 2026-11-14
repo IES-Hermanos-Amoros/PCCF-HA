@@ -16,7 +16,7 @@
 
 const { test, expect } = require('@playwright/test');
 const JSZip = require('jszip');
-const { entrarComo, salir, buscarDocumento } = require('./apoyo');
+const { entrarComo, salir, buscarDocumento, controlDeFuga } = require('./apoyo');
 
 const ESPERA = { timeout: 180_000 };
 const CAMPO = { id: 'm_desvio_exportado', tipo: 'texto_largo', etiqueta: 'Desvio que tiene que salir en el papel' };
@@ -71,6 +71,9 @@ async function pdf(page, doc, unidadId) {
 }
 
 const veces = (texto, aguja) => texto.split(aguja).length - 1;
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('exportar lo que se ve', () => {
   test('el desvío de un módulo está en el árbol, el apartado, el Word y el PDF, y los otros módulos no cambian', async ({ page }) => {

@@ -7,10 +7,13 @@
 // exportan; sin sesión es 401.
 
 const { test, expect } = require('@playwright/test');
-const { ROLES, entrarComo, salir, documentos } = require('./apoyo');
+const { ROLES, entrarComo, salir, documentos, controlDeFuga } = require('./apoyo');
 
 const TIPO_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const ESPERA = { timeout: 180_000 };
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('exportar', () => {
   test.setTimeout(600_000);

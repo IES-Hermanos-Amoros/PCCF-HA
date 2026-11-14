@@ -2,7 +2,10 @@
 // Si esto falla, lo demás no vale de nada y no hay que mirarlo.
 
 const { test, expect } = require('@playwright/test');
-const { ROLES, entrarComo, salir, documentos } = require('./apoyo');
+const { ROLES, entrarComo, salir, documentos, controlDeFuga } = require('./apoyo');
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('humo', () => {
   test('la portada carga y pide entrar cuando no hay sesión', async ({ page }) => {

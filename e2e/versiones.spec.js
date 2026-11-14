@@ -9,7 +9,7 @@
 
 const path = require('path');
 const { test, expect } = require('@playwright/test');
-const { entrarComo, salir, buscarDocumento } = require('./apoyo');
+const { entrarComo, salir, buscarDocumento, controlDeFuga } = require('./apoyo');
 
 // Los Word de partida no están en git: viven solo en esta máquina y se leen sin tocarlos.
 const WORD = path.join(__dirname, '..', 'docs', 'entrada_ej', '2026-27', 'PD_DAW_26-27_161026.docx');
@@ -19,6 +19,9 @@ async function apartadosDe(page, id) {
   expect(r.status()).toBe(200);
   return r.json();
 }
+
+// Quien ensucia es quien falla: al terminar, la base tiene que estar como al empezar.
+controlDeFuga(test);
 
 test.describe('subir otro Word del mismo curso', () => {
   test('entra como versión alternativa y no toca la que estaba', async ({ page }) => {

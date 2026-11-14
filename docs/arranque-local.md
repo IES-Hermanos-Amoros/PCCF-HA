@@ -108,6 +108,60 @@ la variable en la propia línea (`MONGODB_URI=... npm run cargar-reales`).
 Es lo normal la primera vez: no hay personas ni enlaces hasta sembrar (paso 3). Si ya sembraste y
 gastaste los enlaces, vuelve a sembrar: es idempotente (no duplica personas) y genera enlaces nuevos.
 
+## Las dos baterías de pruebas
+
+Son dos cosas distintas y se ejecutan distinto.
+
+### La de siempre, sin navegador
+
+```bash
+npm test                      # todo
+node test/ejecutar.js tablas  # solo las suites cuyo nombre contenga «tablas»
+```
+
+No necesita servidor. Una suite sí necesita la base local —la puerta congelada de la estructura por
+módulo— y lo dice claramente si no la encuentra, en lugar de saltarse en silencio.
+
+### La de extremo a extremo, con un navegador de verdad
+
+Necesita **el servidor levantado** y **la base cargada**, y no arranca uno propio a propósito: `next
+dev` se cambia de puerto solo cuando el 3000 está ocupado, y entonces la dirección que usa la prueba
+y la que usa el servidor dejan de ser la misma sin que nadie lo note.
+
+```bash
+npm run dev                                                   # en otra consola
+PCCF_E2E_URL=http://localhost:3000 npx playwright test        # la dirección, si no es el 3000
+```
+
+**LA BASE TIENE QUE ESTAR LIMPIA ANTES DE EMPEZAR**, y esto es lo que más tiempo ha hecho perder de
+todo el proyecto. Las pruebas reparten módulos, asignan apartados y dan estructura propia a módulos,
+y lo deshacen al terminar; pero si una muere a mitad, el rastro se queda y **falla otra prueba
+distinta, por un motivo que no es suyo**. Pasó tres veces antes de que esto existiera:
+
+- la batería **no arranca** si la base está sucia, y dice qué lo está y cómo limpiarlo;
+- cada fichero comprueba al terminar que no ha dejado rastro, así que **quien ensucia es quien
+  falla**, no el siguiente;
+- y hay herramienta para arreglarlo:
+
+```bash
+node scripts/base-limpia.js            # dice si está limpia; no toca nada
+node scripts/base-limpia.js --limpiar  # la deja limpia por la API, e imprime qué ha tocado
+```
+
+Si una fuga aparece, el aviso del final **informa y no limpia**. Es deliberado: limpiar en silencio
+escondería la prueba culpable, que es justo lo que se quiere ver.
+
+### La puerta congelada
+
+```bash
+node scripts/congelar-estructura-modulos.js          # compara con lo congelado y dice qué difiere
+```
+
+Guarda el árbol y los campos que hoy ve cada uno de los 44 módulos, con su sha256. Si cambia cómo se
+resuelve la estructura de un módulo **que no tiene estructura propia**, falla. **No se regenera para
+que una prueba pase**: cuando salta es una señal, no un estorbo. Hay un `--congelar` y existe para
+cuando el cambio es el que se quería, no para silenciarla.
+
 ## Si no entras
 
 | Síntoma | Causa probable | Qué hacer |
