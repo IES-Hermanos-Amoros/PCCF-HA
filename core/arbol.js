@@ -101,7 +101,7 @@
     hijos: [],
   }, base);
 
-  function construirArbol({ plantilla, unidades, apartados, titulo, clave: claveRaiz } = {}) {
+  function construirArbol({ plantilla, unidades, apartados, titulo, clave: claveRaiz, hijosDeUnidad } = {}) {
     if (!plantilla || !Array.isArray(plantilla.secciones)) {
       throw new TypeError('construirArbol necesita la `plantilla` del documento');
     }
@@ -171,7 +171,10 @@
         edita,
         grupo: u.grupo === undefined ? null : u.grupo,
       });
-      n.hijos = (sec.hijos || []).map((h, k) => rama(h, `${numero}.${k + 1}`, u.unidadId, edita));
+      // Lo que lleva ESTE módulo bajo el bloque: por omisión los apartados de la plantilla, y con
+      // `hijosDeUnidad` los suyos si tiene estructura propia (motor/estructura-del-modulo.js).
+      const hijos = typeof hijosDeUnidad === 'function' ? hijosDeUnidad(sec, u) : sec.hijos;
+      n.hijos = (hijos || []).map((h, k) => rama(h, `${numero}.${k + 1}`, u.unidadId, edita));
       return n;
     }
 

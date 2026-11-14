@@ -37,6 +37,7 @@ const { resolverCompartidos, plano } = require('./compartidos');
 const { filasDeFicha, esSemantica } = require('./ficha-sa');
 const Est = require('../core/estructurados');
 const MT = require('../core/modelos-tabla');
+const { seccionesDelModulo } = require('./estructura-del-modulo');
 
 const ANCHO_TABLA = 9638; // A4 (11906 twips) menos márgenes de 2 cm
 const MAX_NIVEL_LISTA = 8;
@@ -289,7 +290,7 @@ function cuerpo({ plantilla, datos, instancias }) {
       + sel.filter((inst) => (inst.grupo || sec.titulo) === g).map((inst) => {
         const n = `${numero}.${todas.indexOf(inst) + 1}`;
         return titulo(`${n}. ${inst.titulo}`, 2)
-          + (sec.hijos || []).map((h, j) => seccion(h, inst.valores || {}, `${n}.${j + 1}`, 3, ctx)).join('');
+          + seccionesDelModulo(plantilla, inst).map((h, j) => seccion(h, inst.valores || {}, `${n}.${j + 1}`, 3, ctx)).join('');
       }).join('')).join('');
   }).join('');
 }

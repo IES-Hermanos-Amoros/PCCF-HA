@@ -6,6 +6,7 @@ const { filasDeFicha, esSemantica } = require('./ficha-sa');
 const Val = require('../core/validaciones');
 const Est = require('../core/estructurados');
 const MT = require('../core/modelos-tabla');
+const { seccionesDelModulo } = require('./estructura-del-modulo');
 
 // El convenio con el que se imprime SI NADIE DICE OTRO. Es el estricto: los criterios de un RA
 // reparten su peso (ver core/validaciones.js).
@@ -269,7 +270,7 @@ function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo
         cuerpo.push({ text: `${n}. ${inst.titulo}`, style: 'h2', tocItem: true, tocMargin: [12, 0, 0, 0], pageBreak: j ? 'before' : undefined });
         const antes = ctx.avisos.length;
         const bloque = [];
-        sub.hijos.forEach((h, k) => bloque.push(...pintarSeccion(h, inst.valores, `${n}.${k + 1}`, ctx)));
+        seccionesDelModulo(plantilla, inst).forEach((h, k) => bloque.push(...pintarSeccion(h, inst.valores, `${n}.${k + 1}`, ctx)));
         const nuevos = ctx.avisos.splice(antes);
         if (nuevos.length) cuerpo.push({ table: { widths: ['*'], body: [[{ stack: [{ text: 'Comprobaciones automáticas', bold: true, color: ROJO, margin: [0, 0, 0, 3] }, { ul: nuevos }], fillColor: '#FDECEA' }]] }, layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 8, paddingRight: () => 8, paddingTop: () => 6, paddingBottom: () => 6 }, margin: [0, 0, 0, 10] });
         cuerpo.push(...bloque);

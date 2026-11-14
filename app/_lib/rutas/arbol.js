@@ -22,6 +22,7 @@
 'use strict';
 
 const Arbol = require('../../../core/arbol');
+const { seccionesDelModulo } = require('../../../motor/estructura-del-modulo');
 const { conErrores, abrirDocumento, puedeEditarApartado, tituloDelTomo, esRevisado } = require('./comun');
 
 // El progreso por revisión (docs/plan.md §2.1): de los apartados con contenido propio, cuántos ya se
@@ -54,6 +55,8 @@ const GET = conErrores(async (peticion, parametros) => {
     unidades,
     apartados,
     clave: documento._id,
+    // Cada módulo cuelga los apartados que ve: los suyos si tiene estructura propia, y si no, los comunes.
+    hijosDeUnidad: (bloque, u) => seccionesDelModulo(documento.plantilla, u),
     // La raíz del árbol es el documento, y se llama igual que la portada del PDF: así la cabecera de
     // la barra lateral y el tomo impreso dicen lo mismo.
     titulo: tituloDelTomo(documento, null),

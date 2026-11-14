@@ -16,6 +16,7 @@ const C = require('../../../core/permisos');
 const Plantilla = require('../../../core/plantilla');
 const Val = require('../../../core/validaciones');
 const { aMotor } = require('../../../core/documento');
+const { plantillaDelModulo } = require('../../../motor/estructura-del-modulo');
 const { obtenerRepositorio } = require('../repositorio');
 const { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO } = require('../usuario');
 const { RANGO, PUEDEN_INVITAR } = require('../invitaciones');
@@ -322,7 +323,9 @@ const TIPO_RA_CE = 'auto.tabla_ra_ce';
 // Devuelve [] si el módulo no lo tiene escrito, y quien pregunta decide qué hacer con eso.
 async function raDelModulo(repo, documento, unidadId) {
   const nums = new Set();
-  for (const { seccion, campo } of seccionesConCampo(documento.plantilla, TIPO_RA_CE)) {
+  // La plantilla que ve ESTE módulo: si ha retirado o movido su tabla de RA, la que cuenta es la suya.
+  const unidad = await repo.unidades.obtener(documento._id, unidadId);
+  for (const { seccion, campo } of seccionesConCampo(plantillaDelModulo(documento.plantilla, unidad), TIPO_RA_CE)) {
     const fila = await repo.apartados.leer(documento._id, seccion, unidadId);
     const valor = fila && fila.valores ? fila.valores[campo] : undefined;
     for (const num of raDeTablas(valor)) nums.add(num);
@@ -359,6 +362,12 @@ async function leerParaElMotor(repo, documento) {
     repo.compartidos.listar(id),
   ]);
   const { plantilla, datos } = aMotor({ documento, unidades, apartados, compartidos });
+  // La estructura propia de cada módulo viaja en su instancia (en el mismo orden que `unidades`), para
+  // que el motor pinte los apartados y campos que el módulo ve en pantalla y no los de la común. Un
+  // módulo sin estructura propia no lleva la clave: su instancia queda como siempre.
+  unidades.forEach((u, i) => {
+    if (u.estructura) datos.instancias[i].estructura = u.estructura;
+  });
   return { plantilla, datos, unidades };
 }
 
