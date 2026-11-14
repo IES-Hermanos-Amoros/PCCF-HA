@@ -21,14 +21,16 @@ Es el mismo problema que ya apareció con las tablas, en otra escala: el dato sa
 ## 2. La decisión
 
 **Un módulo puede llevar estructura propia.** El docente que lo lleva cambia la forma de sus
-apartados —añadir un campo, retirarlo, renombrarlo, moverlo— y los otros diez módulos siguen como
-estaban.
+apartados —añadir un campo, retirarlo, renombrarlo, moverlo— y también **los apartados enteros**:
+puede eliminar un apartado en su módulo y los otros diez siguen como estaban. La frase del
+departamento es que el documento es **totalmente configurable por quien tiene permisos en ese
+apartado, sea cual sea el apartado**.
 
 Lo que NO cambia:
 
-- **La estructura común sigue siendo de la jefatura.** Los apartados comunes del documento (los que
-  `edita` la jefatura de departamento) no los reforma nadie más, ni siquiera quien los tenga
-  asignados para escribir en ellos. Se delega el contenido, no la forma.
+- **Quien puede escribir en un apartado puede configurarlo**, también en los comunes. Asignar un
+  apartado común ya no delega solo el contenido: delega la forma con él. Esto se decidió así
+  explícitamente, después de haberlo decidido al revés: ver 4.
 - **La jefatura de estudios no toca nada.** Es lo que la deja en condiciones de aprobar.
 - **Retirar no borra.** Igual que en el resto de la aplicación.
 
@@ -47,11 +49,22 @@ motivos escritos para que los lea una persona.
 
 ## 4. Quién cambia qué
 
-| dónde | quién cambia la forma |
-| --- | --- |
-| apartado de módulo | `admin`, `jefe_departamento`, y **el docente que lleva esa unidad** |
-| apartado común | `admin` y `jefe_departamento`, y nadie más |
-| cualquiera | `jefe_estudios`, **nunca** |
+| dónde | quién cambia la forma | a quién afecta |
+| --- | --- | --- |
+| apartado de módulo | `admin`, `jefe_departamento`, y **el docente que lleva esa unidad** | **solo a ese módulo** |
+| apartado común | `admin`, `jefe_departamento`, y **quien lo tenga asignado** | **al documento entero** |
+| cualquiera | `jefe_estudios`, **nunca** | — |
+
+La regla es una sola: **quien puede editar el apartado puede configurarlo.** La primera versión de
+esto negaba la forma de lo común a quien solo lo tuviera asignado, con el argumento de que se delega
+el contenido y no la forma; el departamento lo corrigió, y manda su versión.
+
+**LA ASIMETRÍA NO ES UN DETALLE Y HAY QUE ENSEÑARLA.** Un apartado de módulo que se retira
+desaparece de ese módulo y de ninguno más. Un apartado común no tiene «solo el mío»: retirarlo lo
+quita del documento entero, para los once módulos y para todo el que lo estuviera escribiendo. Quien
+lo tiene asignado puede hacerlo —es lo decidido— pero la aplicación tiene que **decir el alcance
+antes de guardar**, con el número delante: a cuántos módulos afecta y a quién. No se impide: se
+avisa.
 
 La regla recibe booleanos ya resueltos, como `reglaEdicion` y `reglaCompartido`: las dos mitades de
 la aplicación no tienen delante los mismos datos, y lo que no puede duplicarse es la regla, no la
@@ -77,3 +90,7 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
   los campos que solo existían en la propia.
 - **Las propuestas pedagógicas y la memoria no tienen módulos.** La regla no les afecta hoy, pero
   conviene no escribirla de forma que dé por hecho que todo documento tiene unidades.
+- **Qué pasa al retirar un apartado que tiene hijos**, en un módulo y en lo común. El criterio sale
+  del que ya aplica `app/_lib/rutas/estructura.js` a la plantilla común; que los dos no se separen es
+  lo que hay que vigilar.
+- **El aviso de alcance de un apartado común** está decidido aquí y todavía no construido.
