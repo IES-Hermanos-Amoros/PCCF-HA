@@ -115,7 +115,7 @@ import Comentarios from './Comentarios';
 import Coordinacion from './Coordinacion';
 import CursoSiguiente from './CursoSiguiente';
 import EstadoDocumento from './EstadoDocumento';
-import Estructura, { ApartadosRetirados } from './Estructura';
+import Estructura, { ApartadosRetirados, ApartadosRetiradosDelModulo } from './Estructura';
 import { CamposRetirados } from './QuitarCampo';
 import Ponderaciones from './Ponderaciones';
 import Situaciones from './Situaciones';
@@ -534,9 +534,14 @@ export default function Visor({
       const todas = r && r.afectaUnidades && r.unidades > 1
         ? ` Ha salido de ${r.unidades} módulos a la vez, porque era de su plantilla.`
         : '';
-      setAvisoEstructura('El apartado se ha retirado del documento.' + cuantos + todas
-        + ' No se ha borrado: su contenido sigue guardado y vuelve con su texto al restaurarlo'
-        + ' desde la portada del documento.');
+      // Retirado SOLO en un módulo: se dice que los demás siguen como estaban, y dónde se devuelve.
+      setAvisoEstructura(r && r.soloEnElModulo
+        ? 'El apartado se ha retirado de este módulo y de ningún otro.' + cuantos
+          + ' No se ha borrado: su contenido sigue guardado y vuelve con su texto al restaurarlo'
+          + ' desde la lista «Apartados retirados de este módulo».'
+        : 'El apartado se ha retirado del documento.' + cuantos + todas
+          + ' No se ha borrado: su contenido sigue guardado y vuelve con su texto al restaurarlo'
+          + ' desde la portada del documento.');
     }
 
     // Un campo nuevo cambia lo que trae el apartado abierto (`campos`): se vuelve a pedir.
@@ -800,6 +805,7 @@ export default function Visor({
       apartado={apartado}
       permiso={permisoDelNodo}
       puedeDocumento={puedeEstructura}
+      filas={estructura ? estructura.apartados : null}
       comoSeLlamanElDocumento={bloqueDeUnidades(arbol).etiqueta}
       onCambiado={alCambiarEstructura}
       onIr={irAApartado}
@@ -926,8 +932,11 @@ export default function Visor({
           tarjeta *Estructura* al retirar uno: es la única pantalla desde la que
           se puede, porque un apartado retirado ya no sale en el árbol y no se
           puede abrir. Si no hay ninguno, no se pinta nada. */}
-      {n.tipo === 'raiz' && puedeEstructura && estructura ? (
+      {/* LA VE QUIEN PUEDE DEVOLVER ALGO: la jefatura, todo; quien tiene asignado un apartado común, solo
+          lo que el servidor le deja (ApartadosRetirados filtra fila a fila). Sin filas, no se pinta. */}
+      {n.tipo === 'raiz' && estructura && (puedeEstructura || (estructura.retirados || []).length) ? (
         <ApartadosRetirados
+          puedeDocumento={puedeEstructura}
           documentoId={documentoId}
           retirados={estructura.retirados}
           plantillaVersion={estructura.plantillaVersion}
@@ -978,6 +987,18 @@ export default function Visor({
             <a className="mini" href={`/reparto/${encodeURIComponent(documentoId)}`}>Quién lleva este módulo</a>
           </div>
         </section>
+        {/* Lo que este módulo ha retirado, para devolverlo: al retirar un apartado de primer nivel se
+            aterriza aquí, y es la página del módulo. Solo sale si hay algo que el servidor deje devolver. */}
+        {estructura ? (
+          <ApartadosRetiradosDelModulo
+            documentoId={documentoId}
+            unidadId={n.unidadId}
+            filas={estructura.apartados}
+            plantillaVersion={estructura.plantillaVersion}
+            onCambiado={alCambiarEstructura}
+            recarga={recargasPermiso}
+          />
+        ) : null}
         {listaHijos(n)}
       </>
     );

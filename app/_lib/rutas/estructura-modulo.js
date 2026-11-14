@@ -69,12 +69,67 @@ const igual = (a, b) => JSON.stringify(canonico(a === undefined ? null : a)) ===
 
 const seccionesDe = (estructura) => (esObjeto(estructura) && esObjeto(estructura.secciones) ? estructura.secciones : {});
 
-// Los apartados cuyo desvío cambia entre la estructura que hay y la que se pide.
+const apartadosDe = (estructura) => (esObjeto(estructura) && esObjeto(estructura.apartados) ? estructura.apartados : {});
+
+// Los apartados a los que afecta un cambio en `apartados`, que es el desvío de los apartados ENTEROS
+// —retirar uno, renombrarlo, moverlo, añadir uno propio—. Cada clave se traduce al apartado por el que
+// se decide el permiso, y el criterio es que ese apartado exista o lo sepa tratar el bucle de abajo:
+//
+//   `cambios`   la clave es un apartado común de módulo: se decide por él.
+//   `anadidos`  el id del apartado propio del módulo. NO se añade su padre, aunque las rutas de la
+//               plantilla sí decidan por el padre al añadir: allí el cambio toca la definición común y
+//               aquí solo toca ESTE módulo, así que quien decide es quien lleva el módulo. El bucle
+//               trata un id que no está en la plantilla como apartado de módulo, que es lo que es.
+//   `orden`     los hijos QUE SE HAN MOVIDO, no el padre. Si se decidiera por el padre, reordenar los
+//               apartados de primer nivel preguntaría por el bloque de unidades, que no es un apartado
+//               que nadie edite, y una reordenación legítima acabaría en 403.
+function apartadosDelDesvio(actual, nueva) {
+  const a = apartadosDe(actual);
+  const b = apartadosDe(nueva);
+  const ids = new Set();
+
+  const mapa = (x) => (esObjeto(x) ? x : {});
+  const camA = mapa(a.cambios);
+  const camB = mapa(b.cambios);
+  for (const id of new Set([...Object.keys(camA), ...Object.keys(camB)])) {
+    if (!igual(camA[id], camB[id])) ids.add(id);
+  }
+
+  const porId = (lista) => new Map((Array.isArray(lista) ? lista : [])
+    .filter((x) => esObjeto(x) && typeof x.id === 'string' && x.id)
+    .map((x) => [x.id, x]));
+  const anaA = porId(a.anadidos);
+  const anaB = porId(b.anadidos);
+  for (const id of new Set([...anaA.keys(), ...anaB.keys()])) {
+    if (!igual(anaA.get(id), anaB.get(id))) ids.add(id);
+  }
+
+  const ordA = mapa(a.orden);
+  const ordB = mapa(b.orden);
+  for (const padre of new Set([...Object.keys(ordA), ...Object.keys(ordB)])) {
+    const antes = Array.isArray(ordA[padre]) ? ordA[padre] : [];
+    const despues = Array.isArray(ordB[padre]) ? ordB[padre] : [];
+    if (igual(antes, despues)) continue;
+    for (const id of new Set([...antes, ...despues])) {
+      if (typeof id !== 'string' || !id) continue;
+      if (antes.indexOf(id) !== despues.indexOf(id)) ids.add(id);
+    }
+  }
+
+  return [...ids];
+}
+
+// Los apartados cuyo desvío cambia entre la estructura que hay y la que se pide, por los campos de un
+// apartado (`secciones`) o por los apartados enteros (`apartados`). Si esto se queda corto, un cambio
+// se da por «no hay nada que cambiar» y además NO pasa por la comprobación de permiso de su apartado:
+// las dos averías salen de la misma línea, así que las dos mitades se cuentan aquí.
 function apartadosCambiados(actual, nueva) {
   const antes = seccionesDe(actual);
   const despues = seccionesDe(nueva);
-  const ids = new Set([...Object.keys(antes), ...Object.keys(despues)]);
-  return [...ids].filter((id) => !igual(antes[id], despues[id]));
+  const ids = new Set([...Object.keys(antes), ...Object.keys(despues)]
+    .filter((id) => !igual(antes[id], despues[id])));
+  for (const id of apartadosDelDesvio(actual, nueva)) ids.add(id);
+  return [...ids];
 }
 
 // El alcance (a cuántos módulos y a quién afecta) lo calcula app/_lib/rutas/alcance.js, el mismo que dice

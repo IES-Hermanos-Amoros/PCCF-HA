@@ -12,7 +12,12 @@
 //   · la jefatura de estudios no los ve
 //   · la jefatura del departamento sí, y la pantalla le dice el alcance (los N módulos y a cuántas
 //     personas) ANTES de confirmar; puede elegir «solo este módulo»
-//   · quien tiene asignado un apartado común lo ve, con el alcance del documento entero
+//   · quien tiene asignado un apartado común lo ve, con el alcance del documento entero, Y USA las
+//     operaciones del apartado (retirarlo y restaurarlo), porque «el documento es totalmente
+//     configurable por quien tiene permisos en ese apartado, sea cual sea el apartado»
+//   · quien lleva un módulo retira un APARTADO ENTERO de su módulo pulsando, y el otro módulo no cambia
+//     (su árbol, su apartado y la versión de la plantilla): es lo que demuestra que no se fue por la ruta
+//     de la plantilla, que lo habría quitado de los once
 //
 // Cada prueba deshace lo que toca en un `finally`: el módulo vuelve a la estructura común y el reparto de
 // docentes y de apartados, a como estaba. Y al terminar cada una se comprueba que la base ha quedado
@@ -84,9 +89,11 @@ test.describe('la estructura desde la pantalla', () => {
       await expect(alcanceDicho(page)).toContainText(/Esto cambia solo este módulo y afecta a 1 persona/);
       await expect(alcanceDicho(page)).toContainText('Lucía');
 
-      // Lo que es del documento entero no se le ofrece: ni título, ni subapartados, ni orden, ni retirar.
-      await expect(page.getByLabel('Título del apartado')).toHaveCount(0);
-      await expect(page.getByLabel('Añadir un subapartado')).toHaveCount(0);
+      // Las operaciones del apartado las ve, pero EN SU MÓDULO: el botón dice «de este módulo», nunca «del
+      // documento», que es lo que cambiaría los once.
+      await expect(page.getByLabel('Título del apartado')).toBeVisible();
+      await expect(page.getByLabel('Añadir un subapartado')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'retirar de este módulo' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'retirar del documento' })).toHaveCount(0);
 
       // Retira un campo pulsando. La confirmación repite el alcance antes del «sí».
@@ -146,6 +153,12 @@ test.describe('la estructura desde la pantalla', () => {
     await expect(tarjeta(page)).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Quitar el campo/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Añadir un campo/ })).toHaveCount(0);
+    // Ni las operaciones del apartado, ni las de su módulo, ni las del documento.
+    await expect(page.getByRole('button', { name: 'retirar de este módulo' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'retirar del documento' })).toHaveCount(0);
+    await expect(page.getByLabel('Añadir un subapartado')).toHaveCount(0);
+    await expect(page.getByLabel('Título del apartado')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^↑ subir/ })).toHaveCount(0);
 
     await salir(page);
     await entrarComo(page, 'jefe_departamento');
@@ -207,9 +220,13 @@ test.describe('la estructura desde la pantalla', () => {
       // Elegir «solo este módulo» cambia el alcance que se dice, y con él a dónde irá la escritura.
       await page.getByRole('radio', { name: 'Solo a este módulo' }).check();
       await expect(alcanceDicho(page)).toContainText(/Esto cambia solo este módulo/);
-      await expect(page.getByLabel('Título del apartado')).toHaveCount(0);
+      // Con «solo este módulo», retirar y mover son de ese módulo: el botón lo dice, y el del documento no está.
+      await expect(page.getByRole('button', { name: 'retirar de este módulo' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'retirar del documento' })).toHaveCount(0);
       await page.getByRole('radio', { name: /A todos/ }).check();
       await expect(alcanceDicho(page)).toContainText(new RegExp(`Esto cambia los ${unidades.length} módulos`));
+      await expect(page.getByRole('button', { name: 'retirar del documento' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'retirar de este módulo' })).toHaveCount(0);
       await expect(page.getByLabel('Título del apartado')).toBeVisible();
 
       // Nada de esto ha escrito: ni estructura propia, ni versión nueva de la plantilla.
@@ -253,11 +270,12 @@ test.describe('la estructura desde la pantalla', () => {
       await expect(tarjeta(page)).toBeVisible();
       // Un apartado común es del documento entero: lo dice con el número delante, sin esconderlo.
       await expect(alcanceDicho(page)).toContainText(new RegExp(`Esto cambia los ${unidades.length} módulos y afecta a 1 persona`));
-      // Ve lo que puede configurar (los campos y el título) y no lo que decide qué apartados hay.
+      // Ve todo lo que puede hacer con SU apartado: los campos, el título, los subapartados, moverlo y
+      // retirarlo. Lo dice el servidor para este apartado, no el permiso del documento entero.
       await expect(page.getByRole('button', { name: /^Añadir un campo/ })).toBeVisible();
       await expect(page.getByLabel('Título del apartado')).toBeVisible();
-      await expect(page.getByLabel('Añadir un subapartado')).toHaveCount(0);
-      await expect(page.getByRole('button', { name: 'retirar del documento' })).toHaveCount(0);
+      await expect(page.getByLabel('Añadir un subapartado')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'retirar del documento' })).toBeVisible();
 
       // Antes de quitar un campo, la confirmación repite el alcance. Se cancela: no se escribe nada.
       await botonQuitar(page, campo.etiqueta).click();
@@ -269,6 +287,150 @@ test.describe('la estructura desde la pantalla', () => {
       await salir(page);
       await entrarComo(page, 'jefe_departamento');
       await page.request.put(`/api/documentos/${doc._id}/asignaciones?${q({ seccion: fila.seccion })}`, { data: { personas: asignadosAntes } });
+    }
+    expect(await huellaDeLaBase(page, doc._id), 'la base tiene que quedar como estaba').toEqual(antesDeTodo);
+  });
+
+  test('quien tiene asignado un apartado común lo retira pulsando, y lo restaura desde la portada', async ({ page }) => {
+    test.setTimeout(180_000);
+    await salir(page);
+    await entrarComo(page, 'jefe_departamento');
+    const { doc, unidades } = await elegirApartadoDeModulo(page);
+    const lucia = (await personas(page)).find((p) => p.nombre.includes('Lucía'));
+    const antesDeTodo = await huellaDeLaBase(page, doc._id);
+
+    // Un apartado común sin subapartados: retirarlo no se lleva a nadie más por delante.
+    const estructura = await leerJson(await page.request.get(`/api/documentos/${doc._id}/estructura`));
+    const asg = await leerJson(await page.request.get(`/api/documentos/${doc._id}/asignaciones`));
+    const fila = estructura.apartados.find((a) => !a.deUnidades && !a.instancias && !a.retirado && !a.repetidor
+      && a.hijos === 0 && a.admiteHijos && asg.apartados.some((x) => x.seccion === a.seccion));
+    expect(fila, 'hace falta un apartado común sin subapartados que se pueda asignar').toBeTruthy();
+    const asignadosAntes = asg.apartados.find((x) => x.seccion === fila.seccion).personas;
+    const enLaPlantilla = async () => (await leerJson(await page.request.get(`/api/documentos/${doc._id}/estructura`)))
+      .apartados.find((a) => a.seccion === fila.seccion);
+
+    try {
+      const puesto = await page.request.put(`/api/documentos/${doc._id}/asignaciones?${q({ seccion: fila.seccion })}`, { data: { personas: [lucia._id] } });
+      expect(puesto.status(), await puesto.text()).toBeLessThan(400);
+
+      await salir(page);
+      await entrarComo(page, 'docente', lucia.nombre);
+      const permiso = esperarPermiso(page);
+      await page.goto(enlace(doc._id, fila.seccion, null));
+      await permiso;
+      await expect(tarjeta(page)).toBeVisible();
+
+      // Retira pulsando. Antes del «sí», la confirmación dice el alcance con el número delante.
+      await page.getByRole('button', { name: 'retirar del documento' }).click();
+      const confirmacion = page.getByRole('group', { name: 'Retirar el apartado' });
+      await expect(confirmacion).toContainText(new RegExp(`Esto cambia los ${unidades.length} módulos y afecta a 1 persona`));
+      await expect(confirmacion).toContainText('No se borra nada');
+      await page.getByRole('button', { name: /^sí, retirarlo/ }).click();
+      await expect(page.getByText(/El apartado se ha retirado del documento/)).toBeVisible();
+      expect((await enLaPlantilla()).retirado, 'el apartado tiene que haber quedado retirado').toBe(true);
+
+      // Lo restaura desde la portada, donde la lista le ofrece SOLO lo que el servidor le deja devolver.
+      await page.goto(`/doc/${doc._id}`);
+      await expect(page.getByRole('heading', { level: 2, name: 'Apartados retirados', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: `Restaurar «${fila.titulo}» en el documento` }).click();
+      await expect.poll(async () => (await enLaPlantilla()).retirado, { message: 'el apartado tiene que volver' }).toBe(false);
+    } finally {
+      await salir(page);
+      await entrarComo(page, 'jefe_departamento');
+      const ahora = await enLaPlantilla();
+      if (ahora && ahora.retirado) {
+        const v = (await leerJson(await page.request.get(`/api/documentos/${doc._id}/estructura`))).plantillaVersion;
+        const vuelve = await page.request.post(`/api/documentos/${doc._id}/estructura/apartado/restaurar?${q({ seccion: fila.seccion })}`, { data: { esperaPlantillaVersion: v } });
+        expect(vuelve.status(), `no se ha podido restaurar el apartado: ${await vuelve.text()}`).toBe(200);
+      }
+      await page.request.put(`/api/documentos/${doc._id}/asignaciones?${q({ seccion: fila.seccion })}`, { data: { personas: asignadosAntes } });
+    }
+    expect(await huellaDeLaBase(page, doc._id), 'la base tiene que quedar como estaba').toEqual(antesDeTodo);
+  });
+
+  test('quien lleva un módulo retira un apartado entero de SU módulo pulsando, y el otro módulo no cambia', async ({ page }) => {
+    test.setTimeout(180_000);
+    await salir(page);
+    await entrarComo(page, 'jefe_departamento');
+    const { doc, mio, ajeno, unidades } = await elegirApartadoDeModulo(page);
+    const lucia = (await personas(page)).find((p) => p.nombre.includes('Lucía'));
+    const antesDeTodo = await huellaDeLaBase(page, doc._id);
+    const docentesAntes = await docentesDeUnidad(page, doc._id, mio.unidadId);
+
+    // Un apartado de módulo sin subapartados, que los dos módulos tengan.
+    const estructura = await leerJson(await page.request.get(`/api/documentos/${doc._id}/estructura`));
+    const fila = estructura.apartados.find((a) => a.deUnidades && !a.instancias && !a.retirado && !a.repetidor
+      && a.hijos === 0 && a.puedeSubir && a.puedeBajar);
+    expect(fila, 'hace falta un apartado de módulo sin subapartados').toBeTruthy();
+    const plantillaAntes = estructura.plantillaVersion;
+
+    // El árbol que ve cada módulo: los apartados que tiene, en su orden. Es el árbol, no el apartado.
+    const arbolDe = async (unidad) => {
+      const { arbol } = await leerJson(await page.request.get(`/api/documentos/${doc._id}/arbol`));
+      const vistos = [];
+      (function bajar(n) {
+        if (!n || typeof n !== 'object') return;
+        if (n.unidadId === unidad && n.seccion) vistos.push(n.seccion);
+        (n.hijos || []).forEach(bajar);
+      })(arbol);
+      return vistos;
+    };
+
+    try {
+      await fijarDocentes(page, doc._id, mio.unidadId, [lucia._id]);
+      const modulosAntes = await fotoDeLosModulos(page, doc._id, unidades);
+      const arbolMioAntes = await arbolDe(mio.unidadId);
+      const arbolAjenoAntes = await arbolDe(ajeno.unidadId);
+      const apartadoAjenoAntes = await camposVistos(page, doc._id, fila.seccion, ajeno.unidadId);
+      expect(arbolMioAntes, 'el apartado está en el módulo del docente').toContain(fila.seccion);
+      expect(arbolAjenoAntes, 'el apartado está en el otro módulo').toContain(fila.seccion);
+
+      await salir(page);
+      await entrarComo(page, 'docente', lucia.nombre);
+      const permiso = esperarPermiso(page);
+      await page.goto(enlace(doc._id, fila.seccion, mio.unidadId));
+      await permiso;
+      await expect(tarjeta(page)).toBeVisible();
+
+      // Retira el apartado entero pulsando. El alcance, ANTES del «sí» y con el número delante: es solo este.
+      await page.getByRole('button', { name: 'retirar de este módulo' }).click();
+      const confirmacion = page.getByRole('group', { name: 'Retirar el apartado' });
+      await expect(confirmacion).toContainText(/Esto cambia solo este módulo y afecta a 1 persona/);
+      await expect(confirmacion).toContainText('No se borra nada');
+      await page.getByRole('button', { name: /^sí, retirarlo de este módulo/ }).click();
+      await expect(page.getByText(/se ha retirado de este módulo y de ningún otro/)).toBeVisible();
+
+      // Está retirado en SU módulo…
+      const suya = (await leerJson(await page.request.get(rutaDelModulo(doc._id, mio.unidadId)))).estructura;
+      expect(suya.apartados.cambios[fila.seccion].retirado).toBe(true);
+      expect(await arbolDe(mio.unidadId), 'su módulo ya no lo lleva').not.toContain(fila.seccion);
+
+      // …y EL OTRO MÓDULO NO HA CAMBIADO: ni su árbol, ni su apartado, ni la estructura de ninguno de los
+      // demás, ni la versión de la plantilla. Esa es la señal de que no se fue por la ruta equivocada.
+      expect(await arbolDe(ajeno.unidadId), 'el árbol del otro módulo').toEqual(arbolAjenoAntes);
+      expect(await camposVistos(page, doc._id, fila.seccion, ajeno.unidadId), 'el apartado del otro módulo').toBe(apartadoAjenoAntes);
+      const despues = await fotoDeLosModulos(page, doc._id, unidades);
+      for (const u of unidades.filter((x) => x !== mio.unidadId)) {
+        expect(despues[u], `el módulo ${u} ha cambiado y no era el del docente`).toBe(modulosAntes[u]);
+      }
+      const ahora = await leerJson(await page.request.get(`/api/documentos/${doc._id}/estructura`));
+      expect(ahora.plantillaVersion, 'la versión de la plantilla no se mueve: no se fue por la ruta de la plantilla').toBe(plantillaAntes);
+      expect(ahora.apartados.find((a) => a.seccion === fila.seccion).retirado, 'en la plantilla sigue sin retirar').toBe(false);
+
+      // Lo devuelve también pulsando, desde la lista de retirados de su módulo.
+      await expect(page.getByRole('heading', { level: 2, name: 'Apartados retirados de este módulo' })).toBeVisible();
+      await page.getByRole('button', { name: `Restaurar «${fila.titulo}» en este módulo` }).click();
+      await expect.poll(() => arbolDe(mio.unidadId), { message: 'el apartado tiene que volver a su módulo' }).toEqual(arbolMioAntes);
+      expect(await arbolDe(ajeno.unidadId)).toEqual(arbolAjenoAntes);
+    } finally {
+      await salir(page);
+      await entrarComo(page, 'jefe_departamento');
+      const v = await leerJson(await page.request.get(rutaDelModulo(doc._id, mio.unidadId)));
+      if (v.estructura) {
+        const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null } });
+        expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
+      }
+      await fijarDocentes(page, doc._id, mio.unidadId, docentesAntes);
     }
     expect(await huellaDeLaBase(page, doc._id), 'la base tiene que quedar como estaba').toEqual(antesDeTodo);
   });

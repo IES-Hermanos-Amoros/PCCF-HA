@@ -249,6 +249,18 @@ export async function leerPermisoDeApartado(documentoId, seccion, unidadId) {
 export const puedeCambiarApartado = (permiso) => !!permiso
   && ((permiso.plantilla && permiso.plantilla.puede) || (permiso.modulo && permiso.modulo.puede));
 
+// CUÁLES DE LOS APARTADOS RETIRADOS PUEDE ESTA PERSONA RESTAURAR O BORRAR. La lista de retirados es del
+// documento entero y la ve quien ve el documento; lo que cada cual puede hacer con cada fila lo dice el
+// servidor, apartado por apartado (`puedeCambiarApartado` de la lectura con `?seccion=`), y aquí no se
+// adivina por el rol. Una lectura que falla se cuenta como «no puede». Devuelve el conjunto de ids.
+export async function leerPermisosDeRetirados(documentoId, secciones) {
+  const lista = Array.isArray(secciones) ? secciones : [];
+  const lecturas = await Promise.all(lista.map((seccion) => pedir(
+    `${urlEstructura(documentoId)}?${new URLSearchParams({ seccion })}`,
+  ).then((r) => !!(r && r.puedeCambiarApartado)).catch(() => false)));
+  return new Set(lista.filter((_, i) => lecturas[i]));
+}
+
 // El alcance de un apartado ya retirado, para decirlo antes de borrarlo para siempre. Null si no se
 // ha podido leer: el aviso sale entonces sin la lista de personas, y no se impide nada.
 export async function leerAlcance(documentoId, seccion) {

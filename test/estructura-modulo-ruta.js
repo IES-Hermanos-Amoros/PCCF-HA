@@ -284,6 +284,65 @@ prueba('una unidad que no existe es un 404', async () => {
 });
 
 // ---------------------------------------------------------------- ejecución
+// ---------------------------------------------------------------- los apartados ENTEROS
+//
+// Estas tres cubren el agujero que tuvo la ruta: `apartadosCambiados` solo miraba `secciones`, así que
+// un cambio que solo tocaba `apartados` se daba por «no hay nada que cambiar» —y, lo serio, NO pasaba
+// por la comprobación de permiso de su apartado—. Las dos averías salían de la misma línea.
+
+prueba('retirar un apartado ENTERO solo en su módulo: se acepta y los demás no cambian', async () => {
+  const { repo, u, doc } = await escenario();
+  const antes = {};
+  for (const m of MODULOS) antes[m] = JSON.stringify(await repo.unidades.obtener(doc._id, m));
+
+  const soloApartados = { apartados: { cambios: { [METODOLOGIA]: { retirado: true } } } };
+  const r = await poner(u.ana, doc._id, PROG, { estructura: soloApartados });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const j = await r.json();
+  assert.deepStrictEqual(j.cambiadas, [METODOLOGIA], 'un cambio que solo toca «apartados» tiene que contarse');
+  assert.equal(j.afectaAlDocumento, false);
+  assert.equal(j.alcance[0].modulos, 1, 'retirar un apartado de módulo cambia un módulo');
+
+  // La regla del núcleo ya no se lo da a ESTE módulo, y a los demás sí.
+  const suya = await repo.unidades.obtener(doc._id, PROG);
+  const mios = EstructuraModulo.apartadosDeModulo(PLANTILLA, suya);
+  assert.ok(!mios.vigentes.some((s) => s.id === METODOLOGIA), 'el apartado sigue vigente en el módulo que lo retiró');
+  for (const m of MODULOS) {
+    if (m === PROG) continue;
+    assert.equal(JSON.stringify(await repo.unidades.obtener(doc._id, m)), antes[m], `el módulo ${m} ha cambiado y no era el suyo`);
+    const otros = EstructuraModulo.apartadosDeModulo(PLANTILLA, await repo.unidades.obtener(doc._id, m));
+    assert.ok(otros.vigentes.some((s) => s.id === METODOLOGIA), `el módulo ${m} ha perdido el apartado`);
+  }
+  // Y la plantilla común no se toca.
+  const despues = await repo.documentos.obtener(doc._id);
+  assert.equal(Number(despues.plantillaVersion) || 1, 1, 'la plantilla común ha cambiado de versión');
+});
+
+prueba('un cambio que solo toca «apartados» pasa por el permiso de su apartado', async () => {
+  const { u, doc } = await escenario();
+  const soloApartados = { apartados: { cambios: { [METODOLOGIA]: { retirado: true } } } };
+  // Luis no lleva este módulo: antes del arreglo esto pasaba de largo y acababa en 400, no en 403.
+  await esError(await poner(u.luis, doc._id, PROG, { estructura: soloApartados }), 403, 'sin_permiso');
+  await esError(await poner(u.estudios, doc._id, PROG, { estructura: soloApartados }), 403, 'sin_permiso');
+  await esError(await poner(u.pepe, doc._id, PROG, { estructura: soloApartados }), 404, 'no_encontrado');
+});
+
+prueba('reordenar decide por los hijos que se mueven, no por el bloque de unidades', async () => {
+  const { u, doc } = await escenario();
+  // El padre de los apartados de primer nivel es «modulos», que es el bloque de unidades y no es un
+  // apartado que nadie edite. Si el permiso se decidiera por el padre, esto acabaría en 403.
+  const vuelta = { apartados: { orden: { modulos: ['modulos/evaluacion', METODOLOGIA] } } };
+  const r = await poner(u.ana, doc._id, PROG, { estructura: vuelta });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const j = await r.json();
+  assert.deepStrictEqual(
+    [...j.cambiadas].sort(),
+    [METODOLOGIA, 'modulos/evaluacion'].sort(),
+    'tienen que contarse los dos hijos que se han movido, y no «modulos»',
+  );
+  assert.ok(!j.cambiadas.includes('modulos'), 'el bloque de unidades no es el apartado que decide');
+});
+
 (async () => {
   for (const { nombre, fn } of pendientes) {
     try {
