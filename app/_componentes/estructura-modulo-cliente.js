@@ -545,3 +545,73 @@ export async function leerRetiradosDelModulo(documentoId, unidadId, filas) {
     .then((r) => !!(r && r.puedeCambiar)).catch(() => false)));
   return { estructura: leida.estructura, retirados: retirados.map((x, i) => ({ ...x, puede: puede[i] })) };
 }
+
+// ---------------------------------------------------------------- destruir lo propio de un módulo
+
+// Las tres operaciones que DESTRUYEN contenido en un módulo: volver a la estructura común y los dos
+// borrados definitivos. Están aquí, y no en cada tarjeta, porque las tres comparten la misma danza de
+// dos pasos con el servidor y equivocarse en ella es destruir sin avisar.
+//
+// LA DANZA. El servidor exige `{ confirmar: true }` y, sin él, contesta 400 con el recuento de lo que
+// se perdería en `perdida` y la frase ya redactada en `mensaje`. Así que la primera llamada ES la
+// pregunta: no hay una ruta aparte que cuente, y no debe haberla, porque el número que se le enseña a
+// la persona y el borrado que se ejecuta tienen que salir del mismo cálculo.
+//
+// CUIDADO CON VOLVER A LA COMÚN: si el módulo no tiene nada propio que perder, la llamada sin
+// confirmar NO es una pregunta, es la operación, y contesta 200. Es correcto —no se destruye nada—,
+// pero quien llame tiene que distinguirlo, y por eso esta función devuelve `hecho` en vez de lanzar.
+// Los dos borrados definitivos no tienen ese caso: siempre se pierde al menos lo que se borra.
+const rutaDelModulo = (documentoId, unidadId) => `/api/documentos/${encodeURIComponent(documentoId)}/unidades/${encodeURIComponent(unidadId)}/estructura`;
+
+// El token con el que se escribe, leído justo antes: el de la pantalla puede ser viejo y el 409 es
+// para cuando alguien ha cambiado el documento de verdad, no para castigar una pestaña abierta.
+async function tokenDelModulo(documentoId, unidadId) {
+  const leida = await pedir(rutaDelModulo(documentoId, unidadId));
+  return { esperaUpdatedAt: leida.updatedAt, esperaPlantillaVersion: leida.plantillaVersion, estructura: leida.estructura };
+}
+
+// Volver a la estructura común. Sin `confirmar`, devuelve `{ hecho: false, perdida, mensaje }` si hay
+// algo que perder, o `{ hecho: true, respuesta }` si no había nada y ya está hecho. Con `confirmar`,
+// `{ hecho: true, respuesta }` o lanza.
+export async function volverALaComun(documentoId, unidadId, { confirmar = false } = {}) {
+  const { esperaUpdatedAt, esperaPlantillaVersion } = await tokenDelModulo(documentoId, unidadId);
+  try {
+    const respuesta = await pedir(rutaDelModulo(documentoId, unidadId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estructura: null, esperaUpdatedAt, esperaPlantillaVersion, ...(confirmar ? { confirmar: true } : {}) }),
+    });
+    return { hecho: true, respuesta };
+  } catch (e) {
+    // Un 400 con recuento es la pregunta contestada, no un fallo: se devuelve para enseñarlo.
+    if (!confirmar && e && e.estado === 400 && e.perdida) return { hecho: false, perdida: e.perdida, mensaje: e.message };
+    throw e;
+  }
+}
+
+// Borrar para siempre un apartado propio del módulo, con su subárbol. Sin `confirmar` devuelve
+// `{ hecho: false, perdida, mensaje }`; con `confirmar`, `{ hecho: true, respuesta }`.
+export async function borrarApartadoDelModulo(documentoId, unidadId, seccion, { confirmar = false } = {}) {
+  return borrarEnElModulo(documentoId, unidadId, 'apartado', { seccion }, confirmar);
+}
+
+// Borrar para siempre una casilla propia del módulo.
+export async function borrarCampoDelModulo(documentoId, unidadId, seccion, campo, { confirmar = false } = {}) {
+  return borrarEnElModulo(documentoId, unidadId, 'campo', { seccion, campo }, confirmar);
+}
+
+async function borrarEnElModulo(documentoId, unidadId, que, parametros, confirmar) {
+  const { esperaUpdatedAt, esperaPlantillaVersion } = await tokenDelModulo(documentoId, unidadId);
+  const ruta = `${rutaDelModulo(documentoId, unidadId)}/${que}?${new URLSearchParams(parametros)}`;
+  try {
+    const respuesta = await pedir(ruta, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ esperaUpdatedAt, esperaPlantillaVersion, ...(confirmar ? { confirmar: true } : {}) }),
+    });
+    return { hecho: true, respuesta };
+  } catch (e) {
+    if (!confirmar && e && e.estado === 400 && e.perdida) return { hecho: false, perdida: e.perdida, mensaje: e.message };
+    throw e;
+  }
+}
