@@ -52,6 +52,34 @@ plantilla común, y restaurarlo devuelve los hijos que no se hubieran retirado p
 escribe nada en los hijos al retirar al padre: se ocultan por colgar de un retirado y su contenido se
 conserva. Que los dos criterios no se separen es lo que hay que vigilar.
 
+### 3.1 El desvío no aísla: lo común sigue llegando
+
+La duda era si un módulo con estructura propia se queda congelado y deja de recibir lo que la
+jefatura añade después a la plantilla común. **No se queda congelado.** Está medido contra la
+aplicación, en la PD de DAW 26-27, con un módulo desviado y otro sin desviar al lado:
+
+| Lo que hace la jefatura en lo común | Lo que ve el módulo desviado |
+| --- | --- |
+| añade una casilla a un apartado | **la recibe**, al final de su lista |
+| añade un apartado al bloque de módulos | **lo recibe** (de 22 apartados pasó a 23) |
+| retira una casilla | **se la retira también** |
+| renombra una casilla que el módulo se había renombrado | **mantiene su propio nombre** |
+
+La razón está en `camposDeSeccion` y `apartadosDeModulo` (`core/estructura-modulo.js`): las dos
+**parten de la definición común** y aplican el desvío encima. El desvío guarda solo lo que cambia
+—una etiqueta, un orden, una retirada, un añadido—, nunca la lista entera, así que lo que el desvío
+no nombra se hereda. Un añadido nuevo no está nombrado en `orden`, y por eso aparece detrás de lo que
+sí lo está: se ve, aunque no en el sitio donde la jefatura lo puso.
+
+La última fila es la única divergencia real, y es el sentido de la función: si un módulo le ha puesto
+su propio nombre a una casilla común, ese nombre es suyo y no lo pisa un cambio de lo común. No hay
+nada que añadir a mano a los módulos divergidos, porque no les falta nada.
+
+Lo que sí tiene consecuencias es lo contrario: un **borrado definitivo** en lo común destruye las
+filas de **todas** las unidades (`repo.apartados.borrar` sin unidad, a propósito), así que se lleva
+también lo escrito en los módulos desviados. Eso es lo correcto —el apartado deja de existir en el
+documento— y por eso ese borrado exige dos actos y confirmación en el servidor.
+
 ## 4. Quién cambia qué
 
 | dónde | quién cambia la forma | a quién afecta |
@@ -122,18 +150,20 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
 
 ## 6. Lo que queda sin cerrar
 
-- **Qué pasa con lo ya escrito cuando la jefatura cambia la estructura común** de un apartado que
-  algún módulo ya tiene divergido. La decisión del departamento para las tablas fue: se avisa a quien
-  lo añade, y si acepta, se avisa a quien le afecta y se añade vacía. Aquí aún no está aplicada.
-- **Si una estructura propia debe poder volver a la común**, y qué ocurre entonces con lo escrito en
-  los campos que solo existían en la propia. Hoy se puede (`estructura: null`), y lo escrito en un
-  campo que desaparece se queda guardado sin que nadie lo lea; no está decidido si eso vale.
-- **Las propuestas pedagógicas y la memoria no tienen módulos.** La regla no les afecta hoy, pero
-  conviene no escribirla de forma que dé por hecho que todo documento tiene unidades.
-- **Lo escrito en una casilla o un apartado que desaparece.** Cuando un módulo vuelve a la estructura
-  común, o retira un apartado que él mismo creó, la fila con lo escrito **se queda guardada y deja de
-  ser alcanzable**: no se borra, pero nadie la vuelve a ver, y por la API no hay forma de llegar a
-  ella. Es la pregunta de arriba vista desde el otro lado, y sigue sin decidir.
+- **Cerrado: lo común llega al módulo desviado.** Medido, en §3.1. No hace falta ninguna lista de
+  avisos para la jefatura: a un módulo divergido no le falta nada de lo común. La única divergencia
+  es el nombre que el módulo le haya puesto a una casilla común, y eso es deliberado.
+- **Cerrado: una estructura propia puede volver a la común, a mano.** Lo pueden la docente que lleva
+  el módulo y la jefatura de departamento, que son exactamente quienes ya pueden cambiarla
+  (`reglaEstructuraPropia`). Antes de hacerlo se dice cuánto contenido se pierde y hay que
+  confirmarlo.
+- **Cerrado: lo escrito en una casilla o un apartado que desaparece se borra.** Antes se quedaba
+  guardado y dejaba de ser alcanzable: nadie lo volvía a ver y por la API no había forma de llegar a
+  él. Ahora `loQueSePierde` (`core/estructura-modulo.js`) dice qué deja de existir, con su subárbol
+  dentro, y `app/_lib/rutas/perdida-de-modulo.js` cuenta cuánto contenido hay debajo y lo destruye.
+  **El borrado va acotado a la unidad**, y eso no es un detalle: el id de una casilla propia se acuña
+  con los ids ocupados de *ese* módulo (`idDeCampoPropio`), así que dos módulos pueden tener la misma
+  `m_observaciones` en el mismo apartado común, cada uno con su contenido.
 - **Cerrado: una casilla no desaparece de la lista.** El PUT de la estructura propia compara con lo
   guardado (`motivoDeCasillasPerdidas` en `core/estructura-modulo.js`) y contesta 400 si falta una
   casilla; para quitarla se marca `retirado: true`. El cerrojo del cliente se queda como segunda
@@ -142,6 +172,9 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
 - **Cerrado: el borrado exige confirmación en el servidor.** Los dos DELETE de `estructura.js` piden
   `{ confirmar: true }` y contestan 400 sin él, como el de versiones. La pantalla lo manda
   (`BorrarDefinitivo.js`).
-- **La huella que vigila las fugas de la batería** cubre el reparto de docentes, las asignaciones, las
-  estructuras propias y las filas huérfanas. No cubre el estado del documento ni las versiones
-  alternativas, que `salidas-comprobaciones` y `versiones` sí tocan y restauran por su cuenta.
+- **No se valida si un documento tiene módulos o asignaturas.** Una propuesta pedagógica tiene
+  asignaturas y la memoria no tiene ni lo uno ni lo otro. Al final es un documento, y la aplicación
+  no entra a comprobar eso: la regla se escribe sin dar por hecho que todo documento tenga unidades,
+  y ahí se queda. `bloqueDeUnidades` devuelve null y las listas salen vacías, que es lo correcto.
+- **La huella que vigila las fugas de la batería** cubre el reparto de docentes, las asignaciones,
+  las estructuras propias, las filas huérfanas, el estado del documento y las versiones alternativas.

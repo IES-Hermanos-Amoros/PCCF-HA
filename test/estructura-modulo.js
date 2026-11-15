@@ -452,6 +452,38 @@ prueba('apartados: lo que la comun retira no lo resucita un modulo', () => {
   dice(motivoAp({ cambios: { 'modulos/antiguo': { retirado: true } } }), 'Antiguo', 'retirado', 'jefatura');
 });
 
+prueba('apartados: uno que la comun anade mas tarde le llega al modulo que ya diverge, al final', () => {
+  const p = plantilla();
+  const desvio = { anadidos: [propioAp(MP, 'Proyecto')], orden: { modulos: [MP, OBJ] } };
+  const antes = ids(apartados(p, desvio).vigentes);
+  seccion(p, 'modulos').hijos.push({ id: 'modulos/nuevo', titulo: 'Nuevo', campos: [{ id: 'texto', tipo: 'texto_largo', etiqueta: 'Texto' }] });
+  const despues = ids(apartados(p, desvio).vigentes);
+  assert.ok(!antes.includes('modulos/nuevo'), 'antes no estaba');
+  assert.ok(despues.includes('modulos/nuevo'), 'el modulo desviado lo recibe');
+  // Detras de lo que `orden` nombra, que es lo unico que el desvio decide.
+  assert.strictEqual(despues[despues.length - 1], 'modulos/nuevo');
+});
+
+prueba('un nombre que el modulo se ha puesto no lo pisa la jefatura al renombrar lo comun', () => {
+  // Es la unica divergencia de verdad, y es el sentido de la funcion: si un modulo le ha puesto su
+  // propio nombre a algo comun, ese nombre es suyo. Lo demas de lo comun le sigue llegando.
+  const p = plantilla();
+  const unidad = unidadCon({ [OBJ]: { campos: { texto: { etiqueta: 'Como lo llamo yo' } } } });
+  seccion(p, OBJ).campos[0].etiqueta = 'Nombre puesto por la jefatura';
+  const suyo = EM.camposDeSeccion(seccion(p, OBJ), unidad).vigentes.find((c) => c.id === 'texto');
+  assert.strictEqual(suyo.etiqueta, 'Como lo llamo yo');
+  // Y en un modulo que no lo ha renombrado, el nombre de la jefatura sí llega.
+  const otro = EM.camposDeSeccion(seccion(p, OBJ), { id: 'otro' }).vigentes.find((c) => c.id === 'texto');
+  assert.strictEqual(otro.etiqueta, 'Nombre puesto por la jefatura');
+
+  // Lo mismo con el titulo de un apartado comun de modulo.
+  const q = plantilla();
+  const conTitulo = { cambios: { [EVA]: { titulo: 'Como lo llamo yo' } } };
+  seccion(q, EVA).titulo = 'Titulo puesto por la jefatura';
+  assert.strictEqual(apartados(q, conTitulo).vigentes.find((x) => x.id === EVA).titulo, 'Como lo llamo yo');
+  assert.strictEqual(EM.apartadosDeModulo(q, { id: 'otro' }).vigentes.find((x) => x.id === EVA).titulo, 'Titulo puesto por la jefatura');
+});
+
 prueba('apartados CON HIJOS: retirar el padre se lleva a los hijos, y restaurarlo los devuelve', () => {
   const p = plantillaConHijos();
   const sinDesvio = EM.apartadosDeModulo(p, { id: 'x' });
