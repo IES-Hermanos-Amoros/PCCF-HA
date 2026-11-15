@@ -110,7 +110,7 @@ export function BorrarApartado({
     try {
       const r = await cambiarEstructura(documentoId, 'borrar', {
         seccion: retirado.seccion,
-        cuerpo: { esperaPlantillaVersion: plantillaVersion },
+        cuerpo: { confirmar: true, esperaPlantillaVersion: plantillaVersion },
       });
       // El foco de después lo lleva el aviso de la lista: esta fila se va con el borrado.
       if (onBorrado) await onBorrado(retirado, r || {});
@@ -214,7 +214,7 @@ export function BorrarCampo({
       const r = await cambiarEstructura(documentoId, 'borrar_campo', {
         seccion: retirado.seccion,
         campo: retirado.campo,
-        cuerpo: { esperaPlantillaVersion: plantillaVersion },
+        cuerpo: { confirmar: true, esperaPlantillaVersion: plantillaVersion },
       });
       if (onBorrado) await onBorrado(retirado, r || {});
     } catch (err) {

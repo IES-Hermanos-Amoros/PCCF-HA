@@ -6,7 +6,8 @@
 //   PCCF_E2E_URL   dirección del servidor; por omisión http://localhost:3000
 //
 // «Limpia» es como la deja la carga de los Word: ninguna unidad con docente, ningún apartado común
-// asignado, ningún módulo con estructura propia y ninguna fila de apartado huérfana.
+// asignado, ningún módulo con estructura propia, todo documento en borrador, ninguna versión alternativa
+// y ninguna fila de apartado huérfana.
 //
 // Lo que se ve por la API se escribe SOLO por la API, con la sesión del puente de pruebas
 // `/api/acceso-libre` (e2e/estado-base.js, el mismo cálculo que usa la batería). Lo que NO se ve por la
@@ -30,7 +31,7 @@ async function main() {
   let huella = await huellaDeLaBase(cliente);
   let sueltas = await Huerfanos.huerfanos();
   if (contar(huella, sueltas)) {
-    console.log('La base está LIMPIA: ningún módulo con docente, ningún apartado asignado, ninguna estructura propia y ninguna fila huérfana.');
+    console.log('La base está LIMPIA: ningún módulo con docente, ningún apartado asignado, ninguna estructura propia, todo documento en borrador, ninguna versión alternativa y ninguna fila huérfana.');
     return 0;
   }
   console.log('La base está SUCIA:');

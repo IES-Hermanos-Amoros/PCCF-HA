@@ -698,12 +698,23 @@ const MOVER_CAMPO = cambio('mover_campo', (cuerpo, url) => {
 // y `filas` y `conContenido`, lo que se destruyó. Es lo único que queda: el historial es la única
 // prueba de que algo existió. La respuesta trae además `contenido` y `filasBorradas`.
 //
-// El permiso es el de siempre (`puedeCambiarEstructura`). El cuerpo es opcional, y si va solo
-// `esperaPlantillaVersion`.
+// El permiso es el de siempre (`puedeCambiarEstructura`). El cuerpo es `{ confirmar: true }`, más
+// `esperaPlantillaVersion` si se quiere.
 
-const BORRAR = cambio('borrar', (cuerpo, url) => seccionDeLaUrl(url), { cuerpoOpcional: true });
+// LA CONFIRMACIÓN LA PIDE EL SERVIDOR, no solo la pantalla: el cuerpo tiene que traer `{ confirmar: true }`,
+// como el DELETE de una versión (versiones.js). Sin él, 400 y no se toca nada. Se mira después de saber
+// quién pregunta y si puede (401, 403) y antes de calcular nada.
+const sinConfirmar = (que) => malaPeticion(`Borrar ${que} no se puede deshacer: manda { "confirmar": true } para confirmarlo.`);
 
-const BORRAR_CAMPO = cambio('borrar_campo', (cuerpo, url) => campoDeLaUrl(url), { cuerpoOpcional: true });
+const BORRAR = cambio('borrar', (cuerpo, url) => {
+  if (cuerpo.confirmar !== true) return { fallo: sinConfirmar('un apartado y todo lo escrito en él') };
+  return seccionDeLaUrl(url);
+}, { cuerpoOpcional: true });
+
+const BORRAR_CAMPO = cambio('borrar_campo', (cuerpo, url) => {
+  if (cuerpo.confirmar !== true) return { fallo: sinConfirmar('un campo y todo lo escrito en él') };
+  return campoDeLaUrl(url);
+}, { cuerpoOpcional: true });
 
 // ---------------------------------------------------------------- las filas de la ficha
 

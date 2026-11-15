@@ -777,6 +777,23 @@ prueba('puedeCambiarEstructura, la de lo comun del documento entero, no ha cambi
   assert.strictEqual(P.puedeCambiarEstructura(usuario('jefe_estudios'), donde), false);
 });
 
+prueba('motivoDeCasillasPerdidas: omitir una casilla existente se dice, retirarla o añadir otra no', () => {
+  const c = (id, extra) => ({ id, tipo: 'texto_largo', etiqueta: id, ...extra });
+  const antes = {
+    secciones: { 'modulos/a': { anadidos: [c('m_uno'), c('m_dos')] } },
+    apartados: { anadidos: [{ id: 'modulos/p', titulo: 'Propio', padre: 'modulos', campos: [c('m_tres')] }] },
+  };
+  const con = (hecho) => { const n = JSON.parse(JSON.stringify(antes)); hecho(n); return n; };
+  assert.strictEqual(EM.motivoDeCasillasPerdidas(antes, antes), null);
+  assert.strictEqual(EM.motivoDeCasillasPerdidas(undefined, antes), null, 'sin estructura anterior no hay nada que perder');
+  assert.strictEqual(EM.motivoDeCasillasPerdidas(antes, null), null, 'volver a la común es otra decisión');
+  assert.strictEqual(EM.motivoDeCasillasPerdidas(antes, con((n) => { n.secciones['modulos/a'].anadidos[1].retirado = true; })), null);
+  assert.strictEqual(EM.motivoDeCasillasPerdidas(antes, con((n) => { n.secciones['modulos/a'].anadidos.push(c('m_nueva')); })), null);
+  assert.match(EM.motivoDeCasillasPerdidas(antes, con((n) => { n.secciones['modulos/a'].anadidos.pop(); })), /«m_dos»/);
+  assert.match(EM.motivoDeCasillasPerdidas(antes, con((n) => { n.apartados.anadidos[0].campos = []; })), /«m_tres» de «Propio»/);
+  assert.match(EM.motivoDeCasillasPerdidas(antes, con((n) => { delete n.apartados; })), /«m_tres»/, 'quitar el apartado entero se lleva sus casillas');
+});
+
 // ---------------------------------------------------------------- ejecutar
 
 (async () => {

@@ -442,6 +442,52 @@ prueba('casillas de un apartado propio: añadir, renombrar, retirar, restaurar y
   assert.equal(JSON.stringify((await repo.documentos.obtener(doc._id)).plantilla), plantillaAntes, 'la plantilla común no se toca');
 });
 
+prueba('una casilla que ya existe no puede desaparecer de la lista: 400 que dice cuál falta, y sin escribir', async () => {
+  const { repo, u, doc } = await conTaller([casilla('m_texto', 'Texto'), casilla('m_pasos', 'Pasos para reproducirlo')]);
+  const guardada = JSON.stringify(await estructuraGuardada(repo, doc, PROG));
+  const token = (await repo.documentos.obtener(doc._id)).updatedAt;
+
+  // En un apartado propio del módulo: la lista llega sin «m_pasos».
+  const sinUna = await esError(await poner(u.ana, doc._id, PROG, { estructura: tallerCon([casilla('m_texto', 'Texto')]) }), 400, 'peticion');
+  assert.ok(sinUna.motivo.includes('m_pasos') && sinUna.motivo.includes('Pasos para reproducirlo'), sinUna.motivo);
+  assert.ok(sinUna.mensaje.includes('retirado'), 'el mensaje dice cómo se quita: retirándola');
+  assert.ok(sinUna.mensaje.includes('No se ha cambiado nada'));
+  // Cambiar otra cosa a la vez no la salva: renombrar una y omitir otra.
+  await esError(await poner(u.ana, doc._id, PROG, { estructura: tallerCon([casilla('m_texto', 'Otro nombre')]) }), 400, 'peticion');
+  // Cambiar el id tampoco: es otra casilla, y la de antes ha desaparecido.
+  await esError(await poner(u.ana, doc._id, PROG, { estructura: tallerCon([casilla('m_texto', 'Texto'), casilla('m_otra', 'Otra')]) }), 400, 'peticion');
+  // Ni quitar el apartado propio entero, que se lleva sus casillas.
+  await esError(await poner(u.ana, doc._id, PROG, { estructura: reforma() }), 400, 'peticion');
+  assert.equal(JSON.stringify(await estructuraGuardada(repo, doc, PROG)), guardada, 'lo rechazado no escribe');
+  assert.equal(String((await repo.documentos.obtener(doc._id)).updatedAt), String(token), 'lo rechazado no mueve el token del documento');
+
+  // Marcarla retirada sí: se queda en la lista, con su contenido.
+  const retirada = [casilla('m_texto', 'Texto'), casilla('m_pasos', 'Pasos para reproducirlo', { retirado: true })];
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: tallerCon(retirada) })).status, 200);
+  assert.deepStrictEqual((await estructuraGuardada(repo, doc, PROG)).apartados.anadidos[0].campos, retirada);
+});
+
+prueba('una casilla añadida a un apartado de la plantilla tampoco desaparece: omitirla es un 400, retirarla se acepta', async () => {
+  const { repo, u, doc } = await escenario();
+  const otra = { id: 'm_otra', tipo: 'texto_largo', etiqueta: 'Otra' };
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: { secciones: { [METODOLOGIA]: { anadidos: [NOTAS, otra] } } } })).status, 200);
+  const guardada = JSON.stringify(await estructuraGuardada(repo, doc, PROG));
+
+  const sin = await esError(await poner(u.ana, doc._id, PROG, { estructura: { secciones: { [METODOLOGIA]: { anadidos: [NOTAS] } } } }), 400, 'peticion');
+  assert.ok(sin.motivo.includes('m_otra'), sin.motivo);
+  // Sustituirla por otra distinta, lo mismo.
+  const otraDistinta = { id: 'm_nueva', tipo: 'texto_largo', etiqueta: 'Nueva' };
+  await esError(await poner(u.ana, doc._id, PROG, { estructura: { secciones: { [METODOLOGIA]: { anadidos: [NOTAS, otraDistinta] } } } }), 400, 'peticion');
+  assert.equal(JSON.stringify(await estructuraGuardada(repo, doc, PROG)), guardada, 'lo rechazado no escribe');
+
+  const retirada = { secciones: { [METODOLOGIA]: { anadidos: [NOTAS, { ...otra, retirado: true }] } } };
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: retirada })).status, 200);
+  assert.deepStrictEqual(await estructuraGuardada(repo, doc, PROG), retirada);
+
+  // Volver a la común sigue siendo posible: es otra decisión (docs/estructura-por-modulo.md §6).
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: null })).status, 200);
+});
+
 prueba('casillas de un apartado propio: quien no lleva el módulo, y la jefatura de estudios, 403 y sin escribir', async () => {
   const { repo, u, doc } = await conTaller();
   const guardada = JSON.stringify(await estructuraGuardada(repo, doc, PROG));

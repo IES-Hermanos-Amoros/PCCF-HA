@@ -104,8 +104,8 @@ async function fijarDocentes(page, documentoId, unidadId, ids) {
   expect(r.status(), await r.text()).toBeLessThan(400);
 }
 
-// Cuántas unidades con docente, asignaciones de apartados comunes y estructuras propias hay: es la forma
-// de comprobar al terminar que la base ha quedado como estaba. El cálculo vive en estado-base.js, que lo
+// Qué hay sucio (unidades con docente, apartados comunes asignados, estructuras propias, estado del
+// documento y versiones alternativas): es la forma de comprobar al terminar que la base ha quedado como estaba. El cálculo vive en estado-base.js, que lo
 // comparten también la comprobación de entrada y scripts/base-limpia.js. Con `documentoId`, solo ese
 // documento; sin él, todos (cada entrada con su documento delante).
 function huellaDeLaBase(page, documentoId = null) {
@@ -118,6 +118,8 @@ function clienteDePagina(page) {
   return {
     get: async (ruta) => envolver(await page.request.get(ruta)),
     put: async (ruta, data) => envolver(await page.request.put(ruta, { data })),
+    post: async (ruta, data) => envolver(await page.request.post(ruta, { data })),
+    delete: async (ruta, data) => envolver(await page.request.delete(ruta, { data })),
   };
 }
 

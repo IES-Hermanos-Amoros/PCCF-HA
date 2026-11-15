@@ -53,7 +53,7 @@ const anadirCampo = (page, doc, seccion) => page.request.post(`${base(doc)}/apar
   data: { campo: { tipo: 'texto_largo', etiqueta: 'Campo de la estructura común' } },
 });
 const retirarCampo = (page, doc, seccion, campo) => page.request.post(`${base(doc)}/apartado/campo/retirar?${q({ seccion, campo })}`, { data: {} });
-const borrarCampo = (page, doc, seccion, campo) => page.request.delete(`${base(doc)}/apartado/campo?${q({ seccion, campo })}`);
+const borrarCampo = (page, doc, seccion, campo) => page.request.delete(`${base(doc)}/apartado/campo?${q({ seccion, campo })}`, { data: { confirmar: true } });
 const leerAsignaciones = async (page, doc) => json(await page.request.get(`/api/documentos/${doc}/asignaciones`));
 const asignar = (page, doc, seccion, personas) => page.request.put(`/api/documentos/${doc}/asignaciones?${q({ seccion })}`, { data: { personas } });
 const version = async (page, doc) => (await json(await page.request.get(base(doc)))).plantillaVersion;
@@ -77,7 +77,7 @@ function intentosDeApartado(page, doc, seccion) {
     'mover apartado': () => page.request.post(`${base(doc)}/apartado/mover?${q({ seccion })}`, { data: { delta: 1 } }),
     'retirar apartado': () => page.request.post(`${base(doc)}/apartado/retirar?${q({ seccion })}`, { data: {} }),
     'restaurar apartado': () => page.request.post(`${base(doc)}/apartado/restaurar?${q({ seccion })}`, { data: {} }),
-    'borrar apartado': () => page.request.delete(`${base(doc)}/apartado?${q({ seccion })}`),
+    'borrar apartado': () => page.request.delete(`${base(doc)}/apartado?${q({ seccion })}`, { data: { confirmar: true } }),
   };
 }
 
@@ -344,7 +344,7 @@ test.describe('la estructura de un apartado común', () => {
       expect(escribe.status(), await escribe.text()).toBe(200);
 
       // Borrar algo que no está retirado no se puede: primero se retira.
-      const sinRetirar = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: hijo })}`);
+      const sinRetirar = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: hijo })}`, { data: { confirmar: true } });
       expect(sinRetirar.status(), 'borrar sin retirar antes').toBe(400);
 
       // El GET avisa ANTES de borrar: cada retirado lleva lo que se destruiría.
@@ -368,7 +368,7 @@ test.describe('la estructura de un apartado común', () => {
       expect(rh.status(), await rh.text()).toBe(200);
       const antesDelHijo = await json(await page.request.get(base(doc._id)));
       expect(antesDelHijo.retirados.find((x) => x.seccion === hijo).contenido.conContenido).toBe(1);
-      const bh = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: hijo })}`);
+      const bh = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: hijo })}`, { data: { confirmar: true } });
       expect(bh.status(), await bh.text()).toBe(200);
       const jbh = await bh.json();
       hijo = null;
@@ -381,9 +381,9 @@ test.describe('la estructura de un apartado común', () => {
       expect(jbh.comentariosBorrados).toBe(0);
 
       // Y borrar lo que ni siquiera es suyo: 403, antes que cualquier otra cosa.
-      const ajenoBorra = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: ajena.seccion })}`);
+      const ajenoBorra = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: ajena.seccion })}`, { data: { confirmar: true } });
       expect(ajenoBorra.status(), 'docente: borrar un común que no tiene asignado').toBe(403);
-      const moduloBorra = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: modulo.seccion })}`);
+      const moduloBorra = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: modulo.seccion })}`, { data: { confirmar: true } });
       expect(moduloBorra.status(), 'docente: borrar una sección de módulo').toBe(403);
     } finally {
       await salir(page);
@@ -392,12 +392,79 @@ test.describe('la estructura de un apartado común', () => {
         const est = await json(await page.request.get(base(doc._id)));
         const fila = est.apartados.find((x) => x.seccion === hijo);
         if (fila && !fila.retirado) await page.request.post(`${base(doc._id)}/apartado/retirar?${q({ seccion: hijo })}`, { data: {} });
-        const bh = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: hijo })}`);
+        const bh = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion: hijo })}`, { data: { confirmar: true } });
         expect([200, 404], `no se ha podido borrar el hijo de la prueba: ${await bh.text()}`).toContain(bh.status());
       }
       for (const s of asignadas) {
         const quita = await asignar(page, doc._id, s, []);
         expect(quita.status(), `no se ha podido deshacer la asignación de ${s}`).toBe(200);
+      }
+    }
+  });
+
+  test('borrar para siempre desde la pantalla sigue funcionando: el servidor exige la confirmación y la pantalla la manda', async ({ page }) => {
+    test.setTimeout(180_000);
+    await salir(page);
+    await entrarComo(page, 'jefe_departamento');
+    const { doc } = await elegir(page);
+    const titulo = 'Apartado de la prueba de borrado';
+    let seccion = null;
+    const retirados = async () => json(await page.request.get(base(doc._id)));
+
+    try {
+      // Un apartado propio de la prueba, con algo escrito y un segundo campo, y todo retirado.
+      const a = await page.request.post(`${base(doc._id)}/apartado`, { data: { titulo } });
+      expect(a.status(), await a.text()).toBe(201);
+      seccion = (await a.json()).seccion;
+      const ap = await json(await page.request.get(`/api/documentos/${doc._id}/apartado?${q({ seccion })}`));
+      const b = await anadirCampo(page, doc._id, seccion);
+      expect(b.status(), await b.text()).toBe(201);
+      const campoB = (await b.json()).campos[0].id;
+      const escribe = await page.request.patch(`/api/documentos/${doc._id}/apartado?${q({ seccion })}`, {
+        data: { valores: { [ap.campos[0].id]: [{ type: 'p', text: 'Texto que se borra A' }], [campoB]: [{ type: 'p', text: 'Texto que se borra B' }] }, esperaUpdatedAt: null },
+      });
+      expect(escribe.status(), await escribe.text()).toBe(200);
+      expect((await retirarCampo(page, doc._id, seccion, campoB)).status()).toBe(200);
+
+      // El servidor, por su cuenta: sin confirmación no borra, ni el campo ni el apartado.
+      const sinCampo = await page.request.delete(`${base(doc._id)}/apartado/campo?${q({ seccion, campo: campoB })}`);
+      expect(sinCampo.status(), 'borrar un campo sin confirmar').toBe(400);
+      expect((await sinCampo.json()).mensaje).toContain('confirmar');
+      expect((await retirados()).camposRetirados.some((x) => x.seccion === seccion && x.campo === campoB), 'el campo sigue ahí').toBe(true);
+
+      // BORRAR EL CAMPO DESDE LA PORTADA.
+      await page.goto(`/doc/${doc._id}`);
+      // La portada pinta DOS listas: «Apartados retirados» y la de campos retirados. Aquí solo hay un
+      // campo retirado, así que la de apartados no existe todavía: lo que hay que esperar es el botón
+      // del campo. Y se apunta a LA FILA DE ESTE APARTADO, no a la primera de la lista: en la batería
+      // completa hay campos retirados de otras pruebas y  pulsaba el que no era.
+      const filaDelCampo = page.getByRole('listitem').filter({ hasText: titulo })
+        .filter({ has: page.getByRole('button', { name: /^Borrar para siempre el campo/ }) });
+      await expect(filaDelCampo).toHaveCount(1);
+      await filaDelCampo.getByRole('button', { name: /^Borrar para siempre el campo/ }).click();
+      await page.getByRole('button', { name: /^Sí, borrar el campo .* para siempre$/ }).click();
+      await expect.poll(async () => (await retirados()).camposRetirados.some((x) => x.seccion === seccion && x.campo === campoB),
+        { message: 'el campo tiene que haberse borrado' }).toBe(false);
+
+      // BORRAR EL APARTADO DESDE LA PORTADA: se retira y se borra escribiendo su título.
+      const r = await page.request.post(`${base(doc._id)}/apartado/retirar?${q({ seccion })}`, { data: {} });
+      expect(r.status(), await r.text()).toBe(200);
+      const sinApartado = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion })}`);
+      expect(sinApartado.status(), 'borrar un apartado sin confirmar').toBe(400);
+      expect((await retirados()).retirados.some((x) => x.seccion === seccion), 'el apartado sigue ahí').toBe(true);
+
+      await page.goto(`/doc/${doc._id}`);
+      await page.getByRole('button', { name: `Borrar para siempre «${titulo}»` }).click();
+      await page.getByLabel(/^Para borrarlo, escribe/).fill(titulo);
+      await page.getByRole('button', { name: `Borrar «${titulo}» para siempre` }).click();
+      await expect.poll(async () => (await retirados()).retirados.some((x) => x.seccion === seccion),
+        { message: 'el apartado tiene que haberse borrado' }).toBe(false);
+      seccion = null;
+    } finally {
+      if (seccion) {
+        await page.request.post(`${base(doc._id)}/apartado/retirar?${q({ seccion })}`, { data: {} });
+        const bh = await page.request.delete(`${base(doc._id)}/apartado?${q({ seccion })}`, { data: { confirmar: true } });
+        expect([200, 404], `no se ha podido borrar el apartado de la prueba: ${await bh.text()}`).toContain(bh.status());
       }
     }
   });

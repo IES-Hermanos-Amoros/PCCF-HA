@@ -245,7 +245,10 @@ prueba('borrar un apartado retirado limpia su asignación y la de sus subapartad
   assert.equal(retirada.status, 200);
   // Retirar no borra: la asignación se conserva por si se restaura.
   assert.deepEqual((await guardadas(repo, doc._id)).organizacion, [u.ana._id]);
-  const borrada = await estructura(Estructura, 'BORRAR', u.jefa, doc._id, 'organizacion', 'DELETE');
+  const borrada = await Estructura.BORRAR(
+    pet(`/api/documentos/${doc._id}/estructura/apartado?seccion=organizacion`, u.jefa, { metodo: 'DELETE', cuerpo: { confirmar: true } }),
+    { id: doc._id },
+  );
   assert.equal(borrada.status, 200);
   assert.deepEqual(await guardadas(repo, doc._id), { introduccion: [u.ana._id] });
 });

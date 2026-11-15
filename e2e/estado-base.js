@@ -6,9 +6,14 @@
 // `{ status, json }`. Las pruebas lo montan sobre `page.request`; el script, sobre `fetch`.
 //
 // La base LIMPIA es la que deja la carga de los Word: ninguna unidad con docente, ningún apartado común
-// asignado a nadie y ningún módulo con estructura propia.
+// asignado a nadie, ningún módulo con estructura propia, todo documento en `borrador` (el estado con el
+// que lo crea la importación: app/_lib/rutas/importar.js) y ninguna versión alternativa, es decir, solo la
+// versión activa de cada documento.
 
-const CLAVES = ['unidadesConDocente', 'apartadosAsignados', 'estructurasPropias'];
+const CLAVES = ['unidadesConDocente', 'apartadosAsignados', 'estructurasPropias', 'estadosDeDocumento', 'versionesAlternativas'];
+
+// El estado con el que nace un documento y con el que lo deja la carga de los Word.
+const ESTADO_LIMPIO = 'borrador';
 
 async function leer(cliente, ruta) {
   const r = await cliente.get(ruta);
@@ -18,22 +23,31 @@ async function leer(cliente, ruta) {
 
 const etiquetaDe = (d) => `${d.tipo} ${d.ciclo || ''} ${d.curso || ''}`.replace(/\s+/g, ' ').trim();
 
-// Los documentos que ve quien esté dentro.
+// Las versiones que no son la activa, de lo que devuelve GET /versiones.
+const alternativasDe = (j) => (j.versiones || []).filter((v) => v.activa === false);
+
+// Los documentos que ve quien esté dentro (solo la versión activa de cada uno).
 async function listarDocumentos(cliente) {
   const j = await leer(cliente, '/api/documentos');
   return j.documentos || j || [];
 }
 
-// Cuántas unidades con docente, apartados comunes asignados y estructuras propias hay. Con `documentoId`,
+// Qué hay sucio: unidades con docente, apartados comunes asignados, estructuras propias, documentos que no
+// están en `borrador` (GET /estado) y versiones alternativas (GET /versiones). Con `documentoId`,
 // solo en ese documento y cada entrada es el id a secas; sin él, en todos y cada entrada lleva delante el
 // documento («programacion_didactica daw 2026-27 · daw-0373») para poder decir DÓNDE está lo sucio.
 async function huellaDeLaBase(cliente, documentoId = null) {
   const docs = documentoId
     ? [{ _id: documentoId, etiqueta: null }]
     : (await listarDocumentos(cliente)).map((d) => ({ _id: d._id, etiqueta: etiquetaDe(d) }));
-  const huella = { unidadesConDocente: [], apartadosAsignados: [], estructurasPropias: [] };
+  const huella = Object.fromEntries(CLAVES.map((k) => [k, []]));
   const marca = (d, id) => (d.etiqueta ? `${d.etiqueta} · ${id}` : id);
   for (const d of docs) {
+    const { estado } = await leer(cliente, `/api/documentos/${d._id}/estado`);
+    if (estado !== ESTADO_LIMPIO) huella.estadosDeDocumento.push(marca(d, estado));
+    for (const v of alternativasDe(await leer(cliente, `/api/documentos/${d._id}/versiones`))) {
+      huella.versionesAlternativas.push(marca(d, `versión ${v.version} (${v._id})`));
+    }
     const { unidades } = await leer(cliente, `/api/documentos/${d._id}/unidades`);
     const asg = await leer(cliente, `/api/documentos/${d._id}/asignaciones`);
     for (const u of unidades) {
@@ -54,6 +68,8 @@ const ROTULO = {
   unidadesConDocente: 'módulo con docente asignado',
   apartadosAsignados: 'apartado común asignado a alguien',
   estructurasPropias: 'módulo con estructura propia',
+  estadosDeDocumento: 'estado del documento distinto del limpio',
+  versionesAlternativas: 'versión alternativa de un documento',
 };
 
 // Lo sucio, en líneas legibles.
@@ -80,11 +96,21 @@ async function limpiar(cliente) {
     const et = etiquetaDe(d);
     const { unidades } = await leer(cliente, `/api/documentos/${d._id}/unidades`);
     const asg = await leer(cliente, `/api/documentos/${d._id}/asignaciones`);
-    const poner = async (ruta, cuerpo, que) => {
-      const r = await cliente.put(ruta, cuerpo);
-      if (r.status >= 400) throw new Error(`PUT ${ruta} ha dado ${r.status}: ${JSON.stringify(r.json).slice(0, 200)}`);
+    const mandar = (metodo) => async (ruta, cuerpo, que) => {
+      const r = await cliente[metodo](ruta, cuerpo);
+      if (r.status >= 400) throw new Error(`${metodo.toUpperCase()} ${ruta} ha dado ${r.status}: ${JSON.stringify(r.json).slice(0, 200)}`);
       tocado.push(`${que} (${et})`);
     };
+    const poner = mandar('put');
+    // Las versiones alternativas, fuera (el DELETE pide confirmación), y el estado, a `borrador`: el
+    // circuito deja volver a borrador desde revisión y desde aprobado, y el soporte puede.
+    for (const v of alternativasDe(await leer(cliente, `/api/documentos/${d._id}/versiones`))) {
+      await mandar('delete')(`/api/documentos/${v._id}`, { confirmar: true }, `versión alternativa ${v.version} borrada`);
+    }
+    const { estado } = await leer(cliente, `/api/documentos/${d._id}/estado`);
+    if (estado !== ESTADO_LIMPIO) {
+      await mandar('post')(`/api/documentos/${d._id}/estado`, { estado: ESTADO_LIMPIO }, `estado devuelto a ${ESTADO_LIMPIO} desde ${estado}`);
+    }
     for (const u of unidades) {
       const id = encodeURIComponent(u.unidadId);
       if ((u.docentes || []).length) {
@@ -135,12 +161,18 @@ async function clienteHttp(urlBase) {
   if (!quien) throw new Error('no hay ninguna persona de soporte ni de jefatura de departamento');
   const dentro = await pedir('POST', '/api/acceso-libre', { persona: quien._id });
   if (dentro.status >= 400) throw new Error(`no se ha podido abrir sesión (${dentro.status})`);
-  return { get: (ruta) => pedir('GET', ruta), put: (ruta, cuerpo) => pedir('PUT', ruta, cuerpo), quien: `${quien.nombre} (${quien.rol})` };
+  return {
+    get: (ruta) => pedir('GET', ruta),
+    put: (ruta, cuerpo) => pedir('PUT', ruta, cuerpo),
+    post: (ruta, cuerpo) => pedir('POST', ruta, cuerpo),
+    delete: (ruta, cuerpo) => pedir('DELETE', ruta, cuerpo),
+    quien: `${quien.nombre} (${quien.rol})`,
+  };
 }
 
 // El mensaje que explica qué hacer cuando la base no está limpia.
 const COMO_LIMPIAR = 'Para dejarla limpia:  node scripts/base-limpia.js --limpiar   (usa PCCF_E2E_URL si el servidor no está en el 3000)';
 
 module.exports = {
-  CLAVES, huellaDeLaBase, estaLimpia, describirHuella, diferencia, limpiar, listarDocumentos, clienteHttp, COMO_LIMPIAR,
+  CLAVES, ESTADO_LIMPIO, huellaDeLaBase, estaLimpia, describirHuella, diferencia, limpiar, listarDocumentos, clienteHttp, COMO_LIMPIAR,
 };

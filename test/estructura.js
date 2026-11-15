@@ -183,13 +183,27 @@ const moverCampo = (persona, id, seccion, campo, cuerpo) => Estructura.MOVER_CAM
   pet(urlCampo(id, seccion, campo, 'mover'), persona, { metodo: 'POST', cuerpo: cuerpo === undefined ? {} : cuerpo }), { id },
 );
 
+// El servidor exige `{ confirmar: true }` en los dos DELETE: estos ayudantes lo ponen, y `sinConfirmar`
+// manda el cuerpo tal cual (o ninguno) para probar justo eso.
+const conConfirmar = (cuerpo) => ({ confirmar: true, ...(cuerpo || {}) });
+
 const borrar = (persona, id, seccion, cuerpo) => Estructura.BORRAR(
+  pet(`/api/documentos/${id}/estructura/apartado?seccion=${encodeURIComponent(seccion)}`, persona,
+    { metodo: 'DELETE', cuerpo: conConfirmar(cuerpo) }),
+  { id },
+);
+
+const borrarCampo = (persona, id, seccion, campo, cuerpo) => Estructura.BORRAR_CAMPO(
+  pet(urlCampo(id, seccion, campo), persona, { metodo: 'DELETE', cuerpo: conConfirmar(cuerpo) }), { id },
+);
+
+const borrarSinConfirmar = (persona, id, seccion, cuerpo) => Estructura.BORRAR(
   pet(`/api/documentos/${id}/estructura/apartado?seccion=${encodeURIComponent(seccion)}`, persona,
     { metodo: 'DELETE', cuerpo }),
   { id },
 );
 
-const borrarCampo = (persona, id, seccion, campo, cuerpo) => Estructura.BORRAR_CAMPO(
+const borrarCampoSinConfirmar = (persona, id, seccion, campo, cuerpo) => Estructura.BORRAR_CAMPO(
   pet(urlCampo(id, seccion, campo), persona, { metodo: 'DELETE', cuerpo }), { id },
 );
 
@@ -1121,8 +1135,34 @@ prueba('borrar algo que no está retirado es un 400 que dice que primero hay que
   // Y lo que no existe es un 404, como en el resto de cambios.
   await esError(await borrar(u.jefa, doc._id, 'no-existe'), 404, 'no_encontrado');
   await esError(await borrarCampo(u.jefa, doc._id, 'atencion-a-la-diversidad', 'fantasma'), 404, 'no_encontrado');
-  await esError(await Estructura.BORRAR(pet(`/api/documentos/${doc._id}/estructura/apartado`, u.jefa, { metodo: 'DELETE' }), { id: doc._id }),
+  await esError(await Estructura.BORRAR(pet(`/api/documentos/${doc._id}/estructura/apartado`, u.jefa, { metodo: 'DELETE', cuerpo: { confirmar: true } }), { id: doc._id }),
     400, 'peticion');
+});
+
+prueba('borrar sin { confirmar: true } es un 400 que no destruye nada, y con él se borra', async () => {
+  const { repo, u, doc } = await escenario();
+  await cambio(await retirar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+  await cambio(await retirarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  const antes = await instantanea(repo, doc._id);
+
+  // Sin cuerpo, con cuerpo vacío, con `confirmar` que no es `true` y con la versión pero sin confirmar.
+  const intentos = [undefined, {}, { confirmar: false }, { confirmar: 'true' }, { confirmar: 1 }, { esperaPlantillaVersion: 3 }];
+  for (const cuerpo of intentos) {
+    const a = await esError(await borrarSinConfirmar(u.jefa, doc._id, 'atencion-a-la-diversidad', cuerpo), 400, 'peticion');
+    assert.match(a.mensaje, /"confirmar": true/);
+    const c = await esError(await borrarCampoSinConfirmar(u.jefa, doc._id, 'introduccion', 'tabla_normativa', cuerpo), 400, 'peticion');
+    assert.match(c.mensaje, /"confirmar": true/);
+  }
+  assert.deepStrictEqual(await instantanea(repo, doc._id), antes, 'un borrado sin confirmar ha cambiado algo');
+
+  // Quien no puede sigue recibiendo el 403 antes que el 400, y el 401 antes que todo.
+  await esError(await borrarSinConfirmar(u.luis, doc._id, 'modulos/metodologia', {}), 403, 'sin_permiso');
+  await esError(await borrarSinConfirmar(null, doc._id, 'atencion-a-la-diversidad', {}), 401, 'sin_identificar');
+
+  // Con la confirmación, se borra.
+  await cambio(await borrar(u.jefa, doc._id, 'atencion-a-la-diversidad'));
+  await cambio(await borrarCampo(u.jefa, doc._id, 'introduccion', 'tabla_normativa'));
+  assert.equal(await guardados(repo, doc._id, 'atencion-a-la-diversidad'), null);
 });
 
 prueba('borrar un apartado retirado destruye su contenido, y restaurarlo ya no lo encuentra', async () => {

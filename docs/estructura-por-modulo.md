@@ -134,14 +134,14 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
   común, o retira un apartado que él mismo creó, la fila con lo escrito **se queda guardada y deja de
   ser alcanzable**: no se borra, pero nadie la vuelve a ver, y por la API no hay forma de llegar a
   ella. Es la pregunta de arriba vista desde el otro lado, y sigue sin decidir.
-- **La puerta no comprueba que una casilla no desaparezca de la lista.** Si un cliente mandara una
-  lista de casillas a la que le falta una, el servidor la aceptaría y lo escrito bajo ese id quedaría
-  huérfano. Hoy lo impide el cliente, con un cerrojo en `app/_componentes/estructura-modulo-cliente.js`
-  que no manda nada si falta alguna; cerrarlo de verdad es comparar con lo guardado en la ruta. Pasa
-  igual con los campos añadidos a un apartado común, así que no es de esta pieza.
-- **El borrado no exige confirmación en el servidor.** La respuesta dice cuánto contenido se pierde y
-  la pantalla confirma, pero la ruta no pide un `{ confirmar: true }` como sí hace la de versiones. Se
-  dejó así para no romper la pantalla mientras se construía; ya se puede cerrar.
+- **Cerrado: una casilla no desaparece de la lista.** El PUT de la estructura propia compara con lo
+  guardado (`motivoDeCasillasPerdidas` en `core/estructura-modulo.js`) y contesta 400 si falta una
+  casilla; para quitarla se marca `retirado: true`. El cerrojo del cliente se queda como segunda
+  barrera. Los campos añadidos a un apartado común no tenían el agujero: sus rutas son operaciones
+  (retirar, restaurar…), no un PUT de la lista.
+- **Cerrado: el borrado exige confirmación en el servidor.** Los dos DELETE de `estructura.js` piden
+  `{ confirmar: true }` y contestan 400 sin él, como el de versiones. La pantalla lo manda
+  (`BorrarDefinitivo.js`).
 - **La huella que vigila las fugas de la batería** cubre el reparto de docentes, las asignaciones, las
   estructuras propias y las filas huérfanas. No cubre el estado del documento ni las versiones
   alternativas, que `salidas-comprobaciones` y `versiones` sí tocan y restauran por su cuenta.

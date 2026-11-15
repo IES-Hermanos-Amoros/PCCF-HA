@@ -312,6 +312,19 @@ const PUT = conErrores(async (peticion, parametros) => {
     }
   }
 
+  // LAS CASILLAS NO DESAPARECEN. Contra lo que ya hay guardado, que la puerta de arriba no ve: una lista a la
+  // que le falta una casilla dejaría huérfano lo escrito bajo su id. Se quita retirándola, no omitiéndola.
+  // Solo se compara si el token es el vigente: con uno viejo, `unidad.estructura` ya no es lo que el cliente
+  // tenía delante y el que contesta es el 409 de la escritura, que es el que le dice que recargue.
+  const tokenVigente = new Date(ficha).getTime() === new Date(documento.updatedAt).getTime();
+  if (nueva !== null && tokenVigente) {
+    const perdida = EstructuraModulo.motivoDeCasillasPerdidas(unidad.estructura, nueva);
+    if (perdida) {
+      const motivo = perdida;
+      return fallo(400, 'peticion', `${motivo[0].toUpperCase()}${motivo.slice(1)} No se ha cambiado nada.`, { motivo, alcance: alcances });
+    }
+  }
+
   // La escritura que decide: condicionada al token del documento. Si alguien lo ha movido, 409.
   let ahora = null;
   try {

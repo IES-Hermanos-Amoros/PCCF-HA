@@ -813,11 +813,54 @@ const de = (donde) => (String(donde).startsWith('el ') ? 'del ' + String(donde).
     return null;
   }
 
+  // LAS CASILLAS NO DESAPARECEN DE LA LISTA. Las casillas que el módulo ha creado (`secciones[id].anadidos`
+  // y los `campos` de un apartado propio) guardan lo escrito bajo su id. Si una lista nueva llega sin una
+  // de las que ya había, lo escrito se queda huérfano: no se borra y nadie lo vuelve a ver. Para quitarla
+  // hay que marcarla `retirado: true`, que la deja en su sitio con su contenido. Esta puerta no mira la
+  // forma (eso es `motivoDeEstructura`): compara la estructura que hay con la que se pide y dice la
+  // primera casilla que falta, o null. Vive aquí, junto a la forma de `anadidos`, y la llaman la ruta del
+  // servidor y quien quiera avisar antes de mandar. `nueva === null` es volver a la común, que es otra
+  // decisión (docs/estructura-por-modulo.md §6) y no entra aquí.
+  function casillasDe(estructura) {
+    const mapa = new Map();
+    if (!esObjeto(estructura)) return mapa;
+    const lista = (x) => (Array.isArray(x) ? x : []);
+    if (esObjeto(estructura.secciones)) {
+      for (const id of Object.keys(estructura.secciones)) {
+        const d = estructura.secciones[id];
+        if (!esObjeto(d)) continue;
+        for (const c of lista(d.anadidos)) {
+          if (esObjeto(c) && esCadena(c.id)) mapa.set(id + '\u0000' + c.id, { apartado: id, campo: c });
+        }
+      }
+    }
+    if (esObjeto(estructura.apartados)) {
+      for (const a of lista(estructura.apartados.anadidos)) {
+        if (!esObjeto(a) || !esCadena(a.id)) continue;
+        for (const c of lista(a.campos)) {
+          if (esObjeto(c) && esCadena(c.id)) mapa.set(a.id + '\u0000' + c.id, { apartado: a.titulo || a.id, campo: c });
+        }
+      }
+    }
+    return mapa;
+  }
+
+  function motivoDeCasillasPerdidas(anterior, nueva) {
+    if (nueva === null || nueva === undefined) return null;
+    const ahora = casillasDe(nueva);
+    for (const [clave, { apartado, campo }] of casillasDe(anterior)) {
+      if (ahora.has(clave)) continue;
+      const nombre = campo.etiqueta && campo.etiqueta !== campo.id ? `«${campo.etiqueta}» (${campo.id})` : `«${campo.id}»`;
+      return `la casilla ${nombre} de «${apartado}» ya existe y no está en la lista: una casilla no desaparece, porque lo escrito en ella se quedaría guardado sin que nadie lo viera. Para quitarla, márcala con «retirado: true».`;
+    }
+    return null;
+  }
+
   const api = {
     CLAVE, PREFIJO, RESERVADOS, MAX_CAMPOS, MAX_SECCIONES, MAX_APARTADOS_PROPIOS, LARGO_ETIQUETA,
     estructuraDeModulo, camposDeSeccion, desvioDe, idDeCampoPropio,
     apartadosDeModulo, desvioDeApartados, bloqueDeUnidades, idDeApartadoPropio,
-    motivoDeEstructura, motivoDeDesvio, motivoDeCampoPropio, choqueDeEtiquetas, motivoDeApartados,
+    motivoDeEstructura, motivoDeCasillasPerdidas, motivoDeDesvio, motivoDeCampoPropio, choqueDeEtiquetas, motivoDeApartados,
   };
 
   global.Core = global.Core || {};

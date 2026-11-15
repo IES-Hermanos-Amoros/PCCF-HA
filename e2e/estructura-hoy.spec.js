@@ -79,7 +79,7 @@ const cambios = {
   retirar: (page, doc, seccion, campo) => page.request.post(`${base(doc)}/apartado/campo/retirar?${q({ seccion, campo })}`, {
     data: {},
   }),
-  borrar: (page, doc, seccion, campo) => page.request.delete(`${base(doc)}/apartado/campo?${q({ seccion, campo })}`),
+  borrar: (page, doc, seccion, campo) => page.request.delete(`${base(doc)}/apartado/campo?${q({ seccion, campo })}`, { data: { confirmar: true } }),
 };
 
 // El documento y el apartado de módulo con los que trabajan todas las pruebas.
