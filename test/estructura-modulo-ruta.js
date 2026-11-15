@@ -269,7 +269,9 @@ prueba('null devuelve el módulo a la estructura común, y repetirlo no hace nad
   assert.equal((await poner(u.ana, doc._id, PROG, { estructura: reforma() })).status, 200);
   await esError(await poner(u.ana, doc._id, PROG, { estructura: reforma() }), 400, 'peticion');
 
-  const r = await poner(u.ana, doc._id, PROG, { estructura: null });
+  // La reforma tiene una casilla propia: volver a la común la pierde y hay que confirmarlo.
+  await esError(await poner(u.ana, doc._id, PROG, { estructura: null }), 400, 'peticion');
+  const r = await poner(u.ana, doc._id, PROG, { estructura: null, confirmar: true });
   assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
   const unidad = await repo.unidades.obtener(doc._id, PROG);
   assert.equal(EstructuraModulo.estructuraDeModulo(unidad), null, 'sin desvíos vuelve a la común');
@@ -484,8 +486,8 @@ prueba('una casilla añadida a un apartado de la plantilla tampoco desaparece: o
   assert.equal((await poner(u.ana, doc._id, PROG, { estructura: retirada })).status, 200);
   assert.deepStrictEqual(await estructuraGuardada(repo, doc, PROG), retirada);
 
-  // Volver a la común sigue siendo posible: es otra decisión (docs/estructura-por-modulo.md §6).
-  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: null })).status, 200);
+  // Volver a la común sigue siendo posible, con confirmación: pierde las casillas propias.
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: null, confirmar: true })).status, 200);
 });
 
 prueba('casillas de un apartado propio: quien no lleva el módulo, y la jefatura de estudios, 403 y sin escribir', async () => {
@@ -528,6 +530,181 @@ prueba('casillas de un apartado propio: cada motivo de la puerta sale tal cual, 
   const tope = await esError(await poner(u.ana, doc._id, PROG, { estructura: tallerCon(muchas) }), 400, 'peticion');
   assert.ok(tope.motivo.includes('el máximo son 20'), tope.motivo);
   assert.equal(JSON.stringify(await estructuraGuardada(repo, doc, PROG)), guardada, 'lo rechazado no escribe');
+});
+
+// ---------------------------------------------------------------- VOLVER A LA COMÚN: lo propio se destruye, y se confirma
+//
+// Quitar la estructura propia de un módulo hace desaparecer sus casillas y sus apartados. Lo escrito debajo
+// se destruye, pero solo con confirmación, solo en ese módulo y sin tocar lo común.
+
+const HIJO = TALLER + '/m_nota';
+const escribe = (t) => [{ type: 'p', text: t }];
+const propia = () => ({
+  secciones: { [METODOLOGIA]: { anadidos: [NOTAS] } },
+  apartados: { anadidos: [
+    { id: TALLER, titulo: 'Taller de depuración', padre: 'modulos', campos: [casilla('m_texto', 'Texto'), casilla('m_pasos', 'Pasos')] },
+    { id: HIJO, titulo: 'Nota', padre: TALLER, campos: [casilla('m_texto', 'Texto')] },
+  ] },
+});
+
+// PROG con estructura propia y contenido en todo; OTRO con la MISMA casilla m_notas y el MISMO apartado.
+async function conLoPropio() {
+  const e = await escenario();
+  const { repo, u, doc } = e;
+  const r = await poner(u.ana, doc._id, PROG, { estructura: propia() });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  assert.equal((await poner(u.jefa, doc._id, OTRO, { estructura: propia() })).status, 200);
+  for (const m of [PROG, OTRO]) {
+    await repo.apartados.escribir(doc._id, METODOLOGIA, m, { valores: { texto: escribe('común ' + m), m_notas: escribe('notas ' + m) } });
+    await repo.apartados.escribir(doc._id, TALLER, m, { valores: { m_texto: escribe('taller ' + m), m_pasos: escribe('pasos ' + m) } });
+    await repo.apartados.escribir(doc._id, HIJO, m, { valores: { m_texto: escribe('nieto ' + m) } });
+    await repo.comentarios.crear({ documentoId: doc._id, seccion: TALLER, unidadId: m, autor: 'ana', texto: 'hilo propio ' + m });
+    await repo.comentarios.crear({ documentoId: doc._id, seccion: METODOLOGIA, unidadId: m, autor: 'ana', texto: 'hilo común ' + m });
+  }
+  return e;
+}
+const fila = async (repo, doc, seccion, m) => (await repo.apartados.listar(doc._id, { unidadId: m })).find((x) => x.seccion === seccion);
+const hilos = async (repo, doc, seccion, m) => (await repo.comentarios.listar(doc._id, { seccion, unidadId: m })).length;
+
+prueba('null con algo propio y SIN confirmar: 400 que dice cuánto se pierde, y no cambia ni borra nada', async () => {
+  const { repo, u, doc } = await conLoPropio();
+  const antes = JSON.stringify(await repo.apartados.listar(doc._id, {}));
+  const guardada = JSON.stringify(await estructuraGuardada(repo, doc, PROG));
+  const token = String((await repo.documentos.obtener(doc._id)).updatedAt);
+
+  for (const cuerpo of [{ estructura: null }, { estructura: null, confirmar: false }, { estructura: null, confirmar: 'true' }]) {
+    const c = await esError(await poner(u.ana, doc._id, PROG, cuerpo), 400, 'peticion');
+    assert.deepStrictEqual(c.perdida, { apartados: 2, campos: 1, filas: 2, conContenido: 2, casillasEscritas: 1 });
+    assert.ok(c.mensaje.includes('2 apartados de este módulo, todos con algo escrito'), c.mensaje);
+    assert.ok(c.mensaje.includes('1 casilla de este módulo, con algo escrito'), c.mensaje);
+    assert.ok(c.mensaje.includes('confirmar'), c.mensaje);
+    assert.ok(c.mensaje.includes('No se ha cambiado nada'));
+  }
+  assert.equal(JSON.stringify(await estructuraGuardada(repo, doc, PROG)), guardada);
+  assert.equal(JSON.stringify(await repo.apartados.listar(doc._id, {})), antes, 'no se ha borrado nada');
+  assert.equal(String((await repo.documentos.obtener(doc._id)).updatedAt), token, 'no se ha movido el token');
+  assert.equal(await hilos(repo, doc, TALLER, PROG), 1);
+});
+
+prueba('null CON confirmar: estructura en null, lo propio destruido, y lo común y el otro módulo intactos', async () => {
+  const { repo, u, doc } = await conLoPropio();
+  const r = await poner(u.ana, doc._id, PROG, { estructura: null, confirmar: true });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const j = await r.json();
+  assert.equal(j.estructura, null);
+  assert.deepStrictEqual(j.destruido, { filas: 2, comentarios: 1, casillas: 1 });
+  assert.equal(j.contenidoSinDestruir, null);
+  assert.equal(await estructuraGuardada(repo, doc, PROG), null);
+
+  // Lo propio de PROG ya no está: la casilla del apartado común, el apartado y su nieto, y los hilos del propio.
+  assert.equal(await fila(repo, doc, TALLER, PROG), undefined);
+  assert.equal(await fila(repo, doc, HIJO, PROG), undefined, 'el contenido del nieto también');
+  const comun = await fila(repo, doc, METODOLOGIA, PROG);
+  assert.ok(comun && !('m_notas' in comun.valores), 'la casilla propia ya no está');
+  assert.deepStrictEqual(comun.valores.texto, escribe('común ' + PROG), 'lo COMÚN del módulo que vuelve sobrevive');
+  assert.equal(await hilos(repo, doc, TALLER, PROG), 0, 'los comentarios del apartado propio se van');
+  assert.equal(await hilos(repo, doc, METODOLOGIA, PROG), 1, 'los de un apartado común no');
+
+  // El otro módulo, con los MISMOS ids, conserva todo.
+  const o = await fila(repo, doc, METODOLOGIA, OTRO);
+  assert.deepStrictEqual(o.valores.m_notas, escribe('notas ' + OTRO));
+  assert.deepStrictEqual(o.valores.texto, escribe('común ' + OTRO));
+  assert.deepStrictEqual((await fila(repo, doc, TALLER, OTRO)).valores.m_texto, escribe('taller ' + OTRO));
+  assert.deepStrictEqual((await fila(repo, doc, HIJO, OTRO)).valores.m_texto, escribe('nieto ' + OTRO));
+  assert.equal(await hilos(repo, doc, TALLER, OTRO), 1);
+  assert.deepStrictEqual(await estructuraGuardada(repo, doc, OTRO), propia());
+});
+
+prueba('null en un módulo que solo desviaba etiquetas u orden: 200 sin confirmar, porque no hay nada que perder', async () => {
+  const { repo, u, doc } = await escenario();
+  const soloEtiqueta = { secciones: { [METODOLOGIA]: { campos: { texto: { etiqueta: 'Otro nombre' } } } } };
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: soloEtiqueta })).status, 200);
+  const r = await poner(u.ana, doc._id, PROG, { estructura: null });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const j = await r.json();
+  assert.deepStrictEqual(j.destruido, { filas: 0, comentarios: 0, casillas: 0 });
+  assert.equal(j.contenidoSinDestruir, null);
+  assert.equal(await estructuraGuardada(repo, doc, PROG), null);
+  assert.deepStrictEqual((await fila(repo, doc, METODOLOGIA, PROG)).valores.texto, [{ type: 'p', text: 'Metodología.' }]);
+
+  const orden = { apartados: { orden: { modulos: ['modulos/evaluacion', METODOLOGIA] } } };
+  assert.equal((await poner(u.jefa, doc._id, OTRO, { estructura: orden })).status, 200);
+  assert.equal((await poner(u.jefa, doc._id, OTRO, { estructura: null })).status, 200);
+});
+
+prueba('volver a la común con lo propio pero nada escrito: pide confirmar y lo dice', async () => {
+  const { u, doc } = await escenario();
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: propia() })).status, 200);
+  const c = await esError(await poner(u.ana, doc._id, PROG, { estructura: null }), 400, 'peticion');
+  assert.ok(c.mensaje.includes('todos vacios') || c.mensaje.includes('todos vacíos') || c.mensaje.includes('vacío'), c.mensaje);
+  assert.ok(c.mensaje.includes('todas vacías') || c.mensaje.includes('vacía'), c.mensaje);
+  assert.equal(c.perdida.conContenido, 0);
+  assert.equal((await poner(u.ana, doc._id, PROG, { estructura: null, confirmar: true })).status, 200);
+});
+
+prueba('null con confirmar: la jefatura puede, quien no lleva el módulo recibe 403 y no se destruye nada', async () => {
+  const { repo, u, doc } = await conLoPropio();
+  const antes = JSON.stringify(await repo.apartados.listar(doc._id, {}));
+  const guardada = JSON.stringify(await estructuraGuardada(repo, doc, PROG));
+  await esError(await poner(u.luis, doc._id, PROG, { estructura: null, confirmar: true }), 403, 'sin_permiso');
+  await esError(await poner(u.estudios, doc._id, PROG, { estructura: null, confirmar: true }), 403, 'sin_permiso');
+  await esError(await poner(u.pepe, doc._id, PROG, { estructura: null, confirmar: true }), 404, 'no_encontrado');
+  await esError(await poner(null, doc._id, PROG, { estructura: null, confirmar: true }), 401, 'sin_identificar');
+  assert.equal(JSON.stringify(await repo.apartados.listar(doc._id, {})), antes);
+  assert.equal(JSON.stringify(await estructuraGuardada(repo, doc, PROG)), guardada);
+  const r = await poner(u.jefa, doc._id, PROG, { estructura: null, confirmar: true });
+  assert.equal(r.status, 200);
+  assert.equal(await fila(repo, doc, TALLER, PROG), undefined);
+});
+
+prueba('null con confirmar y un token viejo: 409 y no se destruye nada', async () => {
+  const { repo, u, doc } = await conLoPropio();
+  const leida = await (await leer(u.ana, doc._id, PROG)).json();
+  assert.equal((await poner(u.jefa, doc._id, OTRO, { estructura: null, confirmar: true })).status, 200);
+  const antes = JSON.stringify(await repo.apartados.listar(doc._id, { unidadId: PROG }));
+  const guardada = JSON.stringify(await estructuraGuardada(repo, doc, PROG));
+  await esError(await poner(u.ana, doc._id, PROG, { estructura: null, confirmar: true, esperaUpdatedAt: leida.updatedAt }), 409, 'conflicto');
+  await esError(await poner(u.ana, doc._id, PROG, { estructura: null, confirmar: true, esperaPlantillaVersion: leida.plantillaVersion + 1 }), 409, 'conflicto');
+  assert.equal(JSON.stringify(await repo.apartados.listar(doc._id, { unidadId: PROG })), antes);
+  assert.equal(JSON.stringify(await estructuraGuardada(repo, doc, PROG)), guardada);
+});
+
+prueba('null con confirmar en una versión alternativa: 409 y no se destruye nada', async () => {
+  const { repo, u, doc } = await conLoPropio();
+  const antes = JSON.stringify(await repo.apartados.listar(doc._id, {}));
+  await repo.documentos.actualizar(doc._id, { activa: false });
+  await esError(await poner(u.jefa, doc._id, PROG, { estructura: null, confirmar: true }), 409, 'version_alternativa');
+  assert.equal(JSON.stringify(await repo.apartados.listar(doc._id, {})), antes);
+  assert.notEqual(await estructuraGuardada(repo, doc, PROG), null);
+});
+
+prueba('un PUT que no es null y quita un apartado propio es un 400 (como una casilla), aunque lleve confirmar, y no destruye', async () => {
+  const { repo, u, doc } = await conLoPropio();
+  const antes = JSON.stringify(await repo.apartados.listar(doc._id, {}));
+  const guardada = JSON.stringify(await estructuraGuardada(repo, doc, PROG));
+  const sinNieto = propia();
+  sinNieto.apartados.anadidos = sinNieto.apartados.anadidos.slice(0, 1);
+  const sinApartados = propia();
+  delete sinApartados.apartados;
+  for (const estructura of [sinNieto, sinApartados]) {
+    const c = await esError(await poner(u.ana, doc._id, PROG, { estructura, confirmar: true }), 400, 'peticion');
+    assert.ok(c.mensaje.includes('retirado'), c.mensaje);
+    assert.ok(c.mensaje.includes('No se ha cambiado nada'));
+  }
+  assert.equal(JSON.stringify(await repo.apartados.listar(doc._id, {})), antes);
+  assert.equal(JSON.stringify(await estructuraGuardada(repo, doc, PROG)), guardada);
+});
+
+prueba('un apartado propio guardado sin casillas (dato antiguo) tampoco sale con un PUT que no es null: lo para la red de loQueSePierde', async () => {
+  const { repo, u, doc } = await escenario();
+  const vacio = { apartados: { anadidos: [{ id: TALLER, titulo: 'Taller de depuración', padre: 'modulos', campos: [] }] } };
+  await repo.unidades.actualizar(doc._id, PROG, { estructura: vacio });
+  await repo.apartados.escribir(doc._id, TALLER, PROG, { valores: { m_texto: escribe('escrito') } });
+  const c = await esError(await poner(u.ana, doc._id, PROG, { estructura: reforma(), confirmar: true }), 400, 'peticion');
+  assert.equal(c.perdida.apartados, 1);
+  assert.ok(c.mensaje.includes('1 apartado de este módulo, con algo escrito'), c.mensaje);
+  assert.deepStrictEqual(await estructuraGuardada(repo, doc, PROG), vacio);
+  assert.ok(await fila(repo, doc, TALLER, PROG), 'su contenido sigue ahí');
 });
 
 (async () => {

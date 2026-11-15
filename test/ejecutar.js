@@ -70,6 +70,7 @@ const SUITES = [
   { archivo: 'test/tablas-adopcion.js', nombre: 'adoptar el modelo para una tabla ya escrita' },
   { archivo: 'test/estructura-modulo.js', nombre: 'estructura propia de un modulo: la regla, la puerta y quien la cambia' },
   { archivo: 'test/estructura-modulo-ruta.js', nombre: 'estructura propia de un modulo: la ruta que la guarda' },
+  { archivo: 'test/estructura-modulo-borrar.js', nombre: 'estructura propia de un modulo: borrar para siempre un apartado o una casilla' },
 
   // --- E7: aprobar, coordinar y los otros documentos ----------------------
   { archivo: 'test/estados.js', nombre: 'estados del documento, PCCF y memoria' },

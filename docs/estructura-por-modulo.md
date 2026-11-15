@@ -166,7 +166,9 @@ la forma de ver, en una línea, qué se ha abierto exactamente.
   `m_observaciones` en el mismo apartado común, cada uno con su contenido.
 - **Cerrado: una casilla no desaparece de la lista.** El PUT de la estructura propia compara con lo
   guardado (`motivoDeCasillasPerdidas` en `core/estructura-modulo.js`) y contesta 400 si falta una
-  casilla; para quitarla se marca `retirado: true`. El cerrojo del cliente se queda como segunda
+  casilla; para quitarla se marca `retirado: true`. Lo mismo vale para un apartado propio: un PUT que
+  no sea `null` y lo haga desaparecer es un 400 (con su recuento en `perdida`), nunca una confirmación;
+  solo `estructura: null` con `confirmar: true` destruye. El cerrojo del cliente se queda como segunda
   barrera. Los campos añadidos a un apartado común no tenían el agujero: sus rutas son operaciones
   (retirar, restaurar…), no un PUT de la lista.
 - **Cerrado: el borrado exige confirmación en el servidor.** Los dos DELETE de `estructura.js` piden

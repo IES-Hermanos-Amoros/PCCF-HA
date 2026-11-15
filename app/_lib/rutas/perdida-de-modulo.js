@@ -66,21 +66,28 @@ async function contenidoDeLaPerdida({ repo, documentoId, unidadId, perdida }) {
 
 // LA FRASE. Lo que se le dice a quien todavía no ha confirmado, para que decida sabiendo qué pierde.
 // Está aquí y no en cada ruta por lo mismo que la cuenta: el aviso de antes y la respuesta de después
-// tienen que decir lo mismo. No lleva mayúscula inicial ni punto final: la monta quien la use.
+// tienen que decir lo mismo. No lleva mayúscula inicial, ni punto final, ni verbo conjugado: «se
+// perdería 2 apartados» no concuerda, así que quien la usa la encaja detrás de dos puntos.
 function fraseDeLaPerdida(contenido) {
   const c = esObjeto(contenido) ? contenido : {};
   const n = (x) => Number(x) || 0;
-  const plural = (cuantos, uno, muchos) => `${cuantos} ${cuantos === 1 ? uno : muchos}`;
+  // `g` son las palabras del genero que toque: un apartado vacio y una casilla vacia no se dicen igual.
+  const trozo = (cuantos, escritos, g) => {
+    const cabeza = `${cuantos} ${cuantos === 1 ? g.uno : g.muchos} de este módulo`;
+    if (!escritos) return `${cabeza}, ${cuantos === 1 ? g.vacio : g.vacios}`;
+    if (escritos === cuantos) return `${cabeza}, ${cuantos === 1 ? 'con algo escrito' : g.todos}`;
+    return `${cabeza}, ${escritos} con algo escrito`;
+  };
   const partes = [];
   if (n(c.apartados)) {
-    partes.push(n(c.conContenido)
-      ? `${plural(n(c.apartados), 'apartado', 'apartados')} de este módulo, ${n(c.conContenido) === 1 ? 'uno con algo escrito' : `${n(c.conContenido)} con algo escrito`}`
-      : `${plural(n(c.apartados), 'apartado', 'apartados')} de este módulo, ninguno con nada escrito`);
+    partes.push(trozo(n(c.apartados), n(c.conContenido), {
+      uno: 'apartado', muchos: 'apartados', vacio: 'vacío', vacios: 'todos vacíos', todos: 'todos con algo escrito',
+    }));
   }
   if (n(c.campos)) {
-    partes.push(n(c.casillasEscritas)
-      ? `${plural(n(c.campos), 'casilla', 'casillas')} de este módulo, ${n(c.casillasEscritas) === 1 ? 'una con algo escrito' : `${n(c.casillasEscritas)} con algo escrito`}`
-      : `${plural(n(c.campos), 'casilla', 'casillas')} de este módulo, ninguna con nada escrito`);
+    partes.push(trozo(n(c.campos), n(c.casillasEscritas), {
+      uno: 'casilla', muchos: 'casillas', vacio: 'vacía', vacios: 'todas vacías', todos: 'todas con algo escrito',
+    }));
   }
   if (!partes.length) return 'nada: no hay ningún apartado ni ninguna casilla propios que perder';
   return partes.join(' y ');

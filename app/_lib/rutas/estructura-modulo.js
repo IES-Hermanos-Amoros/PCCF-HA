@@ -14,7 +14,24 @@
 // pantalla las compondrá y mandará el resultado por aquí. `estructura: null` quita la estructura propia y
 // el módulo vuelve a la común (la clave no se deja vacía: una estructura sin desvíos no vale).
 //
-// Cuerpo: `{ estructura, esperaUpdatedAt?, esperaPlantillaVersion? }`.
+// Cuerpo: `{ estructura, confirmar?, esperaUpdatedAt?, esperaPlantillaVersion? }`.
+//
+// VOLVER A LA COMÚN DESTRUYE LO PROPIO, Y SE CONFIRMA. Las casillas y los apartados que el módulo ha
+// creado dejan de existir al quitar su estructura, y lo escrito debajo de sus ids se quedaría guardado,
+// invisible y sin forma de llegar a ello. Por eso se destruye (perdida-de-modulo.js) y, como no se puede
+// deshacer, se exige `{ confirmar: true }`. Sin él, un 400 que dice cuánto se pierde (`perdida`, con el
+// recuento, y la frase en el mensaje) y no cambia nada. Con él, se guarda `estructura: null` y DESPUÉS
+// se destruye el contenido; la respuesta lleva lo destruido (`destruido`) y `contenidoSinDestruir`, que
+// es null si todo fue bien y el motivo si la base falló a medias (la estructura ya está cambiada).
+// Si el módulo solo desviaba etiquetas, orden o retiradas de lo común no hay nada que destruir y no se
+// pide confirmación: pedirla sin que se pierda nada enseña a confirmar sin leer. El contenido COMÚN del
+// módulo (lo escrito en los apartados de la plantilla) no se toca nunca, y el borrado va acotado a este
+// módulo: otro módulo con una casilla propia del mismo id conserva la suya.
+//
+// UN PUT QUE NO ES null NO DESTRUYE NADA. Si lo que pide haría desaparecer una casilla o un apartado
+// propios, es un 400: sin confirmación posible, como con las casillas (más abajo). Quitar es retirar
+// (`retirado: true`), que conserva el contenido; destruirlo es volver a la común, con confirmación, o
+// el borrado definitivo de su propia ruta. Así ningún camino deja contenido huérfano sin confirmar.
 //
 // LOS APARTADOS PROPIOS DEL MÓDULO. Un apartado que el módulo ha añadido no está en la plantilla común, y
 // sus casillas viven en su propio `anadido` (`campos`), no en `secciones`. El `GET ?seccion=` lo
@@ -28,7 +45,8 @@
 //   401  no sé quién eres
 //   404  no ves el documento, o no tiene esa unidad, o el cuerpo nombra un apartado que no tiene
 //   403  lo ves y no puedes configurar ALGUNO de los apartados que cambias (`reglaEstructuraPropia`)
-//   400  cuerpo mal formado, o la puerta (`motivoDeEstructura`) lo rechaza: el motivo, tal cual
+//   400  cuerpo mal formado, o la puerta (`motivoDeEstructura`) lo rechaza: el motivo, tal cual; o quita
+//        algo propio sin retirarlo, o vuelve a la común perdiendo algo propio sin `confirmar: true`
 //   409  alguien ha cambiado el documento o su plantilla desde que lo leíste, o es una versión alternativa
 //
 // QUIÉN PUEDE: LA REGLA DE core/permisos.js, apartado a apartado. Los booleanos que la regla espera
@@ -59,6 +77,7 @@
 const C = require('../../../core/permisos');
 const EstructuraModulo = require('../../../core/estructura-modulo');
 const { alcanceDe } = require('./alcance');
+const { contenidoDeLaPerdida, fraseDeLaPerdida, destruirLaPerdida } = require('./perdida-de-modulo');
 const {
   conErrores, abrirDocumento, leerJson, buscarSeccion, booleanosDeApartado,
   fallo, malaPeticion, noEncontrado, SIN_PERMISO,
@@ -325,6 +344,29 @@ const PUT = conErrores(async (peticion, parametros) => {
     }
   }
 
+  // LO PROPIO QUE SE PIERDE. Se mira con la estructura que hay guardada, como la comprobación de arriba, y
+  // se cuenta ANTES de escribir: es lo que hay que decirle a quien confirma. Con un token viejo se salta
+  // por lo mismo que arriba: contesta el 409 de la escritura.
+  const perdida = tokenVigente ? EstructuraModulo.loQueSePierde(unidad, nueva) : { campos: [], apartados: [] };
+  const hayPerdida = perdida.campos.length > 0 || perdida.apartados.length > 0;
+  const contenido = hayPerdida
+    ? await contenidoDeLaPerdida({ repo, documentoId: documento._id, unidadId, perdida })
+    : null;
+  if (hayPerdida && nueva !== null) {
+    // Red por debajo de la de las casillas: si algo propio se fuera sin que esa comprobación lo haya
+    // visto (un apartado guardado sin casillas, que la puerta de hoy ya no deja crear), esta ruta no lo
+    // destruye ni lo deja huérfano: lo rechaza igual.
+    const motivo = `esa estructura quitaría ${fraseDeLaPerdida(contenido)}: lo propio de un módulo no desaparece de la lista, porque lo escrito en ello se quedaría guardado sin que nadie lo viera. Para quitarlo, márcalo con «retirado: true».`;
+    return fallo(400, 'peticion', `${motivo[0].toUpperCase()}${motivo.slice(1)} No se ha cambiado nada.`, { motivo, perdida: contenido, alcance: alcances });
+  }
+  if (hayPerdida && cuerpo.confirmar !== true) {
+    return fallo(
+      400, 'peticion',
+      `Volver a la estructura común no se puede deshacer. Esto es lo que se va: ${fraseDeLaPerdida(contenido)}. Manda { "confirmar": true } para confirmarlo. No se ha cambiado nada.`,
+      { perdida: contenido, alcance: alcances },
+    );
+  }
+
   // La escritura que decide: condicionada al token del documento. Si alguien lo ha movido, 409.
   let ahora = null;
   try {
@@ -346,10 +388,22 @@ const PUT = conErrores(async (peticion, parametros) => {
     return fallo(500, 'error_interno', 'La estructura no se ha guardado: el repositorio no la ha devuelto. Si acabas de actualizar la aplicación, reinicia el servidor.');
   }
 
+  // Con la estructura ya guardada, se destruye lo que se contó. Solo se llega aquí con `nueva === null` y
+  // confirmación (arriba se ha cortado el resto).
+  const destruido = hayPerdida ? await destruirLaPerdida({ repo, documentoId: documento._id, unidadId, perdida }) : null;
+
   return Response.json({
     documentoId: documento._id,
     unidadId,
     estructura: EstructuraModulo.estructuraDeModulo(guardada),
+    // Siempre van, en ceros si no se ha destruido nada: una clave que a veces no está obliga a la
+    // pantalla a distinguir «no se destruyó nada» de «esta versión del servidor no lo dice».
+    destruido: {
+      filas: destruido ? destruido.filas : 0,
+      comentarios: destruido ? destruido.comentarios : 0,
+      casillas: destruido ? destruido.casillas : 0,
+    },
+    contenidoSinDestruir: destruido ? destruido.sinDestruir : null,
     plantillaVersion: actual,
     updatedAt: ahora ? ahora.updatedAt : null,
     cambiadas: cambiados,
