@@ -214,6 +214,57 @@ async function bateria(etiqueta, fabrica) {
     assert.equal(await repo.apartados.quitarClave(d._id, 'modulos/a', 'texto'), 0);
   });
 
+  await prueba('apartados.borrar con unidad destruye solo las filas de esa unidad y devuelve cuántas, y null es solo la común', async (repo) => {
+    const d = await documento(repo);
+    for (const u of ['m1', 'm2', null]) {
+      await repo.apartados.escribir(d._id, 'modulos/a', u, { valores: { texto: String(u) } });
+      await repo.apartados.escribir(d._id, 'modulos/a/b', u, { valores: { texto: String(u) } });
+    }
+    assert.equal(await repo.apartados.borrar(d._id, ['modulos/a', 'modulos/a/b'], 'm1'), 2);
+    const quedan = (await repo.apartados.listar(d._id)).map((a) => `${a.seccion}|${a.unidadId}`).sort();
+    assert.deepEqual(quedan, ['modulos/a/b|m2', 'modulos/a/b|null', 'modulos/a|m2', 'modulos/a|null']);
+    assert.equal(await repo.apartados.borrar(d._id, ['modulos/a', 'modulos/a/b'], 'm1'), 0);
+    // null es la fila común, no «todas»: las de m2 sobreviven.
+    assert.equal(await repo.apartados.borrar(d._id, ['modulos/a', 'modulos/a/b'], null), 2);
+    assert.deepEqual((await repo.apartados.listar(d._id)).map((a) => a.unidadId), ['m2', 'm2']);
+    assert.ok((await error(repo.apartados.borrar(d._id, ['modulos/a'], ''))) instanceof TypeError);
+  });
+
+  await prueba('apartados.quitarClave con unidad quita la clave solo de esa unidad: la misma clave de otra unidad sobrevive', async (repo) => {
+    const d = await documento(repo);
+    await repo.apartados.escribir(d._id, 'comun/a', 'm1', { valores: { m_observaciones: 'del modulo 1', texto: 'uno' } });
+    const m6 = await repo.apartados.escribir(d._id, 'comun/a', 'm6', { valores: { m_observaciones: 'del modulo 6', texto: 'seis' } });
+    await repo.apartados.escribir(d._id, 'comun/a', null, { valores: { m_observaciones: 'comun' } });
+
+    assert.equal(await repo.apartados.quitarClave(d._id, 'comun/a', 'm_observaciones', 'm6'), 1);
+    assert.deepEqual((await repo.apartados.leer(d._id, 'comun/a', 'm6')).valores, { texto: 'seis' });
+    assert.deepEqual((await repo.apartados.leer(d._id, 'comun/a', 'm1')).valores, { m_observaciones: 'del modulo 1', texto: 'uno' });
+    assert.deepEqual((await repo.apartados.leer(d._id, 'comun/a', null)).valores, { m_observaciones: 'comun' });
+    assert.ok((await repo.apartados.leer(d._id, 'comun/a', 'm6')).updatedAt.getTime() > m6.updatedAt.getTime());
+    assert.equal(await repo.apartados.quitarClave(d._id, 'comun/a', 'm_observaciones', 'm6'), 0);
+    assert.equal(await repo.apartados.quitarClave(d._id, 'comun/a', 'm_observaciones', null), 1);
+    assert.equal((await repo.apartados.leer(d._id, 'comun/a', 'm1')).valores.m_observaciones, 'del modulo 1');
+    // Sin unidad sigue siendo todas.
+    assert.equal(await repo.apartados.quitarClave(d._id, 'comun/a', 'm_observaciones'), 1);
+  });
+
+  await prueba('comentarios.borrar sin unidad borra los de todas las unidades; con unidad, solo los de esa', async (repo) => {
+    const d = await documento(repo);
+    const otro = await documento(repo);
+    const c = (doc, seccion, unidadId) => repo.comentarios.crear({ documentoId: doc._id, seccion, unidadId, autor: 'ana', texto: 'x' });
+    for (const u of ['m1', 'm2', null]) { await c(d, 'modulos/a', u); await c(d, 'modulos/b', u); }
+    await c(otro, 'modulos/a', 'm1');
+
+    assert.equal(await repo.comentarios.borrar(d._id, ['modulos/a'], 'm1'), 1);
+    assert.equal((await repo.comentarios.listar(d._id)).length, 5);
+    assert.equal((await repo.comentarios.listar(d._id, { seccion: 'modulos/a', unidadId: 'm2' })).length, 1);
+    assert.equal(await repo.comentarios.borrar(d._id, ['modulos/a'], null), 1);
+    assert.equal(await repo.comentarios.borrar(d._id, ['modulos/a', 'modulos/b']), 4);
+    assert.equal((await repo.comentarios.listar(d._id)).length, 0);
+    assert.equal((await repo.comentarios.listar(otro._id)).length, 1, 'ha borrado comentarios de otro documento');
+    assert.ok((await error(repo.comentarios.borrar(d._id, 'modulos/a', 'm1'))) instanceof TypeError);
+  });
+
   await prueba('apartados.escribir crea el apartado y luego solo cambia lo que se le pasa', async (repo) => {
     const d = await documento(repo);
     const a = await repo.apartados.escribir(d._id, 'introduccion', null, { valores: { texto: 'uno' }, origen: 'nuevo' });

@@ -129,6 +129,14 @@ const ahoraO = (valor) => (valor === undefined || valor === null ? new Date() : 
 // Un apartado común se guarda con unidadId null, nunca ausente: así la clave única y los filtros lo tratan igual.
 const unidadOComun = (unidadId) => (unidadId === undefined || unidadId === null ? null : cadena(unidadId, 'unidadId'));
 
+// El parámetro de unidad de los borrados es DISTINTO de `unidadOComun`, porque ahí `null` ya significa «la fila común»
+// y aquí hace falta además poder decir «todas las unidades». Tres valores, tres significados:
+//   - `undefined` (no se pasa): TODAS las unidades.
+//   - `null`: solo la fila común (unidadId null).
+//   - una cadena: solo esa unidad.
+// Si se normalizara con `unidadOComun`, olvidarse del parámetro borraría solo la fila común en vez de todas, o al revés.
+const unidadODeTodas = (unidadId) => (unidadId === undefined ? undefined : unidadId === null ? null : cadena(unidadId, 'unidadId'));
+
 // esperaUpdatedAt llega como Date si lo pone el código, y como cadena ISO si viene de la API (JSON no tiene fechas).
 // Se normaliza aquí para que el adaptador compare siempre Date con Date.
 function normalizarEsperado(valor) {
@@ -206,30 +214,42 @@ function crearRepositorio({ adaptador }) {
         unidadId: unidadOComun(x?.unidadId),
       }))),
 
-      // BORRAR DE VERDAD el contenido de unos apartados: todas las filas de esas secciones, de todas las
-      // unidades. Es DOCUMENTO + LISTA DE SECCIONES y no una sección sola porque un apartado se borra con
-      // todo su subárbol, y una operación por sección dejaría el borrado a medias si fallara en medio. No
-      // se filtra por unidad a propósito: un apartado de módulo tiene una fila por unidad y borrarlo es
-      // borrarlas todas. Devuelve cuántas filas ha destruido.
-      borrar: async (documentoId, secciones) => {
+      // BORRAR DE VERDAD el contenido de unos apartados: las filas de esas secciones. Es DOCUMENTO + LISTA DE
+      // SECCIONES y no una sección sola porque un apartado se borra con todo su subárbol, y una operación por
+      // sección dejaría el borrado a medias si fallara en medio. Devuelve cuántas filas ha destruido.
+      //
+      // `unidadId` acota el borrado, y su ausencia importa (ver `unidadODeTodas`): SIN ÉL (`undefined`) se
+      // borran las filas de TODAS las unidades, que es lo correcto para quitar un apartado de la plantilla
+      // común, porque un apartado de módulo tiene una fila por unidad. CON ÉL se borra solo esa unidad.
+      // Hace falta acotar cuando el apartado lo ha creado un módulo para sí: el mismo id de sección puede
+      // existir en otro módulo con contenido propio, y borrarlo de todas las unidades se lo llevaría.
+      borrar: async (documentoId, secciones, unidadId) => {
         if (!Array.isArray(secciones)) throw new TypeError('secciones debe ser una lista');
         return a.apartados.borrar(
           cadena(documentoId, 'documentoId'),
           [...new Set(secciones.map((s) => cadena(s, 'seccion')))],
+          unidadODeTodas(unidadId),
         );
       },
 
-      // QUITAR UNA CLAVE de `valores` en todas las filas de una sección. Es una operación aparte y no un
+      // QUITAR UNA CLAVE de `valores` en las filas de una sección. Es una operación aparte y no un
       // `escribir` porque `escribir` NO PUEDE quitar nada: la ruta de /apartado funde lo que llega con lo
       // guardado, así que un campo ausente se conserva, y a nivel de adaptador `valores` se sustituye entero
       // o no se toca. Quitar una clave exige leer, quitarla y escribir de vuelta, y eso tiene que ser
       // atómico por fila: si fuera una lectura aquí y una escritura allá, una edición concurrente que
       // llevara el valor viejo podría volver a escribirlo. Cada fila cambia su token de versión, así que quien
       // leyó antes recibe un conflicto en lugar de resucitar el campo. Devuelve cuántas filas tenían la clave.
-      quitarClave: async (documentoId, seccion, clave) => a.apartados.quitarClave({
+      //
+      // `unidadId` acota igual que en `borrar`: sin él (`undefined`) se quita de las filas de todas las
+      // unidades; con él, solo de esa. Es imprescindible para las casillas propias de un módulo: su id lo
+      // acuña `idDeCampoPropio` con los ids ocupados DE ESE MÓDULO, así que dos módulos pueden tener la misma
+      // `m_observaciones` en el mismo apartado común, cada una con su contenido. Quitarla de todas las filas
+      // borraría la del otro módulo.
+      quitarClave: async (documentoId, seccion, clave, unidadId) => a.apartados.quitarClave({
         documentoId: cadena(documentoId, 'documentoId'),
         seccion: cadena(seccion, 'seccion'),
         clave: cadena(clave, 'clave'),
+        unidadId: unidadODeTodas(unidadId),
         siguienteToken,
       }),
     },
@@ -266,12 +286,15 @@ function crearRepositorio({ adaptador }) {
       // que ya no está en la plantilla no se resuelve—, así que quedaría guardado para siempre lo
       // que escribieron otras personas sin que nadie pueda llegar a ello. Misma forma que
       // `apartados.borrar`: documento + lista de secciones, porque un apartado se va con su
-      // subárbol. Devuelve cuántos comentarios ha destruido.
-      borrar: async (documentoId, secciones) => {
+      // subárbol, y el mismo `unidadId` opcional con el mismo significado (`undefined` = todas las
+      // unidades, `null` = la común, cadena = esa unidad; ver `unidadODeTodas`). Devuelve cuántos
+      // comentarios ha destruido.
+      borrar: async (documentoId, secciones, unidadId) => {
         if (!Array.isArray(secciones)) throw new TypeError('secciones debe ser una lista');
         return a.comentarios.borrar(
           cadena(documentoId, 'documentoId'),
           [...new Set(secciones.map((s) => cadena(s, 'seccion')))],
+          unidadODeTodas(unidadId),
         );
       },
     },

@@ -282,9 +282,12 @@ function crear({ uri, nombreBd }) {
       return salidaMuchos(creados);
     },
 
-    async borrar(documentoId, secciones) {
+    // `unidadId` undefined es «todas las unidades»: la clave ni se pone en el filtro. null es la fila común.
+    async borrar(documentoId, secciones, unidadId) {
       if (secciones.length === 0) return 0;
-      const r = await (await coleccion('apartados')).deleteMany({ documentoId, seccion: { $in: secciones } });
+      const filtro = { documentoId, seccion: { $in: secciones } };
+      if (unidadId !== undefined) filtro.unidadId = unidadId;
+      const r = await (await coleccion('apartados')).deleteMany(filtro);
       return r.deletedCount;
     },
 
@@ -292,9 +295,11 @@ function crear({ uri, nombreBd }) {
     // fila avanza (con `siguienteToken`, que nunca repite el anterior) y quien leyó antes recibe el conflicto.
     // Y no se construye ninguna ruta `valores.<clave>`: la clave se quita en JavaScript y se escribe `valores`
     // entero, de modo que un id con puntos o con «$» no se interpreta como ruta ni como operador.
-    async quitarClave({ documentoId, seccion, clave, siguienteToken }) {
+    async quitarClave({ documentoId, seccion, clave, unidadId, siguienteToken }) {
       const c = await coleccion('apartados');
-      const filas = await c.find({ documentoId, seccion }).toArray();
+      const filtro = { documentoId, seccion };
+      if (unidadId !== undefined) filtro.unidadId = unidadId;
+      const filas = await c.find(filtro).toArray();
       let quitadas = 0;
       for (const fila of filas) {
         for (let intento = 0; intento < REINTENTOS; intento += 1) {
@@ -357,9 +362,11 @@ function crear({ uri, nombreBd }) {
       return salidaMuchos(docs);
     },
 
-    async borrar(documentoId, secciones) {
+    async borrar(documentoId, secciones, unidadId) {
       if (secciones.length === 0) return 0;
-      const r = await (await coleccion('comentarios')).deleteMany({ documentoId, seccion: { $in: secciones } });
+      const filtro = { documentoId, seccion: { $in: secciones } };
+      if (unidadId !== undefined) filtro.unidadId = unidadId;
+      const r = await (await coleccion('comentarios')).deleteMany(filtro);
       return r.deletedCount;
     },
   };

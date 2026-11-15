@@ -856,11 +856,103 @@ const de = (donde) => (String(donde).startsWith('el ') ? 'del ' + String(donde).
     return null;
   }
 
+  // LO QUE DEJA DE EXISTIR AL CAMBIAR LA ESTRUCTURA PROPIA. Dice qué casillas y qué apartados PROPIOS del
+  // módulo desaparecen si su estructura pasa de la de `unidad` a `nueva`. Es la pregunta que hay que
+  // hacer antes de borrar, porque debajo de esos ids hay contenido escrito por personas. Solo puede
+  // perderse lo propio: un desvío cambia etiquetas, orden y retiradas sobre lo común, y quitarlo
+  // devuelve lo común tal cual, así que lo común no entra nunca en el resultado.
+  //
+  //   { campos:    [ { seccion, id, etiqueta } ],   casillas propias que dejan de existir
+  //     apartados: [ { id, titulo } ] }             apartados propios que dejan de existir
+  //
+  // `nueva === null` es volver a la común: se pierde todo lo propio. Siempre devuelve las dos listas,
+  // vacías si no se pierde nada, y no modifica ni `unidad` ni `nueva`.
+  //
+  // UN APARTADO SE PIERDE CON SU SUBÁRBOL. Un apartado propio puede colgar de otro (`padre`). Si el
+  // padre se pierde, también sus descendientes, aunque `nueva` todavía los liste: sin padre no cuelgan
+  // de ningún sitio y `apartadosDeModulo` no los pintaría. Por eso se recorre `padre` hacia abajo y no
+  // basta con mirar qué ids faltan.
+  //
+  // DOS TIPOS DE BORRADO, y por eso van en listas distintas. Las casillas de un apartado propio que se
+  // pierde NO van en `campos`: van dentro de ese apartado, y quien lo borre borra su fila entera, con
+  // todas sus casillas. En `campos` solo van las casillas propias de apartados que SIGUEN existiendo,
+  // y quitar una es quitar una clave de una fila que se queda. Si se mezclaran, quien borra
+  // intentaría quitar una casilla de una fila que ya no está, o contaría dos veces lo mismo.
+  //
+  // Las listas salen ordenadas (casillas por `seccion` y `id`, apartados por `id`) para que dos
+  // llamadas iguales den lo mismo en el mismo orden. Con datos mal formados es tan tolerante como el
+  // resto del fichero: sin estructura devuelve las listas vacías y una entrada que no sea un objeto
+  // con `id` de cadena se ignora.
+  function loQueSePierde(unidad, nueva) {
+    const lista = (x) => (Array.isArray(x) ? x : []);
+    const validos = (x) => lista(x).filter((a) => esObjeto(a) && esCadena(a.id));
+    const texto = (x, otro) => (typeof x === 'string' && x.trim() ? x : otro);
+    const porClave = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+    const hoy = esObjeto(unidad) && esObjeto(unidad[CLAVE]) ? unidad[CLAVE] : null;
+    const perdido = { campos: [], apartados: [] };
+    if (!hoy) return perdido;
+    // `nueva` es un objeto o exactamente `null`. Cualquier otra cosa es un dato roto, y de lo que
+    // contesta esta función depende qué se destruye: UN DATO ROTO NO AUTORIZA UNA DESTRUCCIÓN, así que
+    // se contesta «no se pierde nada». No deja pasar ninguna escritura —la ruta rechaza ese cuerpo con
+    // un 400 antes de llegar aquí—; lo que evita es que un fallo de validación en otro sitio se
+    // convierta en un borrado, que es el error en el que esta función no puede caer.
+    if (nueva !== null && !esObjeto(nueva)) return perdido;
+    const despues = nueva;
+
+    // Los apartados propios de hoy y los ids que la nueva sigue listando.
+    const propiosHoy = esObjeto(hoy.apartados) ? validos(hoy.apartados.anadidos) : [];
+    const propiosNueva = despues && esObjeto(despues.apartados) ? validos(despues.apartados.anadidos) : [];
+    const sigue = new Set(propiosNueva.map((a) => a.id));
+    const caidos = new Set(propiosHoy.filter((a) => !sigue.has(a.id)).map((a) => a.id));
+    // El subárbol: hasta que no entre ninguno más, se pierde todo el que cuelga de uno perdido.
+    for (let cambia = true; cambia;) {
+      cambia = false;
+      for (const a of propiosHoy) {
+        if (!caidos.has(a.id) && caidos.has(a.padre)) { caidos.add(a.id); cambia = true; }
+      }
+    }
+    const vistosApartados = new Set();
+    for (const a of propiosHoy) {
+      if (!caidos.has(a.id) || vistosApartados.has(a.id)) continue;
+      vistosApartados.add(a.id);
+      perdido.apartados.push({ id: a.id, titulo: texto(a.titulo, a.id) });
+    }
+
+    // Las casillas, de apartados que siguen. Se recorren las dos formas guardadas
+    // (`secciones[...].anadidos` y `campos` de un apartado propio), como `casillasDe`, pero aquí hace
+    // falta además la etiqueta y el apartado como id.
+    const casillas = (e) => {
+      const mapa = new Map();
+      if (!esObjeto(e)) return mapa;
+      if (esObjeto(e.secciones)) {
+        for (const id of Object.keys(e.secciones)) {
+          if (!esObjeto(e.secciones[id])) continue;
+          for (const c of validos(e.secciones[id].anadidos)) mapa.set(id + '\u0000' + c.id, { seccion: id, campo: c });
+        }
+      }
+      if (esObjeto(e.apartados)) {
+        for (const a of validos(e.apartados.anadidos)) {
+          for (const c of validos(a.campos)) mapa.set(a.id + '\u0000' + c.id, { seccion: a.id, campo: c });
+        }
+      }
+      return mapa;
+    };
+    const quedan = casillas(despues);
+    for (const [clave, { seccion, campo }] of casillas(hoy)) {
+      // Las de un apartado perdido se van con su fila: no son una pérdida aparte.
+      if (caidos.has(seccion) || quedan.has(clave)) continue;
+      perdido.campos.push({ seccion, id: campo.id, etiqueta: texto(campo.etiqueta, campo.id) });
+    }
+    perdido.campos.sort((a, b) => porClave(a.seccion, b.seccion) || porClave(a.id, b.id));
+    perdido.apartados.sort((a, b) => porClave(a.id, b.id));
+    return perdido;
+  }
+
   const api = {
     CLAVE, PREFIJO, RESERVADOS, MAX_CAMPOS, MAX_SECCIONES, MAX_APARTADOS_PROPIOS, LARGO_ETIQUETA,
     estructuraDeModulo, camposDeSeccion, desvioDe, idDeCampoPropio,
     apartadosDeModulo, desvioDeApartados, bloqueDeUnidades, idDeApartadoPropio,
-    motivoDeEstructura, motivoDeCasillasPerdidas, motivoDeDesvio, motivoDeCampoPropio, choqueDeEtiquetas, motivoDeApartados,
+    motivoDeEstructura, motivoDeCasillasPerdidas, loQueSePierde, motivoDeDesvio, motivoDeCampoPropio, choqueDeEtiquetas, motivoDeApartados,
   };
 
   global.Core = global.Core || {};

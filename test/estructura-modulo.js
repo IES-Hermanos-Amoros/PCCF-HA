@@ -794,6 +794,145 @@ prueba('motivoDeCasillasPerdidas: omitir una casilla existente se dice, retirarl
   assert.match(EM.motivoDeCasillasPerdidas(antes, con((n) => { delete n.apartados; })), /«m_tres»/, 'quitar el apartado entero se lleva sus casillas');
 });
 
+// ---------------------------------------------------------------- lo que se pierde
+
+const casilla = (id, extra) => ({ id, tipo: 'texto_largo', etiqueta: 'Etiqueta ' + id, ...extra });
+const copia = (x) => JSON.parse(JSON.stringify(x));
+// Un modulo con casillas propias en dos apartados comunes, y apartados propios: una cadena
+// (abuelo > padre > nieto) y uno suelto, cada uno con sus casillas.
+const propia = () => ({
+  secciones: {
+    [OBJ]: { campos: { texto: { etiqueta: 'Renombrado' } }, anadidos: [casilla('m_a'), casilla('m_b')], orden: ['m_b', 'texto'] },
+    [EVA]: { anadidos: [casilla('m_c')] },
+  },
+  apartados: {
+    cambios: { 'modulos/fichas': { titulo: 'Otro' } },
+    anadidos: [
+      { id: 'modulos/m_abuelo', titulo: 'Abuelo', padre: 'modulos', campos: [casilla('m_x')] },
+      { id: 'modulos/m_abuelo/m_padre', titulo: 'Padre', padre: 'modulos/m_abuelo', campos: [casilla('m_y')] },
+      { id: 'modulos/m_abuelo/m_padre/m_nieto', titulo: 'Nieto', padre: 'modulos/m_abuelo/m_padre', campos: [casilla('m_z')] },
+      { id: 'modulos/m_suelto', titulo: 'Suelto', padre: 'modulos', campos: [casilla('m_w'), casilla('m_v')] },
+    ],
+    orden: { modulos: ['modulos/m_suelto', 'modulos/m_abuelo'] },
+  },
+});
+const sinNada = { campos: [], apartados: [] };
+
+prueba('loQueSePierde: una estructura nueva que conserva todo lo propio no pierde nada', () => {
+  const u = { estructura: propia() };
+  assert.deepStrictEqual(EM.loQueSePierde(u, propia()), sinNada);
+  const mas = propia();
+  mas.secciones[OBJ].anadidos.push(casilla('m_nueva'));
+  assert.deepStrictEqual(EM.loQueSePierde(u, mas), sinNada, 'anadir no pierde');
+  const retirada = propia();
+  retirada.secciones[OBJ].anadidos[0].retirado = true;
+  assert.deepStrictEqual(EM.loQueSePierde(u, retirada), sinNada, 'retirar no pierde');
+});
+
+prueba('loQueSePierde: una casilla propia quitada de los anadidos de una seccion se pierde', () => {
+  const nueva = propia();
+  nueva.secciones[OBJ].anadidos.shift();
+  assert.deepStrictEqual(EM.loQueSePierde({ estructura: propia() }, nueva), {
+    campos: [{ seccion: OBJ, id: 'm_a', etiqueta: 'Etiqueta m_a' }], apartados: [],
+  });
+});
+
+prueba('loQueSePierde: una casilla propia se pierde tambien cuando desaparece la seccion entera', () => {
+  const nueva = propia();
+  delete nueva.secciones[OBJ];
+  assert.deepStrictEqual(EM.loQueSePierde({ estructura: propia() }, nueva).campos, [
+    { seccion: OBJ, id: 'm_a', etiqueta: 'Etiqueta m_a' },
+    { seccion: OBJ, id: 'm_b', etiqueta: 'Etiqueta m_b' },
+  ]);
+});
+
+prueba('loQueSePierde: se pierde un apartado propio, y sus casillas no salen en campos', () => {
+  const nueva = propia();
+  nueva.apartados.anadidos = nueva.apartados.anadidos.filter((a) => a.id !== 'modulos/m_suelto');
+  const r = EM.loQueSePierde({ estructura: propia() }, nueva);
+  assert.deepStrictEqual(r.apartados, [{ id: 'modulos/m_suelto', titulo: 'Suelto' }]);
+  assert.deepStrictEqual(r.campos, [], 'm_w y m_v se van con la fila del apartado');
+});
+
+prueba('loQueSePierde: perder un apartado pierde su subarbol, aunque el nieto siga listado', () => {
+  const nueva = propia();
+  nueva.apartados.anadidos = nueva.apartados.anadidos.filter((a) => a.id !== 'modulos/m_abuelo/m_padre');
+  const r = EM.loQueSePierde({ estructura: propia() }, nueva);
+  assert.ok(nueva.apartados.anadidos.some((a) => a.id.endsWith('m_nieto')), 'el nieto sigue en la nueva');
+  assert.deepStrictEqual(r.apartados.map((a) => a.id), [
+    'modulos/m_abuelo/m_padre', 'modulos/m_abuelo/m_padre/m_nieto',
+  ]);
+  assert.deepStrictEqual(r.campos, [], 'las casillas del padre y del nieto van con sus filas');
+});
+
+prueba('loQueSePierde: las casillas quitadas de un apartado propio que sigue si salen en campos', () => {
+  const nueva = propia();
+  nueva.apartados.anadidos[3].campos = [casilla('m_w')];
+  assert.deepStrictEqual(EM.loQueSePierde({ estructura: propia() }, nueva), {
+    campos: [{ seccion: 'modulos/m_suelto', id: 'm_v', etiqueta: 'Etiqueta m_v' }], apartados: [],
+  });
+});
+
+prueba('loQueSePierde: nueva null pierde todo lo propio, con las listas ordenadas', () => {
+  const r = EM.loQueSePierde({ estructura: propia() }, null);
+  assert.deepStrictEqual(r.campos, [
+    { seccion: EVA, id: 'm_c', etiqueta: 'Etiqueta m_c' },
+    { seccion: OBJ, id: 'm_a', etiqueta: 'Etiqueta m_a' },
+    { seccion: OBJ, id: 'm_b', etiqueta: 'Etiqueta m_b' },
+  ]);
+  assert.deepStrictEqual(r.apartados.map((a) => a.id), [
+    'modulos/m_abuelo', 'modulos/m_abuelo/m_padre', 'modulos/m_abuelo/m_padre/m_nieto', 'modulos/m_suelto',
+  ]);
+  assert.deepStrictEqual(EM.loQueSePierde({ estructura: propia() }, null), r, 'determinista');
+});
+
+prueba('loQueSePierde: no se pierde nada comun al renombrar, reordenar o retirar lo comun', () => {
+  const nueva = {
+    secciones: {
+      [OBJ]: { campos: { texto: { etiqueta: 'Otro nombre', retirado: true } }, anadidos: propia().secciones[OBJ].anadidos, orden: ['texto', 'm_a', 'm_b'] },
+      [EVA]: { anadidos: [casilla('m_c')] },
+    },
+    apartados: { ...propia().apartados, cambios: { [OBJ]: { titulo: 'Nuevo', retirado: true } }, orden: {} },
+  };
+  assert.deepStrictEqual(EM.loQueSePierde({ estructura: propia() }, nueva), sinNada);
+  const soloComun = { estructura: {
+    secciones: { [OBJ]: { campos: { texto: { etiqueta: 'X' } }, orden: ['resumen'] } },
+    apartados: { cambios: { [EVA]: { retirado: true } } },
+  } };
+  assert.deepStrictEqual(EM.loQueSePierde(soloComun, null), sinNada, 'volver a lo comun sin nada propio no pierde nada');
+});
+
+prueba('loQueSePierde: sin estructura o con datos mal formados devuelve listas vacias', () => {
+  for (const u of [undefined, null, {}, { estructura: null }, { estructura: 'x' }, { estructura: [] }, 7]) {
+    assert.deepStrictEqual(EM.loQueSePierde(u, null), sinNada);
+  }
+  const roto = { estructura: {
+    secciones: { [OBJ]: { anadidos: [null, 'x', { etiqueta: 'sin id' }, { id: 3 }, casilla('m_ok')] }, otra: 'x' },
+    apartados: { anadidos: [null, { id: 4 }, { id: 'modulos/m_p', padre: 'modulos', campos: 'x' }] },
+  } };
+  // Con `nueva` null se mide lo que hay, saltando lo que no tiene forma de casilla ni de apartado.
+  assert.deepStrictEqual(EM.loQueSePierde(roto, null), {
+    campos: [{ seccion: OBJ, id: 'm_ok', etiqueta: 'Etiqueta m_ok' }],
+    apartados: [{ id: 'modulos/m_p', titulo: 'modulos/m_p' }],
+  });
+  // Una `nueva` que no es ni un objeto ni null es un dato roto, y un dato roto no autoriza una
+  // destruccion: no se pierde nada.
+  for (const malo of ['x', 7, true, []]) assert.deepStrictEqual(EM.loQueSePierde(roto, malo), sinNada);
+});
+
+prueba('loQueSePierde: no modifica ni la unidad ni la estructura nueva', () => {
+  const u = { id: 'u', estructura: propia() };
+  const nueva = propia();
+  nueva.secciones[OBJ].anadidos.shift();
+  nueva.apartados.anadidos.splice(1, 1);
+  const antesU = copia(u);
+  const antesN = copia(nueva);
+  EM.loQueSePierde(u, nueva);
+  EM.loQueSePierde(u, null);
+  assert.deepStrictEqual(u, antesU);
+  assert.deepStrictEqual(nueva, antesN);
+});
+
 // ---------------------------------------------------------------- ejecutar
 
 (async () => {

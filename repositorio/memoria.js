@@ -127,17 +127,21 @@ function crear() {
       return creados.map(copia);
     },
 
-    borrar(documentoId, secciones) {
+    // `unidadId` undefined es «todas las unidades»; null es la fila común (ver `unidadODeTodas` en index.js).
+    borrar(documentoId, secciones, unidadId) {
       const antes = tablas.apartados.length;
-      tablas.apartados = tablas.apartados.filter((a) => !(a.documentoId === documentoId && secciones.includes(a.seccion)));
+      tablas.apartados = tablas.apartados.filter((a) => !(
+        a.documentoId === documentoId && secciones.includes(a.seccion) && (unidadId === undefined || (a.unidadId ?? null) === unidadId)
+      ));
       return antes - tablas.apartados.length;
     },
 
     // Sin ningún await entre la lectura y la escritura, así que es atómico por construcción.
-    quitarClave({ documentoId, seccion, clave, siguienteToken }) {
+    quitarClave({ documentoId, seccion, clave, unidadId, siguienteToken }) {
       let quitadas = 0;
       for (const fila of tablas.apartados) {
         if (fila.documentoId !== documentoId || fila.seccion !== seccion) continue;
+        if (unidadId !== undefined && (fila.unidadId ?? null) !== unidadId) continue;
         if (!fila.valores || !Object.prototype.hasOwnProperty.call(fila.valores, clave)) continue;
         delete fila.valores[clave];
         fila.updatedAt = siguienteToken(fila.updatedAt);
@@ -171,9 +175,11 @@ function crear() {
     },
     // sort es estable: los comentarios con la misma fecha en milisegundos conservan el orden en que se escribieron.
     listar: (documentoId, filtro) => de('comentarios', { documentoId, ...filtro }).sort((x, y) => x.fecha - y.fecha),
-    borrar(documentoId, secciones) {
+    borrar(documentoId, secciones, unidadId) {
       const antes = tablas.comentarios.length;
-      tablas.comentarios = tablas.comentarios.filter((c) => !(c.documentoId === documentoId && secciones.includes(c.seccion)));
+      tablas.comentarios = tablas.comentarios.filter((c) => !(
+        c.documentoId === documentoId && secciones.includes(c.seccion) && (unidadId === undefined || (c.unidadId ?? null) === unidadId)
+      ));
       return antes - tablas.comentarios.length;
     },
   };
