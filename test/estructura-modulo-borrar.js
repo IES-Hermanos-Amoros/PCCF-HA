@@ -298,6 +298,16 @@ prueba('sin { confirmar: true }: 400 que dice cuánto se pierde, y no se toca na
   const c = await esError(await borrarCampo(u.ana, doc._id, PROG, METODOLOGIA, 'm_notas', {}), 400, 'peticion');
   assert.ok(c.mensaje.includes('Borrar la casilla «'), c.mensaje);
   assert.ok(c.mensaje.includes('Esto es lo que se va: 1 casilla de este módulo, '), c.mensaje);
+
+  // EL RECUENTO VA EN EL CUERPO, no solo en la frase. Este 400 no es un fallo: es la pregunta
+  // contestada, y quien la recibe ensena los numeros sin leer la frase. Sin esto, la pantalla no
+  // distingue esta respuesta de un error y acaba ensenando el mensaje tal cual, con el
+  // «manda { "confirmar": true }» dentro, que es lenguaje de API.
+  assert.equal(typeof a.perdida, 'object', 'el 400 del apartado trae el recuento');
+  assert.equal(a.perdida.apartados, 2);
+  assert.equal(typeof c.perdida, 'object', 'el 400 de la casilla trae el recuento');
+  assert.equal(c.perdida.campos, 1);
+  assert.equal(c.perdida.casillasEscritas, 1);
   assert.equal(await instantanea(repo, doc), antes, 'sin confirmar no cambia nada');
 });
 

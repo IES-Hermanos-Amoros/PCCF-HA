@@ -116,9 +116,14 @@ async function limpiar(cliente) {
       if ((u.docentes || []).length) {
         await poner(`/api/documentos/${d._id}/unidades/${id}/docentes`, { docentes: [] }, `docentes vaciados en ${u.unidadId}`);
       }
+      // La estructura propia, fuera. VA CON `confirmar`, como el DELETE de una versión: quitarla
+      // DESTRUYE las casillas y los apartados que el módulo había creado, con lo escrito debajo, y el
+      // servidor no la quita sin que alguien lo confirme. Aquí se confirma a propósito: devolver la
+      // base a limpia es exactamente destruir lo que dejó una pasada anterior. Sin esto, el barrido
+      // se queda en un 400 y la batería siguiente falla por un motivo que no es suyo.
       const e = await leer(cliente, `/api/documentos/${d._id}/unidades/${id}/estructura`);
       if (e.estructura) {
-        await poner(`/api/documentos/${d._id}/unidades/${id}/estructura`, { estructura: null }, `estructura propia quitada a ${u.unidadId}`);
+        await poner(`/api/documentos/${d._id}/unidades/${id}/estructura`, { estructura: null, confirmar: true }, `estructura propia quitada a ${u.unidadId}`);
       }
     }
     for (const a of asg.apartados || []) {

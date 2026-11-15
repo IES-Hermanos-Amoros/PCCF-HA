@@ -156,6 +156,25 @@ apartado dentro de un módulo y escribe en él, su fila **deja de ser alcanzable
 módulo vuelve a la estructura común, así que el `finally` de la prueba no puede deshacerla. Esas, y solo
 las que no tienen nada escrito, se barren al terminar la batería, diciendo cuáles.
 
+### No ejecutes `npm run build` con `npm run dev` levantado
+
+Los dos escriben en `.next`. El build deja ahí los trozos de producción, el servidor de desarrollo
+sigue sirviéndolos, y el resultado es una aplicación que **parece rota sin estar rota**: la página
+carga el armazón, el JavaScript del cliente falla, no hay sesión en pantalla y el navegador recarga en
+bucle. Las pruebas de extremo a extremo fallan todas a la vez, incluso el humo, y el síntoma no apunta
+a nada: no hay error en el servidor, porque el servidor contesta 200.
+
+Si pasa:
+
+```bash
+# para el servidor de desarrollo, borra .next y vuelve a arrancarlo
+rm -rf .next && npm run dev -- -p 3000
+```
+
+Y para construir, para antes el de desarrollo. Es la trampa hermana de la del repositorio en caché
+(`app/_lib/repositorio.js`): las dos se reconocen por que el síntoma no tiene nada que ver con la
+causa.
+
 ### La puerta congelada
 
 ```bash

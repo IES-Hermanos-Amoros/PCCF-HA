@@ -49,15 +49,18 @@
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Ayuda from './Ayuda';
 import {
-  avisoDeContenidoSinDestruir, cambiarEstructura, destinoDeLaEscritura, fraseDeAlcance, hermanosDe,
-  leerPermisosDeRetirados, todasLasUnidades, unidadDelCamino, yaDiceQueNoHaCambiado,
+  avisoDeContenidoSinDestruir, cambiarEstructura, cuantoHayEscritoEnApartado, destinoDeLaEscritura,
+  fraseDeAlcance, hermanosDe, leerPermisoDeApartado, leerPermisosDeRetirados, textoDeFalloAlBorrar,
+  todasLasUnidades, unidadDelCamino, yaDiceQueNoHaCambiado,
 } from './estructura-cliente';
 import {
-  apartadoDelModulo, escribirEnElModulo, filaDelModulo, leerRetiradosDelModulo,
+  apartadoDelModulo, borrarApartadoDelModulo, escribirEnElModulo, filaDelModulo, leerRetiradosDelModulo,
+  volverALaComun,
 } from './estructura-modulo-cliente';
+import Plantilla from '../../core/plantilla';
 import { QuitadosDelModulo } from './QuitarCampo';
 import AnadirCampo from './AnadirCampo';
 import useConfirmacion from './confirmar-cliente';
@@ -500,6 +503,10 @@ export default function Estructura({
           del documento; un módulo no tiene portada propia, y es aquí donde se echó de menos. */}
       {enElModulo ? (
         <QuitadosDelModulo
+          // Los dos ids son los que necesita el borrado definitivo de una casilla propia: su ruta es
+          // la de la unidad, no la de la plantilla, porque lo que destruye es de ESTE módulo.
+          documentoId={documentoId}
+          unidadId={nodo.unidadId}
           seccion={nodo.seccion}
           tituloApartado={nodo.titulo}
           fila={filaDeCampos}
@@ -516,6 +523,7 @@ export default function Estructura({
           plantillaVersion={plantillaVersion}
           onCambiado={onCambiado}
           recarga={permisoModulo.updatedAt}
+          conVolverALaComun={false}
         />
       ) : null}
 
@@ -807,6 +815,307 @@ export function ApartadosRetirados({
   );
 }
 
+// ---------------------------------------------------------------- lo que se pierde en un módulo
+//
+// Lo que se destruye al borrar algo propio de un módulo o al volver a la estructura común lo cuenta el
+// SERVIDOR (`perdida`, de la primera llamada sin confirmar), y la pantalla lo dice tal cual: el número
+// que se enseña y lo que se destruye salen del mismo cálculo. No se usa la frase `mensaje` del servidor
+// porque lleva instrucciones para quien llama a la API («Manda { confirmar: true }»).
+
+const parteDeLoPerdido = (cuantas, escritas, uno, varios, vacio, vacios) => {
+  const cabeza = `${cuantas} ${cuantas === 1 ? uno : varios}`;
+  if (!escritas) return `${cabeza}, ${cuantas === 1 ? vacio : vacios}`;
+  return `${cabeza}, ${escritas} con algo escrito`;
+};
+
+function fraseDeLoPerdido(perdida) {
+  const p = perdida || {};
+  const n = (x) => Number(x) || 0;
+  const partes = [];
+  if (n(p.apartados)) partes.push(parteDeLoPerdido(n(p.apartados), n(p.conContenido), 'apartado', 'apartados', 'vacío', 'todos vacíos'));
+  if (n(p.campos)) partes.push(parteDeLoPerdido(n(p.campos), n(p.casillasEscritas), 'casilla', 'casillas', 'vacía', 'todas vacías'));
+  return partes.length ? partes.join(' y ') : 'nada';
+}
+
+// ---------------------------------------------------------------- borrar un apartado propio de un módulo
+//
+// La misma confirmación que BorrarApartado (BorrarDefinitivo.js): se ESCRIBE EL TÍTULO, con la regla de
+// core/plantilla.js y el foco de core/confirmar.js. Lo que cambia es lo que la pantalla tiene que decir,
+// porque es el sentido de la función: el alcance es ESTE módulo y ninguno más, se va con sus
+// subapartados y se dice cuánto hay escrito. Eso último lo trae el servidor: la llamada sin confirmar
+// es la pregunta, y se hace al abrir la confirmación, no al pintar la lista (sería una por fila).
+// El botón de borrar no se enciende hasta que ha llegado el recuento: confirmar sin haber visto lo que
+// se pierde es justo lo que esta confirmación existe para impedir.
+//
+// Quién puede no se decide aquí: esta fila solo existe si el servidor dijo `puede`, y vuelve a comprobarlo.
+
+function BorrarApartadoPropio({ documentoId, unidadId, retirado, ocupado, onBorrado }) {
+  const confirma = useConfirmacion();
+  const abierta = confirma.estaAbierta();
+  const [escrito, setEscrito] = useState('');
+  const [perdida, setPerdida] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+  const id = useId();
+
+  const titulo = retirado.titulo || retirado.seccion;
+  const pedido = Plantilla.loQueHayQueEscribir(titulo);
+  const entero = Plantilla.mismoTitulo(pedido, titulo);
+  const coincide = Plantilla.confirmaTitulo(escrito, titulo);
+  const dentro = perdida ? Math.max((Number(perdida.apartados) || 1) - 1, 0) : 0;
+
+  useEffect(() => {
+    if (!abierta) return undefined;
+    let vivo = true;
+    setPerdida(null);
+    borrarApartadoDelModulo(documentoId, unidadId, retirado.seccion)
+      .then((r) => {
+        if (!vivo) return;
+        // No debería pasar (siempre se pierde al menos lo que se borra), pero si el servidor lo
+        // hubiera hecho ya, la pantalla se entera en vez de esperar una confirmación sin objeto.
+        if (r.hecho) onBorrado(retirado, r.respuesta, null);
+        else setPerdida(r.perdida);
+      })
+      .catch((e) => { if (vivo) setError(e); });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abierta, documentoId, unidadId, retirado.seccion]);
+
+  const cerrar = () => { setEscrito(''); setError(null); setPerdida(null); confirma.cancelar(); };
+
+  const borrar = async (e) => {
+    e.preventDefault();
+    if (!coincide || !perdida || enviando) return;
+    setEnviando(true);
+    setError(null);
+    try {
+      const r = await borrarApartadoDelModulo(documentoId, unidadId, retirado.seccion, { confirmar: true });
+      // El foco de después lo lleva el aviso de la lista: esta fila se va con el borrado.
+      await onBorrado(retirado, r.respuesta, perdida);
+    } catch (err) {
+      setError(err);
+      setEnviando(false);
+    }
+  };
+
+  if (!abierta) {
+    return (
+      <button
+        className="mini mini-rojo"
+        type="button"
+        ref={confirma.refAbrir()}
+        onClick={() => confirma.abrir()}
+        disabled={ocupado}
+        aria-label={`Borrar para siempre «${titulo}» de este módulo`}
+        title={`Borrar «${titulo}» para siempre de este módulo. No se puede deshacer`}
+      >
+        Borrar para siempre…
+      </button>
+    );
+  }
+
+  return (
+    <form className="borrado" onSubmit={borrar} aria-label={`Borrar «${titulo}» para siempre de este módulo`}>
+      <p>
+        <strong>Esto no se puede deshacer.</strong> Se borra «{titulo}» solo de este módulo; los demás
+        no cambian. Se va
+        {dentro ? ` con los ${cuantos(dentro)} que tiene dentro` : ''}
+        {' '}y con todo lo que hay escrito. {perdida
+          ? <>{cuantoHayEscritoEnApartado(perdida)} <span className="suave">({fraseDeLoPerdido(perdida)}.)</span></>
+          : 'Contando lo que se pierde…'}
+      </p>
+      <p className="suave">
+        Si no estás seguro, déjalo donde está: en la lista de retirados no estorba y se puede restaurar.
+      </p>
+      <p className="borrado-escribir">
+        <label htmlFor={id}>
+          {entero ? 'Para borrarlo, escribe su título:' : 'Para borrarlo, escribe las primeras palabras de su título:'}
+        </label>
+        {' '}
+        <strong className="borrado-pedido">{pedido}</strong>
+        {' '}
+        <input
+          id={id}
+          ref={confirma.refPaso}
+          type="text"
+          value={escrito}
+          autoComplete="off"
+          onChange={(e) => setEscrito(e.target.value)}
+          disabled={enviando}
+          aria-describedby={`${id}-como`}
+        />
+        <span className="ayuda" id={`${id}-como`}>
+          No hacen falta las tildes ni las mayúsculas.
+          {entero ? '' : ' El título completo también vale.'}
+        </span>
+      </p>
+      <p className="borrado-botones">
+        <button className="mini mini-rojo" type="submit" disabled={!coincide || !perdida || enviando}>
+          {enviando ? 'Borrando…' : `Borrar «${titulo}» para siempre`}
+        </button>
+        {' '}
+        <button className="mini" type="button" onClick={cerrar} disabled={enviando}>
+          Cancelar
+        </button>
+      </p>
+      {error ? (
+        <div className="nota nota-error" role="alert">
+          <div>
+            <strong>{textoDeFalloAlBorrar(error).texto} </strong>
+            {error.message}
+          </div>
+        </div>
+      ) : null}
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------- volver a la estructura común
+//
+// DÓNDE VA. En la página del módulo (ApartadosRetiradosDelModulo con `conVolverALaComun`, que es como la
+// monta Visor.js) y NO en la tarjeta de cada apartado: lo que se deshace es el desvío entero del
+// módulo, no el de un apartado, y puesto debajo de un apartado concreto parecería que solo afecta a
+// ese. Va junto a «Apartados retirados de este módulo» porque es la otra cosa que se hace con lo
+// propio del módulo: devolver un apartado o devolverlo todo.
+//
+// LA PREGUNTA SE HACE AL PULSAR, no al abrir la confirmación, porque a veces no hay pregunta: si el
+// módulo no tiene nada propio que perder, la llamada sin confirmar ES la operación y `volverALaComun`
+// devuelve `hecho: true`. Entonces se dice «hecho» y no se pide nada. Si hay algo que perder, se abre
+// una confirmación EN DOS PASOS (no se escribe nada: no se borra un apartado concreto, se deshace el
+// desvío, y la lista de lo que se pierde está delante), con el foco donde manda core/confirmar.js.
+//
+// SOLO SALE si el servidor dice que el módulo tiene estructura propia (`estructura` de su lectura) y
+// que quien mira puede cambiarla (`puedeCambiar`). Se lee con la misma lectura por apartado que usan
+// las demás tarjetas, preguntando por un apartado común del módulo, porque la ruta no tiene una
+// lectura sin apartado que diga el permiso. El servidor vuelve a comprobar ambas cosas al escribir.
+
+function VolverALaComun({ documentoId, unidadId, filas, onCambiado, recarga }) {
+  const confirma = useConfirmacion();
+  const [propia, setPropia] = useState(false);
+  const [preguntando, setPreguntando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [perdida, setPerdida] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const comun = Array.isArray(filas) ? filas.find((f) => f.deUnidades && !f.instancias && !f.retirado) : null;
+    if (!unidadId || !comun) { setPropia(false); return undefined; }
+    let vivo = true;
+    leerPermisoDeApartado(documentoId, comun.seccion, unidadId)
+      .then((p) => { if (vivo) setPropia(!!(p.modulo && p.modulo.puede && p.modulo.estructura)); })
+      .catch(() => { if (vivo) setPropia(false); });
+    return () => { vivo = false; };
+  }, [documentoId, unidadId, filas, recarga]);
+
+  if (!propia && !aviso) return null;
+
+  const terminado = async (respuesta, dicho) => {
+    setPropia(false);
+    setPerdida(null);
+    setError(null);
+    setAviso(dicho + (avisoDeContenidoSinDestruir(respuesta) || ''));
+    confirma.terminar();
+    if (onCambiado) await onCambiado('volver_a_la_comun', respuesta || {});
+  };
+
+  const preguntar = async () => {
+    setPreguntando(true);
+    setError(null);
+    setAviso(null);
+    try {
+      const r = await volverALaComun(documentoId, unidadId);
+      if (r.hecho) {
+        await terminado(r.respuesta, 'Este módulo vuelve a seguir la estructura común. No había nada propio que perder.');
+      } else {
+        setPerdida(r.perdida);
+        confirma.abrir();
+      }
+    } catch (e) {
+      setError(e);
+    } finally {
+      setPreguntando(false);
+    }
+  };
+
+  const confirmar = async () => {
+    setEnviando(true);
+    setError(null);
+    try {
+      const r = await volverALaComun(documentoId, unidadId, { confirmar: true });
+      await terminado(r.respuesta, `Este módulo vuelve a seguir la estructura común. Se ha borrado: ${fraseDeLoPerdido(perdida)}.`);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const cancelar = () => { setError(null); setPerdida(null); confirma.cancelar(); };
+
+  return (
+    <section className="tarjeta estructura">
+      <header className="tarjeta-cab"><h2>Estructura de este módulo</h2></header>
+      {propia ? (
+        confirma.estaAbierta() ? (
+          <div className="borrado" role="group" aria-label="Volver este módulo a la estructura común">
+            <p>
+              <strong>Esto no se puede deshacer.</strong> Este módulo deja su estructura propia y vuelve
+              a la común. Los demás módulos no cambian. Se borra: <strong>{fraseDeLoPerdido(perdida)}</strong>,
+              con todo lo que hay escrito en ello. Lo que es de la estructura común se queda como está.
+            </p>
+            <p className="borrado-botones">
+              <button className="mini mini-rojo" type="button" ref={confirma.refPaso} onClick={confirmar} disabled={enviando}>
+                {enviando ? 'Volviendo…' : 'Sí, volver a la estructura común'}
+              </button>
+              {' '}
+              <button className="mini" type="button" onClick={cancelar} disabled={enviando}>
+                Cancelar
+              </button>
+            </p>
+          </div>
+        ) : (
+          <>
+            <p className="suave">
+              Este módulo tiene apartados o casillas propios, distintos de la estructura común.
+              Puedes devolverlo a la común; antes se te dice cuánto contenido se pierde.
+            </p>
+            <p>
+              <button
+                className="mini mini-rojo"
+                type="button"
+                ref={confirma.refAbrir()}
+                onClick={preguntar}
+                disabled={preguntando}
+                aria-label="Volver este módulo a la estructura común"
+                title="Volver este módulo a la estructura común"
+              >
+                {preguntando ? 'Mirando lo que se pierde…' : 'Volver a la estructura común…'}
+              </button>
+            </p>
+          </>
+        )
+      ) : null}
+      <p
+        className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'}
+        role="status"
+        ref={confirma.refAviso}
+        tabIndex={-1}
+      >
+        {aviso || ''}
+      </p>
+      {error ? (
+        <div className="nota nota-error" role="alert">
+          <div>
+            <strong>{textoDeFalloAlBorrar(error).texto} </strong>
+            {error.message}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------- los retirados de UN módulo
 //
 // Un apartado retirado en un módulo desaparece de ese módulo y de ninguno más, y no tiene portada
@@ -817,8 +1126,11 @@ export function ApartadosRetirados({
 // plantilla, que lo devolvería —y lo retiraría— en los once.
 
 export function ApartadosRetiradosDelModulo({
-  documentoId, unidadId, filas, plantillaVersion, onCambiado, recarga,
+  documentoId, unidadId, filas, plantillaVersion, onCambiado, recarga, conVolverALaComun = true,
 }) {
+  // El aviso de después del borrado es de la lista entera: la fila que se borra desaparece y el foco
+  // tiene que acabar en un sitio que siga ahí (ver confirmar-cliente.js).
+  const confirma = useConfirmacion();
   const [lista, setLista] = useState([]);
   const [enviando, setEnviando] = useState(null);
   const [aviso, setAviso] = useState(null);
@@ -834,7 +1146,28 @@ export function ApartadosRetiradosDelModulo({
     return () => { vivo = false; };
   }, [documentoId, unidadId, filas, recarga, vuelta]);
 
-  if (!lista.length && !aviso) return null;
+  const volver = conVolverALaComun ? (
+    <VolverALaComun
+      documentoId={documentoId}
+      unidadId={unidadId}
+      filas={filas}
+      onCambiado={onCambiado}
+      recarga={recarga}
+    />
+  ) : null;
+  if (!lista.length && !aviso) return volver;
+
+  const borrado = async (x, respuesta, perdida) => {
+    const dentro = perdida ? Math.max((Number(perdida.apartados) || 1) - 1, 0) : 0;
+    setError(null);
+    setAviso(`«${x.titulo}» se ha borrado para siempre de este módulo; los otros módulos no han cambiado`
+      + (dentro ? `, junto con los ${cuantos(dentro)} que tenía dentro` : '')
+      + (perdida && perdida.conContenido ? ' y con todo lo que había escrito.' : '. No había nada escrito.')
+      + (avisoDeContenidoSinDestruir(respuesta) || ''));
+    confirma.terminar();
+    setVuelta((n) => n + 1);
+    if (onCambiado) await onCambiado('borrar', respuesta || {});
+  };
 
   const restaurar = async (x) => {
     setEnviando(x.seccion);
@@ -858,6 +1191,7 @@ export function ApartadosRetiradosDelModulo({
   };
 
   return (
+    <>
     <section className="tarjeta estructura">
       <header className="tarjeta-cab">
         <h2>Apartados retirados de este módulo</h2>
@@ -883,11 +1217,29 @@ export function ApartadosRetiradosDelModulo({
               >
                 {enviando === x.seccion ? 'Restaurando…' : 'Restaurar'}
               </button>
+              {/* Solo los apartados PROPIOS del módulo se borran desde aquí. Uno común retirado existe
+                  en la plantilla de todos los módulos, y se borra por la lista de la plantilla. */}
+              {x.propio ? (
+                <BorrarApartadoPropio
+                  documentoId={documentoId}
+                  unidadId={unidadId}
+                  retirado={x}
+                  ocupado={!!enviando}
+                  onBorrado={borrado}
+                />
+              ) : null}
             </li>
           ))}
         </ul>
       ) : null}
-      <p className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'} role="status">{aviso || ''}</p>
+      <p
+        className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'}
+        role="status"
+        ref={confirma.refAviso}
+        tabIndex={-1}
+      >
+        {aviso || ''}
+      </p>
       {error ? (
         <div className="nota nota-error" role="alert">
           <div>
@@ -897,5 +1249,7 @@ export function ApartadosRetiradosDelModulo({
         </div>
       ) : null}
     </section>
+    {volver}
+    </>
   );
 }

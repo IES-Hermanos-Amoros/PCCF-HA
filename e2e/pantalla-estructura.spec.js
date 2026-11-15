@@ -127,7 +127,7 @@ test.describe('la estructura desde la pantalla', () => {
       await entrarComo(page, 'jefe_departamento');
       const v = await leerJson(await page.request.get(rutaDelModulo(doc._id, mio.unidadId)));
       if (v.estructura) {
-        const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null } });
+        const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null, confirmar: true } });
         expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
       }
       await fijarDocentes(page, doc._id, mio.unidadId, docentesAntes);
@@ -428,7 +428,7 @@ test.describe('la estructura desde la pantalla', () => {
       await entrarComo(page, 'jefe_departamento');
       const v = await leerJson(await page.request.get(rutaDelModulo(doc._id, mio.unidadId)));
       if (v.estructura) {
-        const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null } });
+        const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null, confirmar: true } });
         expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
       }
       await fijarDocentes(page, doc._id, mio.unidadId, docentesAntes);
@@ -586,7 +586,7 @@ test.describe('la estructura desde la pantalla', () => {
       await entrarComo(page, 'jefe_departamento');
       const v = await leerJson(await page.request.get(rutaDelModulo(doc._id, mio.unidadId)));
       if (v.estructura) {
-        const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null } });
+        const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null, confirmar: true } });
         expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
       }
       await fijarDocentes(page, doc._id, mio.unidadId, docentesAntes);
@@ -626,7 +626,7 @@ test.describe('la estructura desde la pantalla', () => {
     } finally {
       await salir(page);
       await entrarComo(page, 'jefe_departamento');
-      const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null } });
+      const quita = await page.request.put(rutaDelModulo(doc._id, mio.unidadId), { data: { estructura: null, confirmar: true } });
       expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
     }
     expect(await huellaDeLaBase(page, doc._id), 'la base tiene que quedar como estaba').toEqual(antesDeTodo);

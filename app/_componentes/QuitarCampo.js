@@ -36,6 +36,7 @@ import {
   avisoDeContenidoSinDestruir, cambiarEstructura, yaDiceQueNoHaCambiado,
 } from './estructura-cliente';
 import useConfirmacion from './confirmar-cliente';
+import { borrarCampoDelModulo } from './estructura-modulo-cliente';
 
 const mensajeDeError = (error) => (error ? error.message : null);
 
@@ -434,9 +435,118 @@ export function CamposRetirados({
 // portada propia, y quien reforma su módulo necesita devolver un campo desde donde lo quitó. Solo
 // salen los que se pueden devolver: uno que la jefatura retiró en lo común no vuelve desde un
 // módulo (lo común manda sobre lo retirado).
-export function QuitadosDelModulo({
-  seccion, tituloApartado, fila, plantillaVersion, enviar, onCambiado,
+// BORRAR PARA SIEMPRE UNA CASILLA PROPIA DEL MÓDULO. Misma confirmación en dos pasos que BorrarCampo
+// (BorrarDefinitivo.js), con tres diferencias que condicionan la pantalla:
+//
+//   · EL ALCANCE ES AL REVÉS. Allí se borra «en los N módulos»; aquí, en este módulo y en ningún otro.
+//     La misma casilla puede existir en otro módulo con otro contenido y esa no se toca.
+//   · EL PRIMER PASO ES UNA PREGUNTA AL SERVIDOR. La llamada sin `confirmar` contesta 400 con el
+//     recuento (`perdida`); no hay ruta que cuente aparte, así que lo que se lee es lo que se
+//     ejecutaría. Por eso la confirmación se abre cuando la respuesta llega y no al pulsar: el foco
+//     necesita que el botón de confirmar ya exista.
+//   · SOLO LAS PROPIAS. Una casilla común que el módulo retiró no se borra desde aquí (sería borrarla
+//     del documento entero): el botón no sale y la razón se lee donde estaría.
+function BorrarCampoPropio({
+  documentoId, unidadId, seccion, campo, etiqueta, tituloApartado, ocupado, onBorrado,
 }) {
+  const confirma = useConfirmacion();
+  const [pregunta, setPregunta] = useState(null);
+  const [consultando, setConsultando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+
+  const cerrar = () => { setError(null); setPregunta(null); confirma.cancelar(); };
+
+  const preguntar = async () => {
+    setConsultando(true);
+    setError(null);
+    try {
+      const r = await borrarCampoDelModulo(documentoId, unidadId, seccion, campo);
+      if (r.hecho) {
+        // Si no había nada que preguntar, ya está hecho: se da por borrado igual que tras confirmar.
+        await onBorrado(etiqueta, r.respuesta || {}, { casillasEscritas: 0 });
+        return;
+      }
+      setPregunta(r.perdida || {});
+      confirma.abrir();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setConsultando(false);
+    }
+  };
+
+  const borrar = async () => {
+    setEnviando(true);
+    setError(null);
+    try {
+      const r = await borrarCampoDelModulo(documentoId, unidadId, seccion, campo, { confirmar: true });
+      await onBorrado(etiqueta, r.respuesta || {}, pregunta || {});
+    } catch (e) {
+      setError(e);
+      setEnviando(false);
+    }
+  };
+
+  const fallo = error ? (
+    <div className="nota nota-error" role="alert">
+      <div>
+        {yaDiceQueNoHaCambiado(error) ? null : <strong>No se ha cambiado nada. </strong>}
+        {mensajeDeError(error)}
+      </div>
+    </div>
+  ) : null;
+
+  const de = `la casilla «${etiqueta}» de «${tituloApartado}» en este módulo`;
+  if (!confirma.estaAbierta()) {
+    return (
+      <>
+        <button
+          className="mini mini-rojo"
+          type="button"
+          ref={confirma.refAbrir()}
+          onClick={preguntar}
+          disabled={ocupado || consultando}
+          aria-label={`Borrar para siempre ${de}`}
+          title={`Borrar la casilla «${etiqueta}» para siempre, solo en este módulo. No se puede deshacer`}
+        >
+          {consultando ? 'Comprobando…' : 'Borrar para siempre…'}
+        </button>
+        {fallo}
+      </>
+    );
+  }
+
+  const escrita = !!(pregunta && pregunta.casillasEscritas);
+  return (
+    <div className="borrado" role="group" aria-label={`Borrar para siempre ${de}`}>
+      <p>
+        <strong>Solo en este módulo, en ningún otro.</strong>{' '}
+        <strong>Esto no se puede deshacer.</strong> Se borra la casilla «{etiqueta}» del apartado
+        «{tituloApartado}» de este módulo. Si otro módulo tiene una casilla igual, no se toca.{' '}
+        {escrita
+          ? <strong>Tiene algo escrito dentro y se borra con ella.</strong>
+          : 'No tiene nada escrito.'}
+      </p>
+      <p className="borrado-botones">
+        <button className="mini mini-rojo" type="button" ref={confirma.refPaso} onClick={borrar} disabled={enviando}>
+          {enviando ? 'Borrando…' : `Sí, borrar la casilla «${etiqueta}» para siempre`}
+        </button>
+        {' '}
+        <button className="mini" type="button" onClick={cerrar} disabled={enviando}>
+          Cancelar
+        </button>
+      </p>
+      {fallo}
+    </div>
+  );
+}
+
+export function QuitadosDelModulo({
+  documentoId, unidadId, seccion, tituloApartado, fila, plantillaVersion, enviar, onCambiado,
+}) {
+  // Solo por el aviso, que es de la lista entera: al borrar la fila se va y el foco acaba en él.
+  const confirma = useConfirmacion();
   const [enviando, setEnviando] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);
@@ -444,6 +554,14 @@ export function QuitadosDelModulo({
   const quitados = fila && Array.isArray(fila.campos) ? fila.campos.filter((c) => c.retirado && c.puedeRestaurar) : [];
   if (!quitados.length && !aviso) return null;
 
+  const borrado = async (etiqueta, r, perdida) => {
+    setError(null);
+    setAviso(`Casilla «${etiqueta}» de «${tituloApartado}» borrada para siempre, solo en este módulo`
+      + (perdida.casillasEscritas ? ', junto con lo que había escrito.' : '. No había nada escrito.'));
+    confirma.terminar();
+    // `estructura: null` es que al módulo no le queda ningún desvío y vuelve a la común.
+    if (onCambiado) await onCambiado('borrar_campo', r);
+  };
   const restaurar = async (c) => {
     setEnviando(c.id);
     setError(null);
@@ -484,12 +602,35 @@ export function QuitadosDelModulo({
                 >
                   {enviando === c.id ? 'Restaurando…' : 'Restaurar'}
                 </button>
+                {c.propio ? (
+                  documentoId && unidadId ? (
+                    <BorrarCampoPropio
+                      documentoId={documentoId}
+                      unidadId={unidadId}
+                      seccion={seccion}
+                      campo={c.id}
+                      etiqueta={c.etiqueta}
+                      tituloApartado={tituloApartado}
+                      ocupado={!!enviando}
+                      onBorrado={borrado}
+                    />
+                  ) : null
+                ) : (
+                  <span className="motivo-no">Es común a todos los módulos: no se borra desde aquí</span>
+                )}
               </li>
             ))}
           </ul>
         </>
       ) : null}
-      <p className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'} role="status">{aviso || ''}</p>
+      <p
+        className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'}
+        role="status"
+        ref={confirma.refAviso}
+        tabIndex={-1}
+      >
+        {aviso || ''}
+      </p>
       {error ? (
         <div className="nota nota-error" role="alert">
           <div>

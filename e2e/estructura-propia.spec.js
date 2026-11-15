@@ -142,7 +142,7 @@ test.describe('la estructura propia de un módulo', () => {
       if (tocado) {
         const v = await leerEstructura(page, doc._id, mio.unidadId);
         if (v.estructura) {
-          const quita = await page.request.put(ruta(doc._id, mio.unidadId), { data: { estructura: null } });
+          const quita = await page.request.put(ruta(doc._id, mio.unidadId), { data: { estructura: null, confirmar: true } });
           expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
         }
       }
@@ -171,7 +171,7 @@ test.describe('la estructura propia de un módulo', () => {
       await entrarComo(page, 'jefe_departamento');
       const si = await page.request.get(ruta(doc._id, mio.unidadId));
       if ((await si.json()).estructura !== null && antes[mio.unidadId] === 'null') {
-        await page.request.put(ruta(doc._id, mio.unidadId), { data: { estructura: null } });
+        await page.request.put(ruta(doc._id, mio.unidadId), { data: { estructura: null, confirmar: true } });
       }
     }
     expect(await fotoDeLosModulos(page, doc._id, unidades)).toEqual(antes);
@@ -217,7 +217,7 @@ test.describe('la estructura propia de un módulo', () => {
       expect(repetido.status(), 'el token se ha movido con la escritura').toBe(409);
     } finally {
       if (escrito) {
-        const quita = await page.request.put(ruta(doc._id, mio.unidadId), { data: { estructura: null } });
+        const quita = await page.request.put(ruta(doc._id, mio.unidadId), { data: { estructura: null, confirmar: true } });
         expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
       }
     }

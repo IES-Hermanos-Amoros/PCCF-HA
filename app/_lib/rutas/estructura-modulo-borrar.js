@@ -73,8 +73,15 @@ async function leerCuerpoOpcional(peticion) {
 // deshacer y se perdería…») el verbo queda tan lejos del sujeto que no se entiende de qué habla, y la
 // cuenta no lleva verbo conjugado a propósito (`fraseDeLaPerdida`), porque «se perdería 2 apartados»
 // no concuerda.
-const sinConfirmar = (que, perdida) => malaPeticion(
-  `Borrar ${que} no se puede deshacer. Esto es lo que se va: ${perdida}. Manda { "confirmar": true } para confirmarlo. No se ha cambiado nada.`,
+// EL RECUENTO VA EN EL CUERPO DEL 400, no solo en la frase. Esta respuesta no es un fallo: es la
+// PREGUNTA contestada —la llamada sin `confirmar` es como se pregunta cuánto se perdería—, y quien la
+// recibe tiene que poder enseñar los números sin leer la frase. Sin `perdida` en el cuerpo, el cliente
+// no distingue esta respuesta de un error cualquiera y acaba enseñando el mensaje tal cual, con el
+// «manda { "confirmar": true }» dentro, que es lenguaje de API y no se le dice a nadie.
+const sinConfirmar = (que, contenido) => fallo(
+  400, 'peticion',
+  `Borrar ${que} no se puede deshacer. Esto es lo que se va: ${fraseDeLaPerdida(contenido)}. Manda { "confirmar": true } para confirmarlo. No se ha cambiado nada.`,
+  { perdida: contenido },
 );
 
 // Devuelve { fallo } o { usuario, documento, plantillaCompleta, repo, unidad, unidadId }.
@@ -185,7 +192,7 @@ async function borrar({ abierto, objetivo, cuerpo }) {
   }
   const contenido = await contenidoDeLaPerdida({ repo, documentoId: documento._id, unidadId, perdida });
 
-  if (cuerpo.confirmar !== true) return sinConfirmar(objetivo.que, fraseDeLaPerdida(contenido));
+  if (cuerpo.confirmar !== true) return sinConfirmar(objetivo.que, contenido);
 
   // Una estructura sin desvíos no vale: null, y el módulo vuelve a la común.
   const queda = EstructuraModulo.estructuraDeModulo({ estructura: nueva }) ? nueva : null;

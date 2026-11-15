@@ -190,7 +190,7 @@ test.describe('exportar lo que se ve', () => {
           await salir(page);
           await entrarComo(page, 'jefe_departamento');
         }
-        const quita = await page.request.put(ruta(doc._id, mio), { data: { estructura: null } });
+        const quita = await page.request.put(ruta(doc._id, mio), { data: { estructura: null, confirmar: true } });
         expect(quita.status(), `no se ha podido devolver el módulo a la común: ${await quita.text()}`).toBe(200);
       }
       await page.request.put(rutaDocentes, { data: { docentes: idsAntes } });
