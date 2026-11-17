@@ -115,7 +115,8 @@ import Comentarios from './Comentarios';
 import Coordinacion from './Coordinacion';
 import CursoSiguiente from './CursoSiguiente';
 import EstadoDocumento from './EstadoDocumento';
-import Estructura, { ApartadosRetirados, ApartadosRetiradosDelModulo } from './Estructura';
+import Estructura, { AnadirApartadoAlModulo, ApartadosRetirados, ApartadosRetiradosDelModulo } from './Estructura';
+import Impresion from './Impresion';
 import { CamposRetirados } from './QuitarCampo';
 import Ponderaciones from './Ponderaciones';
 import Situaciones from './Situaciones';
@@ -174,18 +175,27 @@ const VISTAS = [
   { id: 'coordinacion', etiqueta: 'Coordinación' },
 ];
 
-const esVista = (v) => VISTAS.some((x) => x.id === v);
+// Cómo se imprime el documento es una vista más —tiene su dirección y se cambia sin recargar— pero NO
+// va en la barra de pestañas. La barra es por donde se trabaja cada día y son las cuatro del
+// prototipo; esto se toca una vez por documento y por curso. Se llega desde el menú «Ir a»
+// (MenuIr.js), que es donde están las pantallas del documento que no son de escribir.
+const VISTAS_FUERA_DE_LA_BARRA = [
+  { id: 'impresion', etiqueta: 'Cómo se imprime' },
+];
+
+const esVista = (v) => VISTAS.concat(VISTAS_FUERA_DE_LA_BARRA).some((x) => x.id === v);
 
 // Las vistas que miran el DOCUMENTO entero y no un apartado: sustituyen al
 // contenido, y ni la cabecera del apartado ni el panel derecho tienen sentido en
 // ellas.
-const DEL_DOCUMENTO = ['validaciones', 'coordinacion'];
+const DEL_DOCUMENTO = ['validaciones', 'coordinacion', 'impresion'];
 const esDelDocumento = (v) => DEL_DOCUMENTO.includes(v);
 
 // El título que lleva la cabecera en esas dos vistas.
 const TITULO_VISTA = {
   validaciones: 'Comprobaciones del documento',
   coordinacion: 'Coordinación',
+  impresion: 'Cómo se imprime este documento',
 };
 
 export default function Visor({
@@ -987,6 +997,23 @@ export default function Visor({
             <a className="mini" href={`/reparto/${encodeURIComponent(documentoId)}`}>Quién lleva este módulo</a>
           </div>
         </section>
+        {/* Añadir un apartado de primer nivel A ESTE MÓDULO. Va aquí porque la tarjeta *Estructura*
+            añade dentro del apartado que se mira y en una unidad no sale: sin esto, quien lleva el
+            módulo solo podía colgar el apartado nuevo dentro de otro. Solo sale si el servidor deja a
+            quien mira cambiar la estructura de este módulo. */}
+        {estructura ? (
+          <AnadirApartadoAlModulo
+            documentoId={documentoId}
+            unidadId={n.unidadId}
+            filas={estructura.apartados}
+            plantillaVersion={estructura.plantillaVersion}
+            tiposDeCampo={estructura.tiposDeCampo}
+            limites={estructura.limites}
+            onCambiado={alCambiarEstructura}
+            recarga={recargasPermiso}
+            onIr={irAApartado}
+          />
+        ) : null}
         {/* Lo que este módulo ha retirado, para devolverlo: al retirar un apartado de primer nivel se
             aterriza aquí, y es la página del módulo. Solo sale si hay algo que el servidor deje devolver. */}
         {estructura ? (
@@ -1137,6 +1164,9 @@ export default function Visor({
         />
       );
     }
+    // Cómo se imprime es del documento entero, como las dos de arriba: hasta qué nivel llega el
+    // índice y qué apartados empiezan en página nueva, en el PDF y en el Word a la vez.
+    if (vista === 'impresion') return <Impresion documentoId={documentoId} />;
     if (!nodo) return <p className="suave">Ese apartado no está en este documento.</p>;
     // La comparación con el curso anterior es de UN apartado, así que necesita el
     // nodo; en un nodo de paso lo dice y no pide nada al servidor.

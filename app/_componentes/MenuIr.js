@@ -141,6 +141,14 @@ function destinosDe({ documentoId, alcance, aqui, onVista }) {
       ayuda: 'Qué falta por arreglar y en qué estado está el documento. Es donde se manda a revisión y se aprueba.',
     });
     lista.push({
+      id: 'impresion',
+      href: `/doc/${d}?vista=impresion`,
+      // Sin recargar, igual que las comprobaciones.
+      accion: onVista ? () => onVista('impresion') : null,
+      etiqueta: 'Cómo se imprime',
+      ayuda: 'Hasta qué nivel llega el índice y qué apartados empiezan en página nueva, en el PDF y en el Word.',
+    });
+    lista.push({
       id: 'reparto',
       href: `/reparto/${d}`,
       etiqueta: alcance.sinUnidades ? 'Quién lleva cada apartado' : 'Quién lleva cada unidad',
