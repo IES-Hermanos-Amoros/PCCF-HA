@@ -33,6 +33,17 @@ const B = 'daw-0483';
 const rutaEstructura = (doc, unidad) => `/api/documentos/${doc}/unidades/${encodeURIComponent(unidad)}/estructura`;
 const rutaImpresion = (doc) => `/api/documentos/${doc}/impresion`;
 
+// ABRIR UNA PANTALLA Y ESPERAR A QUE ESTE PINTADA, antes de buscar una tarjeta dentro.
+//
+// La PRIMERA visita a una ruta la compila el servidor de desarrollo en ese momento, y en una
+// maquina cargada eso pasa de los diez segundos que `expect` espera por omision. Sin esto, la
+// prueba falla diciendo que no encuentra la tarjeta cuando lo que pasa es que la pagina todavia no
+// ha llegado. Se espera al titulo de la pantalla, que es lo primero que pinta.
+const abrir = async (page, camino) => {
+  await page.goto(camino);
+  await page.getByRole('main').getByRole('heading', { level: 1 }).waitFor({ timeout: 120_000 });
+};
+
 controlDeFuga(test);
 
 async function docDeDaw(page) {
@@ -80,7 +91,7 @@ test.describe('cómo se imprime', () => {
     await entrarComo(page, 'jefe_departamento');
     const doc = await docDeDaw(page);
     try {
-      await page.goto(`/doc/${doc}?vista=impresion`);
+      await abrir(page, `/doc/${doc}?vista=impresion`);
       await expect(page.getByRole('heading', { level: 2, name: 'Cómo se imprime' })).toBeVisible();
 
       const indice = page.getByLabel('Índice hasta');
@@ -130,7 +141,7 @@ test.describe('cómo se imprime', () => {
     await entrarComo(page, 'jefe_estudios');
     const doc = await docDeDaw(page);
     try {
-      await page.goto(`/doc/${doc}?vista=impresion`);
+      await abrir(page, `/doc/${doc}?vista=impresion`);
       const indice = page.getByLabel('Índice hasta');
       await expect(indice).toBeVisible();
       await indice.selectOption('3');
@@ -145,7 +156,7 @@ test.describe('cómo se imprime', () => {
     await salir(page);
     await entrarComo(page, 'docente');
     const doc = await docDeDaw(page);
-    await page.goto(`/doc/${doc}?vista=impresion`);
+    await abrir(page, `/doc/${doc}?vista=impresion`);
     await expect(page.getByRole('heading', { level: 2, name: 'Cómo se imprime' })).toBeVisible();
     // Ve lo que hay configurado…
     await expect(page.getByText('Hasta el segundo nivel')).toBeVisible();
@@ -162,8 +173,7 @@ test.describe('cómo se imprime', () => {
     await salir(page);
     await entrarComo(page, 'jefe_departamento');
     const doc = await docDeDaw(page);
-    await page.goto(`/doc/${doc}`);
-    await page.getByRole('main').getByRole('heading', { level: 1 }).waitFor();
+    await abrir(page, `/doc/${doc}`);
     await page.getByRole('button', { name: /Ir a/ }).click();
     await page.getByRole('menuitem', { name: 'Cómo se imprime' }).click();
     await expect(page.getByRole('heading', { level: 2, name: 'Cómo se imprime' })).toBeVisible();
@@ -185,7 +195,7 @@ test.describe('añadir un apartado de primer nivel a un módulo', () => {
       // El vecino, para poder decir al final que sigue igual.
       const antesB = await estructuraDe(page, doc, B);
 
-      await page.goto(`/doc/${doc}/modulos?u=${encodeURIComponent(A)}`);
+      await abrir(page, `/doc/${doc}/modulos?u=${encodeURIComponent(A)}`);
       await expect(page.getByRole('heading', { level: 2, name: 'Añadir un apartado a este módulo' })).toBeVisible();
       // Lo que la tarjeta promete antes de pulsar: sale solo en este módulo.
       await expect(page.getByText(/solo en este módulo/)).toBeVisible();
@@ -224,7 +234,7 @@ test.describe('añadir un apartado de primer nivel a un módulo', () => {
     await entrarComo(page, 'jefe_departamento');
     const doc = await docDeDaw(page);
     try {
-      await page.goto(`/doc/${doc}/modulos?u=${encodeURIComponent(A)}`);
+      await abrir(page, `/doc/${doc}/modulos?u=${encodeURIComponent(A)}`);
       await page.getByLabel('Título del apartado nuevo').fill('Apartado propio de A');
       await page.getByRole('button', { name: 'Añadir', exact: true }).click();
       await expect(page.getByRole('status').filter({ hasText: /Apartado propio de A/ })).toBeVisible();
@@ -251,8 +261,7 @@ test.describe('añadir un apartado de primer nivel a un módulo', () => {
     await salir(page);
     await entrarComo(page, 'jefe_estudios');
     const doc = await docDeDaw(page);
-    await page.goto(`/doc/${doc}/modulos?u=${encodeURIComponent(A)}`);
-    await page.getByRole('main').getByRole('heading', { level: 1 }).waitFor();
+    await abrir(page, `/doc/${doc}/modulos?u=${encodeURIComponent(A)}`);
     // La jefatura de estudios ve todo y no edita nada: la tarjeta de añadir no es suya.
     //
     // HAY QUE ESPERAR A QUE LA PÁGINA TERMINE DE PREGUNTAR EL PERMISO. La tarjeta aparece solo
