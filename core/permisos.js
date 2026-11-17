@@ -31,7 +31,10 @@
 //
 //   admin              coordinación técnica: ve y edita todo (soporte)
 //   jefe_estudios      ve los documentos de todos los departamentos, en
-//                      cualquier estado; NO edita nada, que es quien aprueba
+//                      cualquier estado; NO edita nada, que es quien aprueba.
+//                      Configura dos cosas que no son contenido: las
+//                      comprobaciones (`puedeConfigurarComprobaciones`) y cómo
+//                      se imprime (`puedeConfigurarImpresion`)
 //   jefe_departamento  su departamento: apartados comunes, textos compartidos y
 //                      todos los módulos, los tenga asignados o no
 //   docente            ve los de su departamento; edita los módulos que tiene
@@ -130,6 +133,14 @@
     return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
   }
 
+  // Quién decide qué personas llevan cada apartado COMÚN del documento (los que edita la jefatura y
+  // están fuera de los módulos), cuando requieren colaboración. El criterio es el del reparto de
+  // unidades, pero es otra pregunta: si un día cambia una, la otra no tiene por qué enterarse.
+  function puedeAsignarApartados(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
+  }
+
   // Quién cambia la ESTRUCTURA del documento: renombrar un apartado, añadir
   // uno, moverlo o retirarlo (core/plantilla.js). La jefatura del departamento
   // —que es quien responde de qué apartados tiene la programación— y el
@@ -145,6 +156,41 @@
   function puedeCambiarEstructura(usuario, donde) {
     if (!puedeVer(usuario, donde)) return false;
     return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
+  }
+
+  // Quién cambia la estructura de UN APARTADO concreto: los campos que lleva, su nombre y su orden.
+  // Es la regla de la estructura propia de un módulo (core/estructura-modulo.js), y es otra pregunta
+  // que `puedeCambiarEstructura`, que gobierna los apartados del documento entero (añadir, mover y
+  // retirar apartados).
+  //
+  //   edita                  'jefe_departamento' | 'docentes_del_modulo' | null, del apartado
+  //   esDocenteDeLaUnidad    el usuario lleva la unidad de este apartado
+  //   tieneApartadoAsignado  se le ha asignado este apartado común (o su raíz)
+  //
+  // LA DECISIÓN DEL DEPARTAMENTO: el documento es totalmente configurable por parte de quien tiene
+  // permisos en ese apartado, sea cual sea el apartado. Quien puede ESCRIBIR un apartado puede
+  // CONFIGURAR sus campos, sea de módulo o común:
+  //
+  //   · un apartado de módulo lo configuran el soporte, la jefatura del departamento —en cualquier
+  //     módulo, lo lleve o no— y el docente que lleva esa unidad;
+  //   · un apartado común, el soporte, la jefatura del departamento y quien lo tenga asignado;
+  //   · la jefatura de estudios, nunca, en ninguno: aprueba, no cambia el documento.
+  //
+  // (Antes un apartado común lo configuraba solo la jefatura, aunque otra persona lo tuviera
+  // asignado: asignarlo delegaba el contenido y no la forma. El departamento lo ha cambiado.)
+  //
+  // HOY CONTESTA EXACTAMENTE LO MISMO QUE `reglaEdicion`, y por eso no repite su cuerpo: la delega.
+  // Quedan dos nombres y una sola regla. Hay dos preguntas —quién escribe y quién configura— y es
+  // útil que el sitio que llama diga cuál está haciendo; pero la decisión es que la respuesta sea la
+  // misma, y dos cuerpos iguales son justo lo que se separa sin que nadie se entere (el mockup v1,
+  // arriba). Si el día de mañana el departamento quiere que configurar sea más (o menos) que
+  // escribir, este es el único sitio que se toca, y la diferencia queda escrita aquí y no en un
+  // `if` perdido en una ruta.
+  //
+  // Lo que NO cubre esta regla, porque no es de permisos: que el apartado exista, que no esté
+  // retirado y que la versión sea la activa. Eso lo comprueba la ruta.
+  function reglaEstructuraPropia(usuario, datos) {
+    return reglaEdicion(usuario, datos);
   }
 
   // Quién configura las COMPROBACIONES de un documento: qué comprobaciones de criterio del centro
@@ -163,6 +209,40 @@
   function puedeConfigurarComprobaciones(usuario, donde) {
     if (!puedeVer(usuario, donde)) return false;
     return usuario.rol === 'admin' || usuario.rol === 'jefe_estudios';
+  }
+
+  // Cómo se imprime un documento: hasta qué nivel llega el índice y qué apartados empiezan en página
+  // nueva (core/impresion.js). La jefatura de departamento, la de estudios y el soporte.
+  //
+  // ES LA ÚNICA COSA QUE LA JEFATURA DE ESTUDIOS CAMBIA, y hay que decirlo porque arriba está escrito
+  // que no edita nada, que es quien aprueba. La excepción está decidida por el departamento y tiene
+  // una razón: esto no es contenido del documento, es cómo sale en el papel. No mueve el listón de lo
+  // que se puede aprobar, no cambia ni un apartado y no escribe nada de nadie. Quien firma el
+  // documento impreso tiene que poder decidir cómo se imprime.
+  //
+  // Es una función aparte de `puedeConfigurarComprobaciones` aunque las dos sean «configurar»: esas
+  // SÍ mueven el listón y por eso las decide solo quien aprueba. El día que una de las dos cambie, la
+  // otra no tiene por qué enterarse.
+  function puedeConfigurarImpresion(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_estudios' || usuario.rol === 'jefe_departamento';
+  }
+
+  // Quién cambia cuál es la versión activa de un documento, y quién borra una versión alternativa
+  // (docs/plan.md §8). La jefatura del departamento, en su departamento, y el soporte. Subir una versión
+  // alternativa no es esto: es importar, y lo pueden los mismos roles que ya importan.
+  //
+  // Son dos preguntas y dos funciones aunque hoy contesten lo mismo: activar es reversible, porque la
+  // anterior queda como alternativa con sus ediciones, y borrar no. El día que una de las dos cambie, la
+  // otra no tiene por qué enterarse.
+  function puedeActivarVersion(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
+  }
+
+  function puedeBorrarVersion(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_departamento';
   }
 
   // ------------------------------------------------- búsqueda en la plantilla
@@ -231,8 +311,13 @@
     idDeUsuario,
     estaActivo,
     puedeRepartirUnidades,
+    puedeAsignarApartados,
     puedeCambiarEstructura,
+    reglaEstructuraPropia,
     puedeConfigurarComprobaciones,
+    puedeConfigurarImpresion,
+    puedeActivarVersion,
+    puedeBorrarVersion,
   };
 
   // Vale como <script> en el mockup, como `require` en el motor y en las

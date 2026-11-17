@@ -107,7 +107,7 @@ export default function Subida({ departamentoPorOmision, rol, habilitado, alImpo
     const cuerpo = new FormData();
     cuerpo.set('archivo', archivo);
     cuerpo.set('tipo', tipo);
-    cuerpo.set('ciclo', ciclo);
+    if (tipo !== 'memoria') cuerpo.set('ciclo', ciclo);
     cuerpo.set('curso', curso);
     cuerpo.set('departamento', departamento);
     if (forzar) cuerpo.set('forzar', '1');
@@ -174,13 +174,15 @@ export default function Subida({ departamentoPorOmision, rol, habilitado, alImpo
           </select>
         </div>
 
-        <div className="linea-estructura">
-          <label htmlFor="ciclo">Ciclo o etapa</label>
-          <select id="ciclo" value={ciclo} onChange={(ev) => setCiclo(ev.target.value)} required>
-            {CICLOS.map((c) => <option key={c} value={c}>{NOMBRES_CICLO[c] || c.toUpperCase()}</option>)}
-          </select>
-          <span className="ayuda">no está en el Word</span>
-        </div>
+        {tipo !== 'memoria' && (
+          <div className="linea-estructura">
+            <label htmlFor="ciclo">Ciclo o etapa</label>
+            <select id="ciclo" value={ciclo} onChange={(ev) => setCiclo(ev.target.value)} required>
+              {CICLOS.map((c) => <option key={c} value={c}>{NOMBRES_CICLO[c] || c.toUpperCase()}</option>)}
+            </select>
+            <span className="ayuda">no está en el Word</span>
+          </div>
+        )}
 
         <div className="linea-estructura">
           <label htmlFor="curso">Curso académico</label>

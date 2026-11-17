@@ -70,7 +70,8 @@
 'use strict';
 
 const Unidades = require('../../../core/unidades');
-const { conErrores, abrirDocumento, leerJson, fallo, malaPeticion, sinPlantilla, CURSO_RE, cursoSiguiente } = require('./comun');
+const { mismoGrupo } = require('../../../core/versiones');
+const { conErrores, abrirDocumento, leerJson, fallo, malaPeticion, sinPlantilla, CURSO_RE, cursoSiguiente, cursoValido } = require('./comun');
 const { SIN_PERMISO } = require('../usuario');
 
 // Quién crea el curso siguiente: la jefatura del departamento y el soporte. El docente no crea
@@ -107,6 +108,10 @@ function filasDelSiguiente(origen, { curso, unidades, apartados, compartidos, pl
     // `null` y no `{}` cuando no hay nada configurado: así el documento nuevo queda igual que uno
     // recién importado y `normalizarConfig` le da lo de serie (core/validaciones.js).
     comprobaciones: origen.comprobaciones ? copia(origen.comprobaciones) : null,
+    // Cómo se imprime viaja por el mismo motivo que las comprobaciones: quien decidió en septiembre
+    // que el índice de la programación llega hasta el tercer nivel no tiene que volver a decidirlo
+    // cada curso. `null` cuando no hay nada configurado (core/impresion.js).
+    impresion: origen.impresion ? copia(origen.impresion) : null,
     origen: null,
   };
 
@@ -189,11 +194,11 @@ const CREAR = conErrores(async (peticion, parametros) => {
     }
     curso = cursoSiguiente(cursoDePartida);
   }
-  if (!CURSO_RE.test(curso)) {
-    return malaPeticion(`El curso «${curso}» no tiene la forma 2027-28.`);
+  if (!cursoValido(curso)) {
+    return malaPeticion(`El curso «${curso}» no es válido: tiene la forma 2027-28, con el segundo año igual al primero más uno.`);
   }
-  if (cursoDePartida && !(curso > cursoDePartida)) {
-    return malaPeticion(`El curso nuevo tiene que ser posterior al del documento de partida, «${cursoDePartida}».`);
+  if (cursoDePartida && curso !== cursoSiguiente(cursoDePartida)) {
+    return malaPeticion(`El curso nuevo tiene que ser el inmediato siguiente al del documento de partida, «${cursoDePartida}»: ${cursoSiguiente(cursoDePartida)}.`);
   }
 
   // El mismo documento, para el mismo curso: un documento es (tipo, ciclo, departamento), y el curso
@@ -201,7 +206,7 @@ const CREAR = conErrores(async (peticion, parametros) => {
   // pueden pasarla las dos. El índice de `documentos` en repositorio/mongo.js no es único, y ese
   // fichero no es de este evolutivo; queda anotado en el informe.
   const iguales = await repo.documentos.listar({ tipo: origen.tipo, departamento: origen.departamento, curso });
-  const mismo = iguales.find((d) => (d.ciclo || null) === (origen.ciclo || null));
+  const mismo = iguales.find((d) => mismoGrupo(d, { ...origen, curso }));
   if (mismo) {
     return fallo(
       409, 'conflicto',

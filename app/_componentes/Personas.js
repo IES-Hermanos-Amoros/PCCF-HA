@@ -342,7 +342,7 @@ export default function Personas() {
     <>
       <BarraSuperior subtitulo="Personas del departamento" persona={yo} aqui="personas" />
 
-      <main className="main">
+      <main id="contenido" tabIndex={-1} className="main">
         <div className="cabecera">
           <div>
             <h1>Personas del departamento</h1>
@@ -586,7 +586,7 @@ export default function Personas() {
                                     type="button"
                                     disabled={trabajando}
                                     onClick={() => volverAInvitar(p)}
-                                    aria-label={`Generar otro enlace de acceso para ${p.nombre}`}
+                                    aria-label={`Volver a invitar a ${p.nombre}: genera otro enlace de acceso`}
                                   >
                                     Volver a invitar
                                   </button>

@@ -486,3 +486,81 @@ Está recogido en [`mockup-v2/CAMBIOS.md`](mockup-v2/CAMBIOS.md) y no bloquea na
 - **qué pasa con los documentos de cursos ya aprobados** cuando cambia la plantilla: E6;
 - **los códigos de módulo** de DAW y SMR están puestos de memoria y hay que confirmarlos contra los
   reales decretos. No bloquea: el id interno no depende del código.
+
+---
+
+## 8. Versiones del documento
+
+Reimportar un Word para un curso que ya tiene documento no lo pisa ni lo duplica: entra como una
+**versión alternativa**, no activa, y el documento que había sigue exactamente como estaba.
+
+**Qué es «el mismo documento».** Tipo + curso + ciclo + departamento (en la memoria, que es del
+departamento y no de un ciclo, la clave no lleva ciclo: `TIPOS_SIN_CICLO` en `core/versiones.js`). Todos los documentos con esa
+clave son versiones del mismo y exactamente uno está activo. No hay un campo «grupo» que mantener: el
+grupo es la clave, y se calcula (`core/versiones.js`, `versionesDe`). Así un documento guardado antes
+de que existieran las versiones ya pertenece a su grupo sin migrar nada.
+
+**Campos nuevos en `documentos`**, todos opcionales:
+
+| Campo | Qué es |
+|---|---|
+| `activa` | `false` en una alternativa. **Ausente es activa**, como `activo` en las personas: los documentos anteriores no lo llevan y no deben quedarse fuera |
+| `version` | número de orden dentro del grupo, desde 1. Ausente es 1 |
+| `subidoPor` | `_id` de quien subió el Word. Su fecha es `creado` y el nombre del fichero, `origen` |
+
+**Qué hace solo la versión activa.** Es la única que se lista (`GET /api/documentos`), se edita, se
+exporta (PDF y Word) y se arrastra al curso siguiente. Las alternativas se pueden abrir en lectura
+(`/arbol`, `/apartado`, `/estado`…) con `puedeEditar` a falso. La comprobación está en un solo sitio,
+`abrirDocumento` (`app/_lib/rutas/comun.js`): cualquier petición que no sea `GET` sobre una
+alternativa responde 409 `version_alternativa`, de modo que una ruta de escritura nueva no tiene que
+acordarse. Las rutas de versiones piden expresamente `permiteAlternativa`, y también el hilo de comentarios (GET y
+POST): la alternativa es justo donde se discute cuál de las versiones activar, así que ahí se comenta
+aunque no se escriba. La interfaz no ofrece en una alternativa lo que siempre daría 409: exportar,
+pasar al curso siguiente, mandar a revisión ni repartir.
+
+**Por qué la clave y no un id de grupo.** Un id de grupo repartido por los documentos obliga a
+migrar los existentes y a decidir qué hacer cuando dos grupos se funden. La clave ya es la regla que
+usa el arrastre para no crear dos veces el curso siguiente.
+
+**Cargas por script.** `scripts/cargar-reales.js` sustituye lo anterior a propósito (borra los
+previos tras cargar), así que importa con `versionar: false` y el documento nace activo.
+
+**Lo que no se resuelve.** `anteriorId` del curso siguiente apunta al documento que era activo al
+arrastrar; si luego se activa otra versión, el enlace no se mueve.
+
+**La copia del Word original.** Cada importación guarda el `.docx` tal como llegó, asociado a la
+versión que crea (`repo.copias`: `guardar`, `info`, `obtener`). Es una colección aparte y no un campo
+del documento por dos razones: un documento de Mongo no pasa de 16 MB y un Word puede pesar varios, y
+así ninguna lectura normal de documentos arrastra el fichero (`info` lo lee con proyección sin
+contenido). Se guarda una copia por documento y se borra con él. El tope es de 15 MB
+(`TAMANO_MAXIMO_COPIA`): por encima la importación sigue valiendo y la respuesta dice
+`resumen.copia: false`. Los documentos anteriores a las versiones no tienen copia.
+
+**Activar y borrar.** Activar es un intercambio de dos escrituras sin transacción: primero se
+desactiva la activa y luego se activa la elegida, y si la segunda falla se restaura la primera. En el
+peor caso el grupo se queda sin activa y nunca con dos, que es lo que duplicaría la lista. Borrar una
+alternativa pide confirmación explícita en el cuerpo y no se permite sobre la activa. Las reglas de
+quién puede están en `core/permisos.js` (`puedeActivarVersion`, `puedeBorrarVersion`), separadas
+aunque hoy respondan lo mismo, porque activar es reversible y borrar no.
+
+## Reparto de apartados comunes (R1)
+
+Cada profesor edita su parte de la programación. Los **módulos** se reparten por unidad desde el E2. Los
+**apartados comunes** (fuera de los módulos, `edita: 'jefe_departamento'`) tenían la regla
+(`tieneApartadoAsignado`, `documento.asignaciones`) pero ninguna forma de darlos; R1 añade la ruta
+`/api/documentos/[id]/asignaciones` (`docs/api.md`), la regla `puedeAsignarApartados` en
+`core/permisos.js` —hoy igual que repartir unidades, y aparte por ser otra pregunta— y una sección en la
+pantalla de Reparto.
+
+- Se delega solo lo que edita la jefatura: lo demás ya se reparte por unidad o no es delegable.
+- Las asignaciones **viajan al curso siguiente** (`arrastre.js`) y **se limpian al borrar** un apartado
+  retirado con sus subapartados (`estructura.js`); retirar sin borrar las conserva por si se restaura.
+  Las dos cosas están ahora cubiertas en `test/asignaciones.js`.
+- Una persona dada de baja o trasladada sigue en la lista guardada pero no cuenta como quien lleva el
+  apartado: se filtra al leer, como en las unidades.
+
+La pantalla de Reparto lleva debajo de la matriz de módulos `app/_componentes/ApartadosComunes.js`: «Lo
+que puedes editar» (módulos y apartados asignados a quien mira, o «todo» para la jefatura y el soporte, o
+solo lectura para la jefatura de estudios; sale de `mios` en el GET, la pantalla no recalcula la regla) y
+la matriz apartados × personas, con la misma forma de guardar que la de módulos (lista completa, casillas
+con `aria-disabled` cuando no se puede asignar, 400 dicho como «no se ha guardado nada»).

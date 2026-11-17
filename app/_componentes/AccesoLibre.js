@@ -48,7 +48,7 @@ export default function AccesoLibre() {
   // Apagado: la ruta responde 404 y no hay nada que enseñar.
   if (fallo && fallo.estado === 404 && personas === null) {
     return (
-      <main className="main main-estrecha">
+      <main id="contenido" tabIndex={-1} className="main main-estrecha">
         <h1>No hay nada aquí</h1>
         <p className="ayuda">
           Esta pantalla solo existe mientras se está probando la aplicación, y está apagada.
@@ -59,7 +59,7 @@ export default function AccesoLibre() {
   }
 
   return (
-    <main className="main main-estrecha">
+    <main id="contenido" tabIndex={-1} className="main main-estrecha">
       <div className="tarjeta">
         <div className="tarjeta-cab">
           <h1>Entrar como…</h1>

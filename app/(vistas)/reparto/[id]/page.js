@@ -11,6 +11,8 @@
 import { asegurarSemilla } from '../../../_lib/semilla';
 import Reparto from '../../../_componentes/Reparto';
 
+export const metadata = { title: 'Reparto' };
+
 export const dynamic = 'force-dynamic';
 
 export default async function PaginaReparto({ params }) {

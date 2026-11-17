@@ -114,6 +114,8 @@
 'use strict';
 
 const Arbol = require('../../../core/arbol');
+const { plantillaDelModulo, seccionesDelModulo } = require('../../../motor/estructura-del-modulo');
+const { personasQueDanClase } = require('./unidades');
 const Sa = require('../../../core/sa');
 const Val = require('../../../core/validaciones');
 const E = require('../../../core/estructurados');
@@ -199,18 +201,32 @@ async function informeDe({ documento, repo }) {
     unidades,
     apartados,
     clave: documento._id,
+    hijosDeUnidad: (bloque, u) => seccionesDelModulo(documento.plantilla, u),
     titulo: tituloDelTomo(documento, null),
   });
 
   // Los campos de cada sección, una sola vez: con 250 apartados, bajar la plantilla por cada nodo
   // sería recorrerla doscientas cincuenta veces.
-  const deLaSeccion = new Map();
-  (function bajar(secs) {
-    for (const sec of (secs || [])) {
-      deLaSeccion.set(sec.id, { campos: sec.campos || [], repetidor: !!sec.repetidor });
-      bajar(sec.hijos);
-    }
-  })(documento.plantilla && documento.plantilla.secciones);
+  // Una vez por plantilla distinta: los módulos sin estructura propia comparten la común, y los que
+  // la tienen, la suya (lo que ven en pantalla y lo que sale en el papel).
+  const mapasPorPlantilla = new Map();
+  const mapaDe = (plantilla) => {
+    if (mapasPorPlantilla.has(plantilla)) return mapasPorPlantilla.get(plantilla);
+    const mapa = new Map();
+    (function bajar(secs) {
+      for (const sec of (secs || [])) {
+        mapa.set(sec.id, { campos: sec.campos || [], repetidor: !!sec.repetidor });
+        bajar(sec.hijos);
+      }
+    })(plantilla && plantilla.secciones);
+    mapasPorPlantilla.set(plantilla, mapa);
+    return mapa;
+  };
+  const unidadPorId = new Map(unidades.map((u) => [u.unidadId, u]));
+  const deLaSeccion = (unidadId, seccion) => {
+    const u = unidadId ? unidadPorId.get(unidadId) : null;
+    return mapaDe(u ? plantillaDelModulo(documento.plantilla, u) : documento.plantilla).get(seccion);
+  };
 
   const valoresDe = new Map();
   for (const fila of apartados) valoresDe.set(clave(fila.unidadId, fila.seccion), fila.valores || {});
@@ -223,7 +239,7 @@ async function informeDe({ documento, repo }) {
   // core/permisos.js: los comunes los escribe ella, salvo los que haya delegado, y a quién se le ha
   // delegado qué se ve en el reparto.
   const personas = new Map();
-  for (const p of await repo.usuarios.listar({ departamento: documento.departamento })) {
+  for (const p of await personasQueDanClase(repo, documento)) {
     personas.set(p._id, { _id: p._id, nombre: p.nombre, rol: p.rol });
   }
   const jefatura = [...personas.values()].filter((p) => p.rol === 'jefe_departamento');
@@ -233,7 +249,7 @@ async function informeDe({ documento, repo }) {
   const raDelModulo = new Map();
   for (const u of unidades) {
     const nums = new Set();
-    for (const { seccion, campo } of seccionesConCampo(documento.plantilla, TIPO_RA_CE)) {
+    for (const { seccion, campo } of seccionesConCampo(plantillaDelModulo(documento.plantilla, u), TIPO_RA_CE)) {
       const valores = valoresDe.get(clave(u.unidadId, seccion));
       for (const num of raDeTablas(valores ? valores[campo] : undefined)) nums.add(num);
     }
@@ -264,7 +280,7 @@ async function informeDe({ documento, repo }) {
   // ---- las normativas, apartado por apartado y en el orden del documento
   for (const nodo of nodos) {
     if (nodo.tipo !== 'apartado') continue;
-    const info = deLaSeccion.get(nodo.seccion);
+    const info = deLaSeccion(nodo.unidadId, nodo.seccion);
     if (!info || !info.campos.length) continue;
 
     const valores = valoresDe.get(clave(nodo.unidadId, nodo.seccion)) || {};
@@ -299,7 +315,7 @@ async function informeDe({ documento, repo }) {
     // Primero el que impide trabajar: mientras la unidad no tenga profesorado, nadie salvo la
     // jefatura puede escribir en ella, así que lo demás es secundario.
     grupo.avisos.unshift(...marcar(
-      Val.sinDocente(grupo.titulo, (unidad.docentes || []).length), 'sin_docente', suyo, false,
+      Val.sinDocente(grupo.titulo, grupo.responsables.length), 'sin_docente', suyo, false,
     ));
 
     const fichas = grupo.fichas.map((x) => x.ficha);

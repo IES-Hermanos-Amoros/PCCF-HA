@@ -6,6 +6,8 @@ const { filasDeFicha, esSemantica } = require('./ficha-sa');
 const Val = require('../core/validaciones');
 const Est = require('../core/estructurados');
 const MT = require('../core/modelos-tabla');
+const Imp = require('../core/impresion');
+const { seccionesDelModulo } = require('./estructura-del-modulo');
 
 // El convenio con el que se imprime SI NADIE DICE OTRO. Es el estricto: los criterios de un RA
 // reparten su peso (ver core/validaciones.js).
@@ -221,27 +223,47 @@ function pintarSeccion(sec, valores, numero, ctx) {
   if (sec.repetidor) {
     // los ítems repetidos (Situación de aprendizaje 1, 2, 3...) cuelgan directamente de la sección padre, sin numeración propia
     const v = valores[sec.id];
-    if (!v || !v.items || !v.items.length) { out.push(para(`(sin elementos de tipo "${sec.titulo}")`, { italics: true, color: GRIS })); return out; }
+    if (!v || !v.items || !v.items.length) { out.push(para(`(sin elementos de tipo "${sec.titulo}")`, { italics: true, color: GRIS })); ctx.saltos.escrito(); return out; }
     ctx.resumenCalculado = resumenSituaciones(v.items);
     if (ctx.resumenPendiente && ctx.resumenCalculado) { out.push(ctx.resumenCalculado); ctx.resumenPendiente = false; }
     v.items.forEach((it, i) => {
       out.push({ text: `${sec.titulo} ${i + 1}: ${it.titulo}`, style: 'h3' });
       for (const c of sec.campos) if (c.id !== 'titulo') out.push(...pintarCampo(c, it[c.id], ctx));
     });
+    // Los ítems repetidos llevan título y contenido, pero su título no se numera y no rompe página:
+    // lo que queda delante del siguiente apartado es contenido, y eso es lo que hay que contar.
+    ctx.saltos.escrito();
     return out;
   }
-  out.push({ text: `${numero}. ${sec.titulo}`, style: estilo, tocItem: nivel <= 2, tocMargin: [12 * (nivel - 1), 0, 0, 0] });
+  // `nivel` está topado en 3 porque es el ESTILO (solo hay h1, h2 y h3). Para el índice y para el
+  // salto manda la profundidad de la numeración impresa, que dentro de un módulo llega a 4, 5 o 6.
+  const entra = Imp.entraEnElIndice(numero, ctx.impresion);
+  // La sangría del índice crece 12 pt por nivel y se topa en 48 para que un índice de nivel 5 o 6 no
+  // se salga de la página. Un apartado que no entra en el índice no usa la sangría para nada, así
+  // que conserva la que tenía (topada con el estilo) y su nodo no cambia respecto al de siempre.
+  const sangria = entra ? Math.min(12 * (Imp.nivelDelNumero(numero) - 1), 48) : 12 * (nivel - 1);
+  const titulo = { text: `${numero}. ${sec.titulo}`, style: estilo, tocItem: entra, tocMargin: [sangria, 0, 0, 0] };
+  // La clave solo existe cuando hay salto: un `pageBreak: undefined` no es lo mismo que ninguna clave.
+  // Quién decide el salto es `ctx.saltos` y no `empiezaEnPaginaNueva` a secas, porque la regla
+  // completa depende de lo que haya salido antes: no se rompe justo después de un título, o el
+  // título de arriba se queda solo en su página (core/impresion.js).
+  if (ctx.saltos.titulo(numero)) titulo.pageBreak = 'before';
+  out.push(titulo);
   const v = valores[sec.id] || {};
+  const antesDeLosCampos = out.length;
   // el resumen derivado se pinta después de los ítems de los que depende: si aparece antes, lo aplazamos
   for (const c of sec.campos) {
     if (c.tipo === 'derivado.resumen_situaciones') { ctx.resumenPendiente = true; continue; }
     out.push(...pintarCampo(c, v[c.id], ctx));
   }
+  // Un apartado con casillas deja algo escrito debajo de su título; uno que solo tiene subapartados
+  // no deja nada, y entonces su primer subapartado no puede romper.
+  if (out.length > antesDeLosCampos) ctx.saltos.escrito();
   sec.hijos.forEach((h, i) => out.push(...pintarSeccion(h, valores, `${numero}.${i + 1}`, ctx)));
   return out;
 }
 
-function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo, subtitulo, estado = 'borrador', convenioCe = CONVENIO_IMPRESO }) {
+function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo, subtitulo, estado = 'borrador', convenioCe = CONVENIO_IMPRESO, impresion }) {
   const datos = resolverCompartidos(datosConRefs);
   const borrador = estado !== 'aprobado';
   const seleccion = instancias === 'todas' ? datos.instancias : datos.instancias.filter((x, i) => (instancias || []).includes(i) || (instancias || []).includes(x.titulo));
@@ -256,20 +278,32 @@ function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo
   // Los modelos de tabla viajan en el contexto por lo mismo que la estructura de la ficha: la regla
   // se pregunta en `pintarCampo`, que esta a varias llamadas de aqui. Sin ellos (`undefined`) ninguna
   // tabla sigue estructura y el documento sale byte a byte como antes.
-  const ctx = { avisos: [], convenioCe, estructuraFicha: plantilla.estructuraFicha, modelos: MT.modelosDe(plantilla) };
+  // `saltos` lleva la cuenta de lo que ya ha salido, que es lo que hace falta para no romper página
+  // justo después de un título (core/impresion.js). Es un objeto por documento y viaja en el contexto
+  // porque lo pregunta `pintarSeccion`, que está a varias llamadas de aquí.
+  const ctx = {
+    avisos: [], convenioCe, estructuraFicha: plantilla.estructuraFicha, modelos: MT.modelosDe(plantilla),
+    impresion, saltos: Imp.rompePaginas(impresion),
+  };
   const cuerpo = [];
   plantilla.secciones.forEach((sec, i) => {
     const numero = String(i + 1);
     if (sec.instancias) {
-      cuerpo.push({ text: `${numero}. ${sec.titulo}`, style: 'h1', tocItem: true, pageBreak: 'before' });
+      cuerpo.push({ text: `${numero}. ${sec.titulo}`, style: 'h1', tocItem: Imp.entraEnElIndice(numero, impresion), pageBreak: 'before' });
+      // Este salto y el de cada módulo son del documento y no de la configuración: un bloque de
+      // módulos y un módulo empiezan en página nueva de siempre. Se le cuentan a `ctx.saltos` para
+      // que sepa que delante hay un título, y no los pregunta.
+      ctx.saltos.tituloFijo(numero);
       cuerpo.push(para(`${seleccion.length} ${sec.etiqueta_instancia}${seleccion.length === 1 ? '' : 's'} de ${datos.instancias.length} del documento original.`, { italics: true, color: GRIS }));
+      ctx.saltos.escrito();
       seleccion.forEach((inst, j) => {
         const n = `${numero}.${datos.instancias.indexOf(inst) + 1}`;
         const sub = { ...sec, id: sec.id, repetidor: false, campos: [], instancias: false };
-        cuerpo.push({ text: `${n}. ${inst.titulo}`, style: 'h2', tocItem: true, tocMargin: [12, 0, 0, 0], pageBreak: j ? 'before' : undefined });
+        cuerpo.push({ text: `${n}. ${inst.titulo}`, style: 'h2', tocItem: Imp.entraEnElIndice(n, impresion), tocMargin: [12, 0, 0, 0], pageBreak: j ? 'before' : undefined });
+        ctx.saltos.tituloFijo(n);
         const antes = ctx.avisos.length;
         const bloque = [];
-        sub.hijos.forEach((h, k) => bloque.push(...pintarSeccion(h, inst.valores, `${n}.${k + 1}`, ctx)));
+        seccionesDelModulo(plantilla, inst).forEach((h, k) => bloque.push(...pintarSeccion(h, inst.valores, `${n}.${k + 1}`, ctx)));
         const nuevos = ctx.avisos.splice(antes);
         if (nuevos.length) cuerpo.push({ table: { widths: ['*'], body: [[{ stack: [{ text: 'Comprobaciones automáticas', bold: true, color: ROJO, margin: [0, 0, 0, 3] }, { ul: nuevos }], fillColor: '#FDECEA' }]] }, layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 8, paddingRight: () => 8, paddingTop: () => 6, paddingBottom: () => 6 }, margin: [0, 0, 0, 10] });
         cuerpo.push(...bloque);
@@ -284,8 +318,11 @@ function buildDocDefinition({ plantilla, datos: datosConRefs, instancias, titulo
     { text: `Plantilla deducida del documento original el ${new Date(plantilla.generada).toLocaleDateString('es-ES')} · ${plantilla.secciones.length} secciones de primer nivel · ${datos.instancias.length} ${datos.instancias.length === 1 ? 'instancia' : 'instancias'}`, fontSize: 10, color: GRIS },
     { text: `Estado: ${borrador ? 'BORRADOR' : 'APROBADO'} · generado el ${fecha}`, fontSize: 10, color: borrador ? ROJO : VERDE, margin: [0, 6, 0, 0] },
   ];
+  // Sin índice no se imprime ni el índice ni su página, pero la portada sigue quedándose sola: el
+  // separador vacío se mantiene.
+  const indice = Imp.llevaIndice(impresion) ? [{ toc: { title: { text: 'Índice', style: 'h1' }, numberStyle: { color: GRIS } }, pageBreak: 'before' }] : [];
   return {
-    content: [...portada, { toc: { title: { text: 'Índice', style: 'h1' }, numberStyle: { color: GRIS } }, pageBreak: 'before' }, { text: '', pageBreak: 'before' }, ...cuerpo],
+    content: [...portada, ...indice, { text: '', pageBreak: 'before' }, ...cuerpo],
     pageSize: 'A4', pageMargins: [50, 60, 50, 60],
     info: { title: titulo || 'Documento', subject: plantilla.tipo },
     watermark: borrador ? { text: 'BORRADOR', color: '#9E9E9E', opacity: 0.12, bold: true, fontSize: 90 } : undefined,

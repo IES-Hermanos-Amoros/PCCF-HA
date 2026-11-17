@@ -327,8 +327,8 @@ export default function Coordinacion({ documentoId, onIr, onComprobaciones }) {
       <div className="tabla-scroll">
         <table className="tabla matriz" ref={tabla} onKeyDown={flechas}>
           <caption className="sr">
-            Coordinación: cada fila es una {etiqueta} del documento y cada columna un bloque. En cada
-            cruce, cómo va ese bloque en esa {etiqueta}; se pulsa para abrir el apartado. Se puede
+            Coordinación: hay una fila por cada {etiqueta} del documento y una columna por cada bloque. En cada
+            cruce, cómo va ese bloque en esa fila; se pulsa para abrir el apartado. Se puede
             recorrer con el tabulador o con las flechas.
           </caption>
           <thead>

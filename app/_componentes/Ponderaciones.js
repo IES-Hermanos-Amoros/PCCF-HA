@@ -93,20 +93,30 @@ function Peso({ valor, etiqueta, editable, onCambio }) {
 
   if (!editable) return <span>{Val.porcentaje(valor)}</span>;
 
+  const ilegible = borrador !== null && aNumero(borrador) === undefined;
+
   return (
-    <input
-      type="text"
-      inputMode="decimal"
-      aria-label={etiqueta}
-      value={borrador === null ? conComa(valor) : borrador}
-      onChange={(ev) => {
-        const texto = ev.target.value;
-        setBorrador(texto);
-        const n = aNumero(texto);
-        if (n !== undefined) onCambio(n);
-      }}
-      onBlur={() => setBorrador(null)}
-    />
+    <>
+      <input
+        type="text"
+        inputMode="decimal"
+        aria-label={etiqueta}
+        aria-invalid={ilegible || undefined}
+        value={borrador === null ? conComa(valor) : borrador}
+        onChange={(ev) => {
+          const texto = ev.target.value;
+          setBorrador(texto);
+          const n = aNumero(texto);
+          if (n !== undefined) onCambio(n);
+        }}
+        onBlur={() => { if (!ilegible) setBorrador(null); }}
+      />
+      {ilegible ? (
+        <span className="error-campo" role="alert">
+          «{borrador}» no es un número: no se guarda. Escribe un peso como 12,5.
+        </span>
+      ) : null}
+    </>
   );
 }
 

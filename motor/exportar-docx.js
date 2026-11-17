@@ -36,7 +36,9 @@ const JSZip = require('jszip');
 const { resolverCompartidos, plano } = require('./compartidos');
 const { filasDeFicha, esSemantica } = require('./ficha-sa');
 const Est = require('../core/estructurados');
+const Impresion = require('../core/impresion');
 const MT = require('../core/modelos-tabla');
+const { seccionesDelModulo } = require('./estructura-del-modulo');
 
 const ANCHO_TABLA = 9638; // A4 (11906 twips) menos márgenes de 2 cm
 const MAX_NIVEL_LISTA = 8;
@@ -84,7 +86,7 @@ const parrafo = (texto, { estilo, base, extra = '' } = {}) => {
 };
 const separador = '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>';
 
-const titulo = (texto, nivel) => parrafo(texto, { estilo: `Heading${Math.min(Math.max(nivel, 1), 6)}` });
+const titulo = (texto, nivel, extra = '') => parrafo(texto, { estilo: `Heading${Math.min(Math.max(nivel, 1), 6)}`, extra });
 
 function lista(items) {
   return items.map((it) => {
@@ -257,12 +259,20 @@ function seccion(sec, valores, numero, nivel, ctx) {
   if (sec.repetidor) {
     // los ítems repetidos cuelgan del padre, sin número propio: "Situación de aprendizaje 2: título"
     const v = (valores[sec.id] || {}).items || [];
-    return v.map((it, i) => titulo(`${sec.titulo} ${i + 1}: ${it.titulo}`, nivel)
+    const salida = v.map((it, i) => ctx.titular(`${sec.titulo} ${i + 1}: ${it.titulo}`, nivel, '')
       + sec.campos.filter((c) => c.id !== 'titulo').map((c) => campo(c, it[c.id], ctx)).join('')).join('');
+    if (salida) ctx.saltos.escrito();
+    return salida;
   }
   const v = valores[sec.id] || {};
-  return titulo(`${numero}. ${sec.titulo}`, nivel)
-    + sec.campos.map((c) => campo(c, v[c.id], ctx)).join('')
+  const cabeza = ctx.titular(`${numero}. ${sec.titulo}`, nivel, numero);
+  const casillas = sec.campos.map((c) => campo(c, v[c.id], ctx)).join('');
+  // Un apartado con casillas deja algo escrito debajo de su título; uno que solo tiene subapartados
+  // no deja nada, y entonces su primer subapartado no puede empezar en página nueva o el título de
+  // arriba se queda solo (core/impresion.js). Se cuenta DESPUÉS de las casillas y ANTES de los
+  // hijos, que es el orden en que salen en el documento.
+  if (casillas) ctx.saltos.escrito();
+  return cabeza + casillas
     + (sec.hijos || []).map((h, i) => seccion(h, valores, `${numero}.${i + 1}`, nivel + 1, ctx)).join('');
 }
 
@@ -270,8 +280,40 @@ function seccion(sec, valores, numero, nivel, ctx) {
 // situacion de aprendizaje y los modelos de tabla. Es el `ctx` del PDF, con lo mismo dentro.
 const contexto = (plantilla) => ({ estructuraFicha: plantilla.estructuraFicha, modelos: MT.modelosDe(plantilla) });
 
-function cuerpo({ plantilla, datos, instancias }) {
+// Cada título pasa por `titular`, que es el único sitio que decide si empieza en página nueva. Quién
+// lo decide es `Impresion.rompePaginas` (core/impresion.js) con el NÚMERO IMPRESO del título, que es
+// lo mismo que le pregunta el PDF: así los dos hablan del mismo apartado aunque lo pinten distinto, y
+// la regla de no dejar un título solo en su página es una sola y está en un sitio.
+//
+// Los títulos sin número impreso —los de los elementos repetidos y los grupos de módulos a partir del
+// segundo— llegan con el número vacío y no saltan, igual que no cuentan para la regla.
+//
+// El salto es `w:pageBreakBefore` dentro del `w:pPr` del título y no un `w:br` de tipo página en
+// su primer `w:r`: un `w:br` suelto es contenido del párrafo, y el importador lo leería como parte
+// del texto del título. Una propiedad del párrafo no es texto.
+//
+// `abrirEnPaginaNueva` fuerza el salto del PRIMER título del cuerpo, y se usa cuando hay índice: sin
+// él, el índice y el primer apartado comparten página y el índice parece parte del apartado. Cuando
+// no hay índice no se fuerza nada y el documento empieza como siempre, con la portada arriba.
+//
+// UNA DIFERENCIA CON EL PDF, A PROPÓSITO: en el PDF cada módulo empieza en página nueva SIEMPRE,
+// porque así se imprime y se encuaderna. Aquí un módulo es un título como otro cualquiera y empieza
+// en página nueva cuando la configuración llega a su nivel (`saltos` 2 o más). El Word es el documento
+// que se sigue editando, y meterle saltos que nadie ha pedido estorba a quien escribe. Igualarlos es
+// cambiar esta línea por un salto fijo.
+function titularSegun(saltos, abrirEnPaginaNueva) {
+  let primero = true;
+  return (texto, nivel, numero) => {
+    const salta = saltos.titulo(numero) || (primero && abrirEnPaginaNueva);
+    primero = false;
+    return titulo(texto, nivel, salta ? '<w:pageBreakBefore/>' : '');
+  };
+}
+
+function cuerpo({ plantilla, datos, instancias, impresion, abrirEnPaginaNueva }) {
   const ctx = contexto(plantilla);
+  ctx.saltos = Impresion.rompePaginas(impresion);
+  ctx.titular = titularSegun(ctx.saltos, abrirEnPaginaNueva);
   const todas = datos.instancias || [];
   const sel = instancias === undefined || instancias === 'todas' ? todas
     : todas.filter((x, i) => (instancias || []).includes(i) || (instancias || []).includes(x.titulo));
@@ -285,11 +327,15 @@ function cuerpo({ plantilla, datos, instancias }) {
       const g = inst.grupo || sec.titulo;
       if (!grupos.includes(g)) grupos.push(g);
     }
-    return grupos.map((g, k) => titulo(k ? g : `${numero}. ${g}`, 1)
+    // El número se le pasa a `titular` TAMBIÉN cuando no se imprime (los grupos a partir del
+    // segundo): el número es lo que dice de qué nivel es el título, y sin él el segundo grupo de
+    // módulos no empezaría en página nueva mientras el primero sí. Lo que se imprime es el texto, que
+    // va aparte.
+    return grupos.map((g, k) => ctx.titular(k ? g : `${numero}. ${g}`, 1, numero)
       + sel.filter((inst) => (inst.grupo || sec.titulo) === g).map((inst) => {
         const n = `${numero}.${todas.indexOf(inst) + 1}`;
-        return titulo(`${n}. ${inst.titulo}`, 2)
-          + (sec.hijos || []).map((h, j) => seccion(h, inst.valores || {}, `${n}.${j + 1}`, 3, ctx)).join('');
+        return ctx.titular(`${n}. ${inst.titulo}`, 2, n)
+          + seccionesDelModulo(plantilla, inst).map((h, j) => seccion(h, inst.valores || {}, `${n}.${j + 1}`, 3, ctx)).join('');
       }).join('')).join('');
   }).join('');
 }
@@ -302,14 +348,54 @@ const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships
 // El formato zip guarda la fecha en formato DOS, que empieza en 1980.
 const FECHA_FIJA = new Date('2000-01-01T00:00:00Z');
 
-const CONTENT_TYPES = `${CABECERA_XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`;
+const TIPO_SETTINGS = 'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml';
+const contentTypes = (conSettings) => `${CABECERA_XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>${conSettings ? `<Override PartName="/word/settings.xml" ContentType="${TIPO_SETTINGS}"/>` : ''}</Types>`;
 const RELS = `${CABECERA_XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/></Relationships>`;
-const DOC_RELS = `${CABECERA_XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/styles" Target="styles.xml"/><Relationship Id="rId2" Type="${REL}/numbering" Target="numbering.xml"/></Relationships>`;
+const docRels = (conSettings) => `${CABECERA_XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/styles" Target="styles.xml"/><Relationship Id="rId2" Type="${REL}/numbering" Target="numbering.xml"/>${conSettings ? `<Relationship Id="rId3" Type="${REL}/settings" Target="settings.xml"/>` : ''}</Relationships>`;
 
 const TAMANOS = [32, 28, 24, 22, 22, 22]; // medios puntos
-function estilos() {
+
+// El rótulo «Índice». NO lleva `w:outlineLvl`, y eso es lo que lo distingue de un título: con
+// `Heading1` sería el primer título del documento y el importador lo leería como un apartado con el
+// aviso del campo dentro. Es el nombre que usa Word para lo mismo (`TOC Heading`).
+const ESTILO_DEL_INDICE = '<w:style w:type="paragraph" w:styleId="TOCHeading"><w:name w:val="TOC Heading"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="360" w:after="120"/></w:pPr><w:rPr><w:b/><w:color w:val="1F3864"/><w:sz w:val="32"/></w:rPr></w:style>';
+// `conIndice` decide si se declara el estilo del rótulo del índice. Un estilo que no usa ningún
+// párrafo no tiene por qué estar en el fichero, y dejándolo fuera un documento sin índice sale con
+// los MISMOS BYTES que antes de que el índice existiera, que es lo que vigila la puerta congelada
+// de test/modelos-tabla.js.
+function estilos(conIndice) {
   const encabezados = TAMANOS.map((sz, i) => `<w:style w:type="paragraph" w:styleId="Heading${i + 1}"><w:name w:val="heading ${i + 1}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="${i ? 240 : 360}" w:after="120"/><w:outlineLvl w:val="${i}"/></w:pPr><w:rPr><w:b/><w:color w:val="${i < 2 ? '1F3864' : '2E75B6'}"/><w:sz w:val="${sz}"/></w:rPr></w:style>`).join('');
-  return `${CABECERA_XML}<w:styles ${NS}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="20"/><w:lang w:val="es-ES"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="240"/></w:pPr><w:rPr><w:b/><w:color w:val="1F3864"/><w:sz w:val="48"/></w:rPr></w:style>${encabezados}<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="40"/><w:contextualSpacing/></w:pPr></w:style></w:styles>`;
+  return `${CABECERA_XML}<w:styles ${NS}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="20"/><w:lang w:val="es-ES"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="240"/></w:pPr><w:rPr><w:b/><w:color w:val="1F3864"/><w:sz w:val="48"/></w:rPr></w:style>${encabezados}${conIndice ? ESTILO_DEL_INDICE : ''}<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="40"/><w:contextualSpacing/></w:pPr></w:style></w:styles>`;
+}
+
+// `updateFields` hace que Word, al abrir el documento, actualice los campos y rellene el índice
+// solo; sin él se vería el texto de aviso del campo hasta que alguien pulse F9. Solo se escribe si
+// hay índice: un documento sin campos no tiene nada que actualizar.
+function ajustes() {
+  return `${CABECERA_XML}<w:settings ${NS}><w:updateFields w:val="true"/></w:settings>`;
+}
+
+// El índice es un CAMPO de Word (`TOC`), no texto: Word lo rellena al abrir, con los números de
+// página que solo él conoce. `\o "1-N"` lo limita a los niveles de esquema 1..N, `\h` hace de cada
+// entrada un enlace, `\z` oculta los números de página en la vista web y `\u` aplica el nivel de
+// esquema de cada párrafo. Lo que hay dentro del campo es solo el aviso que se ve si nadie lo
+// actualiza.
+//
+// DÓNDE VA: después de la portada y ANTES del primer título. El importador
+// (motor/importar-docx.js) ignora a propósito todos los bloques anteriores al primer título
+// («portada o índice; se ignoran»), así que puesto ahí el índice no entra como contenido al
+// reimportar. Por lo mismo el rótulo «Índice» NO lleva estilo de título: sería el primer título del
+// documento y el importador lo leería como un apartado con el aviso dentro.
+//
+// UNA DIFERENCIA CON EL PDF QUE SE QUEDA: Word construye el índice por NIVEL DE ESQUEMA
+// (`outlineLvl`), no por el número impreso, y los títulos de los elementos repetidos
+// («Situación de aprendizaje 1: …») no llevan número pero sí nivel de esquema. El índice de Word los
+// lista y el del PDF no. Bajarles el nivel de esquema para igualarlos cambiaría cómo el importador
+// deduce la estructura (`reglasDeNivelDeEsquema`), y eso es peor que la diferencia.
+function indice(nivel) {
+  const aviso = 'Para ver el índice, abre el documento en Word y actualiza los campos (Ctrl+E, F9).';
+  return parrafo('Índice', { estilo: 'TOCHeading' })
+    + `<w:p><w:fldSimple w:instr=" TOC \\o &quot;1-${nivel}&quot; \\h \\z \\u "><w:r><w:rPr><w:noProof/></w:rPr><w:t>${esc(aviso)}</w:t></w:r></w:fldSimple></w:p>`;
 }
 
 // Una sola numeración de viñetas con nueve niveles: el nivel de cada elemento va en `w:ilvl`.
@@ -324,13 +410,18 @@ function numeracion() {
 // por defecto 'todas': un exportador que no escribe nada por omisión sorprende.
 // `titulo` va como primer párrafo (estilo Title); el importador lo ignora, igual
 // que la portada de cualquier Word.
-async function exportarDocx({ plantilla, datos, titulo: tituloDoc, instancias = 'todas' }) {
+async function exportarDocx({ plantilla, datos, titulo: tituloDoc, instancias = 'todas', impresion }) {
   if (!plantilla || !Array.isArray(plantilla.secciones)) throw new Error('exportarDocx: falta la plantilla');
   if (!datos) throw new Error('exportarDocx: faltan los datos');
   const resueltos = resolverCompartidos(datos);
   const portada = tituloDoc ? parrafo(tituloDoc, { estilo: 'Title' }) : '';
+  const conIndice = Impresion.llevaIndice(impresion);
+  const nivelIndice = Impresion.normalizarConfig(impresion).indice;
   const pagina = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr>';
-  const documento = `${CABECERA_XML}<w:document ${NS}><w:body>${portada}${cuerpo({ plantilla, datos: resueltos, instancias })}${pagina}</w:body></w:document>`;
+  // El índice se queda con su página: si no, el primer apartado empieza justo debajo y el índice
+  // parece el principio de ese apartado. Se consigue con el salto del primer título del cuerpo y no
+  // con un párrafo vacío de más, que en Word deja una línea en blanco arriba de la página.
+  const documento = `${CABECERA_XML}<w:document ${NS}><w:body>${portada}${conIndice ? indice(nivelIndice) : ''}${cuerpo({ plantilla, datos: resueltos, instancias, impresion, abrirEnPaginaNueva: conIndice })}${pagina}</w:body></w:document>`;
 
   const zip = new JSZip();
   // Fecha fija en cada entrada del zip. Por omisión jszip pone la del momento, y
@@ -342,12 +433,13 @@ async function exportarDocx({ plantilla, datos, titulo: tituloDoc, instancias = 
   // (`word/`, `_rels/`) con la fecha del momento, y esas no pasan por `date`.
   // Word no las necesita: en el zip son opcionales.
   const opciones = { date: FECHA_FIJA, createFolders: false };
-  zip.file('[Content_Types].xml', CONTENT_TYPES, opciones);
+  zip.file('[Content_Types].xml', contentTypes(conIndice), opciones);
   zip.file('_rels/.rels', RELS, opciones);
   zip.file('word/document.xml', documento, opciones);
-  zip.file('word/_rels/document.xml.rels', DOC_RELS, opciones);
-  zip.file('word/styles.xml', estilos(), opciones);
+  zip.file('word/_rels/document.xml.rels', docRels(conIndice), opciones);
+  zip.file('word/styles.xml', estilos(conIndice), opciones);
   zip.file('word/numbering.xml', numeracion(), opciones);
+  if (conIndice) zip.file('word/settings.xml', ajustes(), opciones);
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 

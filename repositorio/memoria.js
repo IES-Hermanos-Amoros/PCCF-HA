@@ -9,7 +9,7 @@ const { randomUUID } = require('node:crypto');
 const { ErrorConflicto, ErrorDuplicado } = require('./errores');
 
 const copia = (valor) => structuredClone(valor);
-const HIJOS = ['unidades', 'apartados', 'compartidos', 'comentarios'];
+const HIJOS = ['unidades', 'apartados', 'compartidos', 'comentarios', 'copias'];
 
 // Una lista con repetidos se rechaza antes de tocar nada: si se guardara la mitad, una importación a medias
 // quedaría indistinguible de una completa.
@@ -17,7 +17,7 @@ const hayRepetidos = (valores) => new Set(valores).size !== valores.length;
 
 function crear() {
   const tablas = {
-    documentos: [], unidades: [], apartados: [], compartidos: [], comentarios: [], usuarios: [],
+    documentos: [], unidades: [], apartados: [], compartidos: [], comentarios: [], copias: [], usuarios: [],
     invitaciones: [], sesiones: [],
   };
 
@@ -127,17 +127,21 @@ function crear() {
       return creados.map(copia);
     },
 
-    borrar(documentoId, secciones) {
+    // `unidadId` undefined es «todas las unidades»; null es la fila común (ver `unidadODeTodas` en index.js).
+    borrar(documentoId, secciones, unidadId) {
       const antes = tablas.apartados.length;
-      tablas.apartados = tablas.apartados.filter((a) => !(a.documentoId === documentoId && secciones.includes(a.seccion)));
+      tablas.apartados = tablas.apartados.filter((a) => !(
+        a.documentoId === documentoId && secciones.includes(a.seccion) && (unidadId === undefined || (a.unidadId ?? null) === unidadId)
+      ));
       return antes - tablas.apartados.length;
     },
 
     // Sin ningún await entre la lectura y la escritura, así que es atómico por construcción.
-    quitarClave({ documentoId, seccion, clave, siguienteToken }) {
+    quitarClave({ documentoId, seccion, clave, unidadId, siguienteToken }) {
       let quitadas = 0;
       for (const fila of tablas.apartados) {
         if (fila.documentoId !== documentoId || fila.seccion !== seccion) continue;
+        if (unidadId !== undefined && (fila.unidadId ?? null) !== unidadId) continue;
         if (!fila.valores || !Object.prototype.hasOwnProperty.call(fila.valores, clave)) continue;
         delete fila.valores[clave];
         fila.updatedAt = siguienteToken(fila.updatedAt);
@@ -171,10 +175,39 @@ function crear() {
     },
     // sort es estable: los comentarios con la misma fecha en milisegundos conservan el orden en que se escribieron.
     listar: (documentoId, filtro) => de('comentarios', { documentoId, ...filtro }).sort((x, y) => x.fecha - y.fecha),
-    borrar(documentoId, secciones) {
+    borrar(documentoId, secciones, unidadId) {
       const antes = tablas.comentarios.length;
-      tablas.comentarios = tablas.comentarios.filter((c) => !(c.documentoId === documentoId && secciones.includes(c.seccion)));
+      tablas.comentarios = tablas.comentarios.filter((c) => !(
+        c.documentoId === documentoId && secciones.includes(c.seccion) && (unidadId === undefined || (c.unidadId ?? null) === unidadId)
+      ));
       return antes - tablas.comentarios.length;
+    },
+  };
+
+  // La copia del .docx importado, una por documento. Se guarda una copia del buffer: quien lo pasó puede
+  // seguir usándolo sin tocar lo guardado.
+  const copias = {
+    guardar(documentoId, { nombre, contenido, subidoPor }) {
+      const nueva = {
+        _id: randomUUID(), documentoId, nombre, subidoPor, tamano: contenido.length, creado: new Date(),
+        contenido: Buffer.from(contenido),
+      };
+      tablas.copias = tablas.copias.filter((c) => c.documentoId !== documentoId);
+      tablas.copias.push(nueva);
+      const { contenido: _c, ...info } = nueva;
+      return copia(info);
+    },
+    info(documentoId) {
+      const registro = tablas.copias.find((c) => c.documentoId === documentoId);
+      if (!registro) return null;
+      const { contenido: _c, ...info } = registro;
+      return copia(info);
+    },
+    obtener(documentoId) {
+      const registro = tablas.copias.find((c) => c.documentoId === documentoId);
+      if (!registro) return null;
+      const { contenido, ...info } = registro;
+      return { ...copia(info), contenido: Buffer.from(contenido) };
     },
   };
 
@@ -275,7 +308,7 @@ function crear() {
     listar: (filtro) => de('sesiones', filtro).sort((x, y) => x.creado - y.creado),
   };
 
-  return { documentos, unidades, apartados, compartidos, comentarios, usuarios, invitaciones, sesiones };
+  return { documentos, unidades, apartados, compartidos, comentarios, copias, usuarios, invitaciones, sesiones };
 }
 
 module.exports = { crear };

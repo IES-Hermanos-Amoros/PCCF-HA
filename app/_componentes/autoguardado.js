@@ -331,6 +331,8 @@ export function useAutoguardado({ url, valoresIniciales, versionInicial, onGuard
         onGuardado({
           relleno: Arbol.algoEscrito(ultimo.current),
           origen: (r && r.origen) || undefined,
+          valores: ultimo.current,
+          updatedAt: nueva,
         });
       }
 

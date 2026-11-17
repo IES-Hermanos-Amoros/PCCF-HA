@@ -15,6 +15,8 @@ import Portada from '../_componentes/Portada';
 
 // Nunca estática: la lista de documentos depende de quién pregunta, y la cookie
 // con la que se decide eso solo existe en tiempo de petición.
+export const metadata = { title: 'Documentos' };
+
 export const dynamic = 'force-dynamic';
 
 export default async function PaginaPortada() {

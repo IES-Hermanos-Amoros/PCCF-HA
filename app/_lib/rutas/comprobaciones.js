@@ -85,6 +85,7 @@
 'use strict';
 
 const C = require('../../../core/permisos');
+const { esActiva } = require('../../../core/versiones');
 const Val = require('../../../core/validaciones');
 const { REGLAS_DEL_PANEL, FUERA_DEL_PANEL } = require('./validaciones');
 const {
@@ -151,7 +152,7 @@ const GET = conErrores(async (peticion, parametros) => {
     cuerpoDeLaRespuesta(
       documento,
       comprobacionesDe(documento),
-      C.puedeConfigurarComprobaciones(usuario, documento),
+      esActiva(documento) && C.puedeConfigurarComprobaciones(usuario, documento),
     ),
     { headers: { 'Cache-Control': 'no-store' } },
   );

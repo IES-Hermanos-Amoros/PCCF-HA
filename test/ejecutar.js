@@ -50,6 +50,7 @@ const SUITES = [
   // --- E2: quién eres y qué llevas ----------------------------------------
   { archivo: 'test/sesiones.js', nombre: 'identidad: invitación, acceso y sesión' },
   { archivo: 'test/asignacion.js', nombre: 'reparto de unidades al profesorado' },
+  { archivo: 'test/asignaciones.js', nombre: 'asignación de apartados comunes a personas' },
 
   // --- E3: escribir ------------------------------------------------------
   { archivo: 'test/edicion.js', nombre: 'edición de apartados y conflictos' },
@@ -67,13 +68,26 @@ const SUITES = [
   { archivo: 'test/editor-tablas.js', nombre: 'editor de tablas y alta de campos' },
   { archivo: 'test/modelos-tabla.js', nombre: 'modelos de tabla: la regla, el PDF, el Word y la puerta' },
   { archivo: 'test/tablas-adopcion.js', nombre: 'adoptar el modelo para una tabla ya escrita' },
+  { archivo: 'test/estructura-modulo.js', nombre: 'estructura propia de un modulo: la regla, la puerta y quien la cambia' },
+  { archivo: 'test/estructura-modulo-ruta.js', nombre: 'estructura propia de un modulo: la ruta que la guarda' },
+  { archivo: 'test/estructura-modulo-borrar.js', nombre: 'estructura propia de un modulo: borrar para siempre un apartado o una casilla' },
 
   // --- E7: aprobar, coordinar y los otros documentos ----------------------
   { archivo: 'test/estados.js', nombre: 'estados del documento, PCCF y memoria' },
   { archivo: 'test/coordinacion.js', nombre: 'coordinación y comentarios' },
   { archivo: 'test/reglas.js', nombre: 'comprobaciones configurables del documento' },
+  { archivo: 'test/impresion.js', nombre: 'como se imprime: hasta donde llega el indice y que apartado empieza en pagina nueva' },
+  { archivo: 'test/pdf-impresion.js', nombre: 'el PDF obedece la configuracion de impresion' },
+  { archivo: 'test/docx-impresion.js', nombre: 'el Word obedece la configuracion de impresion' },
+  { archivo: 'test/impresion-ruta.js', nombre: 'la ruta que configura como se imprime, y que exportar la obedece' },
+
+  // --- versiones del documento ---------------------------------------------
+  { archivo: 'test/versiones.js', nombre: 'versiones del documento: alternativas, activa y copia del Word' },
 
   // --- agrupar tablas por su forma (solo propone) ---------------------------
+  // --- la estructura que ve cada módulo, congelada antes de dejar que un módulo tenga la suya ---
+  { archivo: 'test/estructura-modulos-hoy.js', nombre: 'estructura por módulo: la puerta congelada (necesita la base local)' },
+
   { archivo: 'test/tablas-forma.js', nombre: 'propuesta de grupos de tablas por forma' },
 ];
 

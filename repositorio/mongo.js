@@ -14,7 +14,7 @@ const CODIGO_DUPLICADO = 11000;
 // Solo se reintenta en la escritura sin condición, donde un insert simultáneo o un cambio entre la lectura y la
 // escritura son esperables. Si tras varios intentos no cuaja, se prefiere fallar a bloquear la petición.
 const REINTENTOS = 5;
-const HIJOS = ['unidades', 'apartados', 'compartidos', 'comentarios'];
+const HIJOS = ['unidades', 'apartados', 'compartidos', 'comentarios', 'copias'];
 
 // Variable de módulo: la ruta rápida mientras la instancia viva. Apunta al mismo objeto que globalThis (ver bd()).
 let estado = null;
@@ -39,6 +39,7 @@ async function crearIndices(bd) {
   await bd.collection('apartados').createIndex({ documentoId: 1, seccion: 1, unidadId: 1 }, { unique: true });
   await bd.collection('compartidos').createIndex({ documentoId: 1, cid: 1 }, { unique: true });
   await bd.collection('comentarios').createIndex({ documentoId: 1, seccion: 1, unidadId: 1 });
+  await bd.collection('copias').createIndex({ documentoId: 1 }, { unique: true });
   await bd.collection('usuarios').createIndex({ email: 1 }, { unique: true });
   // Identidad (E2). El índice por `tokenHash` es único porque es la llave por la que se entra: dos
   // filas con el mismo hash harían que una búsqueda devolviera una cualquiera de las dos.
@@ -281,9 +282,12 @@ function crear({ uri, nombreBd }) {
       return salidaMuchos(creados);
     },
 
-    async borrar(documentoId, secciones) {
+    // `unidadId` undefined es «todas las unidades»: la clave ni se pone en el filtro. null es la fila común.
+    async borrar(documentoId, secciones, unidadId) {
       if (secciones.length === 0) return 0;
-      const r = await (await coleccion('apartados')).deleteMany({ documentoId, seccion: { $in: secciones } });
+      const filtro = { documentoId, seccion: { $in: secciones } };
+      if (unidadId !== undefined) filtro.unidadId = unidadId;
+      const r = await (await coleccion('apartados')).deleteMany(filtro);
       return r.deletedCount;
     },
 
@@ -291,9 +295,11 @@ function crear({ uri, nombreBd }) {
     // fila avanza (con `siguienteToken`, que nunca repite el anterior) y quien leyó antes recibe el conflicto.
     // Y no se construye ninguna ruta `valores.<clave>`: la clave se quita en JavaScript y se escribe `valores`
     // entero, de modo que un id con puntos o con «$» no se interpreta como ruta ni como operador.
-    async quitarClave({ documentoId, seccion, clave, siguienteToken }) {
+    async quitarClave({ documentoId, seccion, clave, unidadId, siguienteToken }) {
       const c = await coleccion('apartados');
-      const filas = await c.find({ documentoId, seccion }).toArray();
+      const filtro = { documentoId, seccion };
+      if (unidadId !== undefined) filtro.unidadId = unidadId;
+      const filas = await c.find(filtro).toArray();
       let quitadas = 0;
       for (const fila of filas) {
         for (let intento = 0; intento < REINTENTOS; intento += 1) {
@@ -356,10 +362,35 @@ function crear({ uri, nombreBd }) {
       return salidaMuchos(docs);
     },
 
-    async borrar(documentoId, secciones) {
+    async borrar(documentoId, secciones, unidadId) {
       if (secciones.length === 0) return 0;
-      const r = await (await coleccion('comentarios')).deleteMany({ documentoId, seccion: { $in: secciones } });
+      const filtro = { documentoId, seccion: { $in: secciones } };
+      if (unidadId !== undefined) filtro.unidadId = unidadId;
+      const r = await (await coleccion('comentarios')).deleteMany(filtro);
       return r.deletedCount;
+    },
+  };
+
+  // La copia del .docx importado. Colección aparte y nunca dentro del documento: un Word puede pesar varios
+  // megas y un documento de Mongo no pasa de 16 MB, y así ninguna lectura normal de documentos arrastra el fichero.
+  // `info` lo lee con la proyección que excluye el contenido.
+  const sinContenido = { projection: { contenido: 0 } };
+  const aBuffer = (binario) => Buffer.from(binario.buffer.subarray(0, binario.position ?? binario.buffer.length));
+  const copias = {
+    async guardar(documentoId, { nombre, contenido, subidoPor }) {
+      const doc = { documentoId, nombre, subidoPor, tamano: contenido.length, creado: new Date(), contenido: Buffer.from(contenido) };
+      const c = await coleccion('copias');
+      await c.replaceOne({ documentoId }, doc, { upsert: true });
+      return salida(await c.findOne({ documentoId }, sinContenido));
+    },
+    async info(documentoId) {
+      return salida(await (await coleccion('copias')).findOne({ documentoId }, sinContenido));
+    },
+    async obtener(documentoId) {
+      const doc = await (await coleccion('copias')).findOne({ documentoId });
+      if (!doc) return null;
+      const { contenido, ...info } = doc;
+      return { ...salida(info), contenido: aBuffer(contenido) };
     },
   };
 
@@ -493,7 +524,7 @@ function crear({ uri, nombreBd }) {
     },
   };
 
-  return { documentos, unidades, apartados, compartidos, comentarios, usuarios, invitaciones, sesiones };
+  return { documentos, unidades, apartados, compartidos, comentarios, copias, usuarios, invitaciones, sesiones };
 }
 
 module.exports = { crear };

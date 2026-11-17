@@ -181,7 +181,7 @@ export default function Acceso({ testigo }) {
     <>
       <BarraSuperior subtitulo="Acceso" persona={fase === 'dentro' ? persona : null} />
 
-      <main className="main main-estrecha">
+      <main id="contenido" tabIndex={-1} className="main main-estrecha">
         <div className="cabecera">
           <div>
             <h1>Acceso a las programaciones</h1>

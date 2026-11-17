@@ -20,10 +20,11 @@
 
 'use strict';
 
+const { esActiva } = require('../../../core/versiones');
 const { exportarDocx } = require('../../../motor/exportar-docx');
 const {
-  conErrores, abrirDocumento, leerParaElMotor, tituloDelTomo, nombreDeArchivo,
-  estadoPedido, unidadPedida,
+  conErrores, fallo, abrirDocumento, leerParaElMotor, tituloDelTomo, nombreDeArchivo,
+  estadoPedido, unidadPedida, impresionDe,
 } = require('./comun');
 
 const TIPO = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -32,6 +33,7 @@ const GET = conErrores(async (peticion, parametros) => {
   const abierto = await abrirDocumento(peticion, parametros);
   if (abierto.fallo) return abierto.fallo;
   const { documento, repo } = abierto;
+  if (!esActiva(documento)) return fallo(409, 'version_alternativa', 'Solo se exporta la versión activa del documento. Activa esta versión primero si quieres exportarla.');
 
   const url = new URL(peticion.url);
   const { fallo: falloEstado } = estadoPedido(url, documento);
@@ -47,6 +49,10 @@ const GET = conErrores(async (peticion, parametros) => {
     titulo: tituloDelTomo(documento, unidad),
     // El índice y no el título, igual que en /pdf: dos módulos pueden llamarse igual.
     instancias: unidad ? [indice] : 'todas',
+    // La misma configuración que el PDF y leída del mismo sitio, que es lo que hace que el índice
+    // del Word y el del PDF digan lo mismo del mismo documento. Antes el Word no tenía índice
+    // ninguno (core/impresion.js, app/_lib/rutas/impresion.js).
+    impresion: impresionDe(documento, url),
   });
 
   return new Response(bytes, {

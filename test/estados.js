@@ -1160,10 +1160,10 @@ prueba('la memoria no exige ciclo —es del departamento entero— y la PD sí',
   assert.equal(sinCiclo.status, 201);
   assert.equal((await sinCiclo.json()).documento.ciclo, null, 'una memoria sin ciclo se guarda con ciclo nulo');
 
-  // Con ciclo también entra: quien lo mande no se lleva un error por mandarlo.
+  // Con ciclo también entra, pero el ciclo se ignora: la memoria es del departamento.
   const conCiclo = await subir(u.jefa, await docxMemoria(), { ciclo: 'DAW' });
   assert.equal(conCiclo.status, 201);
-  assert.equal((await conCiclo.json()).documento.ciclo, 'daw');
+  assert.equal((await conCiclo.json()).documento.ciclo, null);
 
   // La PD sin ciclo, 400: sin él la conciliación de los módulos es ambigua (docs/api.md).
   const pd = await subir(u.jefa, await docxPd(), { tipo: 'programacion_didactica', ciclo: null });
@@ -1250,6 +1250,30 @@ prueba('una programación subida como memoria da 400 con la lista de módulos y 
   const bien = await subir(u.jefa, await docxPd(), { tipo: 'programacion_didactica', ciclo: 'DAW' });
   assert.equal(bien.status, 201);
   assert.equal((await bien.json()).resumen.unidades, 3);
+});
+
+prueba('un PCCF o una memoria subidos como programación didáctica dan 400 y no escriben nada', async () => {
+  const { repo, u } = await escenarioLimpio();
+  const antes = (await repo.documentos.listar({})).length;
+  for (const buffer of [await docxPccf(), await docxMemoria()]) {
+    const cuerpo = await esError(await subir(u.jefa, buffer, { tipo: 'programacion_didactica', ciclo: 'daw' }), 400, 'peticion');
+    assert.ok(/ning[úu]n bloque de m[óo]dulo/.test(cuerpo.mensaje), cuerpo.mensaje);
+  }
+  assert.equal((await repo.documentos.listar({})).length, antes);
+});
+
+prueba('importar: el curso es AAAA-AA con el segundo año el primero más uno, y el ciclo tiene que existir', async () => {
+  const { repo, u } = await escenarioLimpio();
+  const antes = (await repo.documentos.listar({})).length;
+  for (const curso of ['2026-29', '2026-26', '2026-28', '2026/27']) {
+    const cuerpo = await esError(await subir(u.jefa, await docxPd(), { tipo: 'programacion_didactica', ciclo: 'daw', curso }), 400, 'peticion');
+    assert.ok(cuerpo.mensaje.includes(curso), cuerpo.mensaje);
+  }
+  assert.equal((await subir(u.jefa, await docxMemoria(), { curso: '2099-00' })).status, 201);
+  const cuerpo = await esError(await subir(u.jefa, await docxPd(), { tipo: 'programacion_didactica', ciclo: 'xyz' }), 400, 'peticion');
+  assert.ok(/ciclo «xyz» no existe/.test(cuerpo.mensaje), cuerpo.mensaje);
+  assert.ok(!/No reconozco/.test(cuerpo.mensaje));
+  assert.equal((await repo.documentos.listar({})).length, antes + 1);
 });
 
 prueba('la memoria la importa quien importa: no el docente ni la jefatura de estudios', async () => {

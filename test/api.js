@@ -1036,6 +1036,13 @@ function subir(persona, buffer, campos = {}) {
 }
 const importar = (persona, buffer, campos) => Importar.POST(subir(persona, buffer, campos));
 
+// Reimportar la misma clave (tipo, curso, ciclo, departamento) crea una versión alternativa, que no se
+// exporta ni se edita. Las pruebas que miran el documento recién importado parten de un grupo vacío.
+async function vaciarGrupoDeImportacion() {
+  const previos = await repo.documentos.listar({ tipo: 'programacion_didactica', curso: '2026-27', departamento: 'informatica' });
+  for (const d of previos.filter((x) => (x.ciclo || null) === 'daw')) await repo.documentos.borrar(d._id);
+}
+
 const documentosAhora = async () => (await repo.documentos.listar({})).length;
 
 prueba('POST /api/documentos/importar: un .docx sintético deja el documento, las unidades, los apartados y los compartidos', async () => {
@@ -1076,6 +1083,7 @@ prueba('POST /api/documentos/importar: un .docx sintético deja el documento, la
 });
 
 prueba('CRITERIO DE ACEPTACIÓN DEL E1 PARA LA IMPORTACIÓN: el PDF del documento guardado es el del motor', async () => {
+  await vaciarGrupoDeImportacion();
   const buffer = await docxDe(TITULOS_BASE);
   const res = await importar(S.u.marta, buffer);
   assert.equal(res.status, 201);
@@ -1114,6 +1122,7 @@ prueba('CRITERIO DE ACEPTACIÓN DEL E1 PARA LA IMPORTACIÓN: el PDF del document
 });
 
 prueba('la importación deja las unidades en el orden del documento, también en el tomo', async () => {
+  await vaciarGrupoDeImportacion();
   const res = await importar(S.u.marta, await docxDe(TITULOS_BASE));
   const { documento } = await res.json();
 

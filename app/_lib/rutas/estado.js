@@ -116,6 +116,7 @@
 const C = require('../../../core/permisos');
 const Val = require('../../../core/validaciones');
 const { informeDe } = require('./validaciones');
+const { esActiva } = require('../../../core/versiones');
 const {
   conErrores, abrirDocumento, leerJson, texto, fallo, malaPeticion, sinPlantilla, SIN_PERMISO,
 } = require('./comun');
@@ -274,6 +275,8 @@ const GET = conErrores(async (peticion, parametros) => {
     estado,
     marcaDeAgua: conMarcaDeAgua(estado),
     estados: ESTADOS,
+    // Una versión alternativa no cambia de estado: la pantalla lo dice en lugar de ofrecer flechas.
+    alternativa: !esActiva(documento),
     transiciones: salidasDe(estado).map((t) => ({
       a: t.a, accion: t.accion, quien: t.quien, puede: puedeMoverla(usuario, t),
     })),

@@ -33,6 +33,11 @@ decide.
 
 Sin persona reconocida se devuelve 401. Nunca hay un usuario por omisión con permisos.
 
+**El soporte (`admin`) no está atado a un departamento.** Es el soporte de todos: ve, importa, reparte y
+cambia lo que pueda cambiar cualquier jefatura en **cualquier** departamento. Donde esta página dice «la
+jefatura, en su departamento, y el soporte», el «en su departamento» es de la jefatura; el soporte no lo
+tiene. La jefatura de estudios ve todos los departamentos pero no escribe.
+
 **El profesorado no se registra: lo da de alta la jefatura.** Pide el nombre, el correo y el rol, y
 recibe un enlace de un solo uso que esa persona canjea por una sesión. No hay contraseñas que
 custodiar ni cuentas de terceros de las que depender. Los testigos se guardan **hasheados**, de modo
@@ -96,22 +101,24 @@ título. Omitirlo significa «apartado común del documento».
 | `PATCH /api/personas/[id]` | `{ nombre?, email?, rol?, activo? }`. El nombre y el correo se corrigen, también a uno mismo; el rol no. Nadie se sube de rango ni se da de baja a sí mismo | E2 |
 | `POST /api/personas/[id]/invitacion` | otro enlace para quien perdió el suyo; anula el anterior | E2 |
 | `GET /api/documentos` | lista, sin `plantilla` | E1 |
-| `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `curso`, `departamento`, `ciclo` (obligatorio salvo para `memoria`) y `forzar` opcional. Importa, concilia unidades y guarda. `tipo` es `programacion_didactica`, `propuesta_pedagogica`, `memoria` o `pccf` (ver abajo). En la propuesta pedagógica el `ciclo` es el **ámbito**: `eso` o `bach`. La importan `admin` y `jefe_departamento`, y solo en su departamento | E1·E7 |
+| `POST /api/documentos/importar` | `multipart`: `archivo`, `tipo`, `curso`, `departamento`, `ciclo` (obligatorio salvo para `memoria`) y `forzar` opcional. Importa, concilia unidades y guarda. `tipo` es `programacion_didactica`, `propuesta_pedagogica`, `memoria` o `pccf` (ver abajo). En la propuesta pedagógica el `ciclo` es el **ámbito**: `eso` o `bach`. La importan `jefe_departamento` (solo en su departamento) y `admin` (en cualquiera) | E1·E7 |
 | `GET /api/documentos/[id]` | el documento sin `plantilla` | E1 |
 | `GET /api/documentos/[id]/arbol` | el árbol de apartados y unidades, con el estado de cada nodo, el `origen` de cada apartado y el recuento `revision` (apartados, revisados, heredados y pendientes) | E1·E5 |
-| `POST /api/documentos/[id]/siguiente-curso` | crea el documento del curso siguiente a partir de este. Cuerpo opcional `{ curso }`, por omisión el siguiente al suyo. Copia la plantilla, las unidades con sus docentes, los apartados con su contenido y los textos compartidos; todos los apartados nacen `heredado` y el documento, en `borrador`, con `anteriorId`. 201 con el documento nuevo. La jefatura de departamento y el soporte, en su departamento. 409 si ese curso ya existe | E5 |
+| `POST /api/documentos/[id]/siguiente-curso` | crea el documento del curso siguiente a partir de este. Cuerpo opcional `{ curso }`, por omisión el siguiente al suyo. Copia la plantilla, las unidades con sus docentes, los apartados con su contenido y los textos compartidos; todos los apartados nacen `heredado` y el documento, en `borrador`, con `anteriorId`. 201 con el documento nuevo. La jefatura de departamento (en el suyo) y el soporte. 400 si el curso no es el inmediato siguiente; 409 si ese curso ya existe | E5 |
 | `GET /api/documentos/[id]/anterior/apartado?seccion=&unidad=` | el mismo apartado en el curso anterior, con la forma de `/apartado` y solo lectura. Si no hay curso anterior, o el apartado o el módulo no existían allí, responde 200 con `existe: false` y un `motivo`: `sin_curso_anterior`, `seccion_nueva`, `unidad_nueva` o `sin_contenido` | E5 |
 | `POST /api/documentos/[id]/apartado/revisar?seccion=&unidad=` | da la rama por revisada: `origen: revisado`, con `revisadoPor` y `revisadoEn`. Cuerpo `{ esperaUpdatedAt }`. Quien puede editar la rama. 409 si cambió desde que se leyó | E5 |
 | `GET /api/documentos/[id]/apartado?seccion=&unidad=` | una rama: `valores`, `origen`, `updatedAt`, si quien pregunta puede editarla, y además `campos` y `compartidos` (ver abajo) | E1 |
-| `GET /api/documentos/[id]/pdf?estado=&unidad=` | el PDF. Sin `unidad`, el tomo completo | E1 |
-| `GET /api/documentos/[id]/docx?estado=&unidad=` | lo mismo en Word | E1 |
+| `GET /api/documentos/[id]/pdf?estado=&unidad=` | el PDF. Sin `unidad`, el tomo completo. Acepta `?indice=` y `?saltos=` para **forzar cómo se imprime en esta exportación sin guardar nada** (`/impresion`); un valor que no sea un nivel se ignora y sale lo configurado | E1 |
+| `GET /api/documentos/[id]/docx?estado=&unidad=` | lo mismo en Word, con los mismos `?indice=` y `?saltos=`. **Desde el E7 el Word lleva índice**: antes no tenía ninguno, y ahora sale con el mismo nivel que el del PDF. Es un campo `TOC`, así que Word lo rellena con sus números de página al abrir el documento | E1·E7 |
 | `GET /api/documentos/[id]/unidades` | el reparto: las unidades con sus docentes, las personas que pueden llevarlas y **cuántas unidades no tiene nadie** | E2 |
 | `PUT /api/documentos/[id]/unidades/[unidad]/docentes` | cambia quién lleva esa unidad. Cuerpo: `{ docentes: [id] }`, la lista completa | E2 |
+| `GET /api/documentos/[id]/asignaciones` | quién lleva cada **apartado común**: los apartados asignables (`seccion`, `titulo`, `nivel`, `personas`), las personas que pueden llevarlos, el `resumen` y, en `mios`, lo que puede editar quien pregunta (`editaTodo`, `soloLectura`, sus `unidades` y sus `apartados` asignados). La ve quien ve el documento; `puedeAsignar` dice si los controles van habilitados | R1 |
+| `PUT /api/documentos/[id]/asignaciones?seccion=` | cambia quién lleva ese apartado. Cuerpo: `{ personas: [id] }`, la lista completa. La jefatura del departamento (en el suyo) y el soporte | R1 |
 | `PATCH /api/documentos/[id]/apartado?seccion=&unidad=` | guarda esa rama. Cuerpo: `{ valores, esperaUpdatedAt }`, con **solo los campos que se han tocado**. Acepta texto, ponderaciones, fichas de situación de aprendizaje, **tablas** y **tablas de clave y valor** (ver «Tablas y campos creados en la aplicación»); los demás tipos todavía no. Devuelve 409 si no cuadra la versión. La lectura del mismo apartado trae además `iniciales`: con qué abrir cada campo de tabla que todavía no tiene valor | E3 |
 | `GET /api/documentos/[id]/validaciones` | los avisos agrupados por unidad, con quién lleva cada una, el recuento y si el documento se puede aprobar. Mide con **las comprobaciones que tenga configuradas el documento** (`/comprobaciones`): lleva el `convenioCe` con el que ha contado los criterios y las `desactivadas`, porque un panel sin avisos porque todo está bien y uno sin avisos porque alguien apagó las comprobaciones son la misma pantalla y no son lo mismo | E4·E7 |
 | `GET /api/documentos/[id]/coordinacion` | la matriz **unidad × bloque**: una fila por módulo o materia con quién lo lleva, una columna por bloque (que viaja **una vez**, no una por unidad) y en cada cruce cómo va esa rama: `estado` —los cinco del árbol, con `errores`— más los recuentos de los que sale (`apartados`, `conContenido`, `revisados`, `errores`, `avisos`) y el `destino` al que lleva el clic. **No lleva contenido**: ni un `valores`. El estado sale de lo que ya se sirve —`relleno` y `origen` de `/arbol`, y los avisos del MISMO cálculo que `/validaciones`, que viajan también como `cuenta` y `puedeAprobarse`—, así que no puede discrepar de ninguna de las dos. Un documento sin unidades responde `modo: 'comun'`: una fila por apartado de primer nivel y la jefatura del departamento como responsable. La ve quien ve el documento | E7 |
 | `GET /api/documentos/[id]/comentarios?seccion=&unidad=` | el hilo de ese apartado, del más antiguo al más reciente, con el nombre y el rol de cada autor (nunca su correo) y `puedeComentar` | E7 |
-| `POST /api/documentos/[id]/comentarios?seccion=&unidad=` | comenta ese apartado. Cuerpo `{ texto }`, recortado y de 2000 caracteres como máximo; el autor sale de la sesión y **nunca del cuerpo**. 201 con el comentario. **Comenta todo el que ve el documento**, no solo quien puede editarlo: quien pregunta es justamente quien no puede escribir ahí —la jefatura de estudios aprueba y no edita nada, y un docente necesita avisar en el módulo de otro—. Por eso las dos rutas del hilo **no dan 403**: 401 sin sesión, 404 si el documento, la sección o la unidad no son suyos (un apartado retirado tampoco lo es) y 400 si el enlace o el cuerpo están mal. Los comentarios **no se copian** al arrastrar el curso | E7 |
+| `POST /api/documentos/[id]/comentarios?seccion=&unidad=` | comenta ese apartado. Cuerpo `{ texto }`, recortado y de 2000 caracteres como máximo; el autor sale de la sesión y **nunca del cuerpo**. 201 con el comentario. **Comenta todo el que ve el documento**, no solo quien puede editarlo: quien pregunta es justamente quien no puede escribir ahí —la jefatura de estudios aprueba y no edita nada, y un docente necesita avisar en el módulo de otro—. Por eso las dos rutas del hilo **no dan 403**: 401 sin sesión, 404 si el documento, la sección o la unidad no son suyos (un apartado retirado tampoco lo es) y 400 si el enlace o el cuerpo están mal. Los comentarios **no se copian** al arrastrar el curso. **Se puede comentar en una versión alternativa** (GET y POST), a diferencia de cualquier otra escritura: es donde se discute cuál de las versiones activar | E7 |
 | `GET /api/documentos/[id]/estructura` | la estructura del documento tal como se puede cambiar: una fila por apartado con su id, su título, si es de la plantilla de las unidades y qué se le puede hacer (`puedeSubir`, `puedeBajar`, `admiteHijos`), más los **retirados** —que ya no salen en el árbol, y cada uno lleva `contenido`: cuántos apartados y cuántas filas (`filas`, `conContenido`, `unidadesConContenido`) se destruirían si se borrara—, la `plantillaVersion` y el registro de cambios. Cada apartado lleva sus `campos` (con `retirado`, `puedeRetirar` y `puedeRestaurar`) y `puedeAnadirCampo`; la respuesta trae además `tiposDeCampo` —**el catálogo de lo que se puede crear**, con nombre en castellano, parámetros con límites y la forma del valor—, `limites` y `camposRetirados`. La ve quien ve el documento; `puedeCambiar` dice si los botones van habilitados, porque **la estructura la cambian la jefatura del departamento y el soporte**: no quien escribe los apartados, y la jefatura de estudios tampoco | E6 |
 | `POST /api/documentos/[id]/estructura/apartado` | añade un apartado. Cuerpo: `{ titulo, padre?, esperaPlantillaVersion? }`; sin `padre`, al final del documento. Nace con un campo de texto o con los que pida `campos: [{ tipo, … }]` (una tabla, por ejemplo), y con `edita` de la jefatura del departamento si no lo hereda de su bloque. 201 con el `seccion` que le toca **para siempre**. Los ocho cambios responden igual: la `plantillaVersion` nueva, el `cambio` que queda apuntado y `afectaUnidades` con `unidades`, porque un apartado de la plantilla de las unidades cambia los once módulos a la vez y la interfaz tiene que poder advertirlo | E6 |
 | `PATCH /api/documentos/[id]/estructura/apartado?seccion=` | renombra un apartado. Cuerpo: `{ titulo, esperaPlantillaVersion? }`. **El id no cambia**: el título es solo la etiqueta, y el contenido, los comentarios y los enlaces guardados cuelgan del id | E6 |
@@ -123,12 +130,20 @@ título. Omitirlo significa «apartado común del documento».
 | `POST /api/documentos/[id]/estructura/apartado/campo/restaurar?seccion=&campo=` | lo devuelve a su apartado con todo lo que tenía escrito | E6 |
 | `PATCH /api/documentos/[id]/estructura/apartado/campo?seccion=&campo=` | **renombra un campo**: cuerpo `{ etiqueta, esperaPlantillaVersion? }`. Cambia solo la etiqueta, nunca el id. 400 si está vacía o pasa de 100 caracteres | E6 |
 | `POST /api/documentos/[id]/estructura/apartado/campo/mover?seccion=&campo=` | **sube o baja un campo** entre los vigentes de su apartado: cuerpo `{ delta: -1 \| 1, esperaPlantillaVersion? }`. Cambia el orden en que sale impreso. 400 si ya es el primero o el último | E6 |
-| `DELETE /api/documentos/[id]/estructura/apartado?seccion=` | **borra de verdad un apartado que ya estaba retirado**, con todo su subárbol y todo lo escrito en él: destruye las filas de `apartados` de todos los apartados del subárbol y de todas las unidades (once en una sección de módulo) y el reparto guardado para ellos. **Es irreversible.** Solo se borra lo retirado: uno que no lo está es un 400 que dice que primero hay que retirarlo, y no cambia nada. Cuerpo opcional `{ esperaPlantillaVersion }`. Responde como los demás cambios, más `contenido` (`apartados`, `filas`, `conContenido` y `unidadesConContenido` de lo destruido) y `filasBorradas`. El cambio queda en el registro (`plantilla.cambios`, tipo `borrado`, con los ids que se fueron y cuánto se destruyó): es lo único que queda. Mismo permiso que el resto de cambios de estructura | E6 |
-| `DELETE /api/documentos/[id]/estructura/apartado/campo?seccion=&campo=` | **borra de verdad un campo que ya estaba retirado** y le quita su clave a `valores` en todas las filas del apartado (las once, si es de módulos), de modo que un campo nuevo con el mismo id no recupera nada. Irreversible, solo lo retirado, y registrado como `campo_borrado`. Mismas reglas y respuesta que el borrado de un apartado | E6 |
+| `DELETE /api/documentos/[id]/estructura/apartado?seccion=` | **borra de verdad un apartado que ya estaba retirado**, con todo su subárbol y todo lo escrito en él: destruye las filas de `apartados` de todos los apartados del subárbol y de todas las unidades (once en una sección de módulo) y el reparto guardado para ellos. **Es irreversible.** Solo se borra lo retirado: uno que no lo está es un 400 que dice que primero hay que retirarlo, y no cambia nada. Cuerpo `{ "confirmar": true }` (más `esperaPlantillaVersion` si se quiere): sin él, 400 y no se borra nada, como en el borrado de una versión. Responde como los demás cambios, más `contenido` (`apartados`, `filas`, `conContenido` y `unidadesConContenido` de lo destruido) y `filasBorradas`. El cambio queda en el registro (`plantilla.cambios`, tipo `borrado`, con los ids que se fueron y cuánto se destruyó): es lo único que queda. Mismo permiso que el resto de cambios de estructura | E6 |
+| `DELETE /api/documentos/[id]/estructura/apartado/campo?seccion=&campo=` | **borra de verdad un campo que ya estaba retirado** y le quita su clave a `valores` en todas las filas del apartado (las once, si es de módulos), de modo que un campo nuevo con el mismo id no recupera nada. Irreversible, solo lo retirado, con `{ "confirmar": true }` en el cuerpo (sin él, 400), y registrado como `campo_borrado`. Mismas reglas y respuesta que el borrado de un apartado | E6 |
+| `GET /api/documentos/[id]/unidades/[unidad]/estructura[?seccion=]` | **la estructura propia de ese módulo**: qué apartados y qué casillas lleva en ÉL sin cambiárselo a los otros diez (`core/estructura-modulo.js`). Devuelve `estructura` (`null` si el módulo sigue la común), `plantillaVersion` y `updatedAt`. Con `?seccion=`, además `puedeCambiar` y el `alcance` de reformar ese apartado —a cuántos módulos y a quién afecta, con un `mensaje` que la pantalla enseña tal cual—: es lo que se pregunta antes de abrir el editor, para avisar si el apartado es común | E6 |
+| `PUT /api/documentos/[id]/unidades/[unidad]/estructura` | **la guarda entera**. Cuerpo `{ estructura, confirmar?, esperaUpdatedAt?, esperaPlantillaVersion? }`; es un PUT del objeto completo y no una ruta por operación porque lo que se guarda tiene que ser exactamente lo que ha mirado la puerta (`motivoDeEstructura`). `estructura: null` devuelve el módulo a la común. **Volver a la común destruye lo propio del módulo** —sus casillas y sus apartados, con lo escrito debajo— y por eso pide `{ "confirmar": true }` cuando hay algo que perder: sin él, 400 con la cuenta en `perdida` y la frase en el mensaje. Si el módulo solo desviaba etiquetas, orden o retiradas no se pierde nada y no se pide confirmación. Un PUT que **no** sea `null` y haga desaparecer una casilla o un apartado propios es un 400 sin confirmación posible: para quitarlos se marca `retirado: true`, y para destruirlos están los dos DELETE de abajo. Orden: 401, 404, 403 (apartado a apartado, `reglaEstructuraPropia`), 400, 409. El 200 lleva la `estructura` guardada, `cambiadas`, `alcance`, `afectaAlDocumento`, `destruido` (`filas`, `comentarios`, `casillas`) y `contenidoSinDestruir` | E6 |
+| `DELETE /api/documentos/[id]/unidades/[unidad]/estructura/apartado?seccion=` | **borra de verdad un apartado propio de ESE módulo que ya estaba retirado**, con su subárbol y todo lo escrito en él en esa unidad (sus filas de `apartados` y sus comentarios; las de otro módulo con el mismo id no se tocan). **Es irreversible.** Cuerpo `{ "confirmar": true }` (más `esperaUpdatedAt` y `esperaPlantillaVersion` si se quiere): sin él, o sin cuerpo, 400 que dice cuánto se pierde y no se borra nada. Orden: 401, 404 (no existe en este módulo), 403 (no lo configuras), 400 (es común —se borra por la ruta de la plantilla y afecta al documento entero—, no está retirado, falta la confirmación), 409. Responde con `seccion`, `titulo`, la `estructura` que queda (`null` si no queda ningún desvío), `updatedAt`, `perdida`, `contenido`, `filas`, `comentarios`, `casillas` y `contenidoSinDestruir` (`null` si todo se destruyó; si no, el motivo, con la estructura ya guardada) | E6 |
+| `DELETE /api/documentos/[id]/unidades/[unidad]/estructura/campo?seccion=&campo=` | **borra de verdad una casilla propia de ESE módulo que ya estaba retirada**, de un apartado común (`anadidos`) o de uno propio (`campos`), y le quita su clave a la fila de esa unidad. Mismas reglas, orden y respuesta que el borrado de un apartado propio; una casilla común es un 400 que remite a la ruta de la plantilla | E6 |
 | `GET /api/documentos/[id]/estado` | en qué estado está el documento, si su PDF lleva `marcaDeAgua` y las `transiciones` que salen de ahí, cada una con su `accion`, `quien` la mueve y un `puede` resuelto para quien pregunta. La ve quien ve el documento, y la lista es la misma para todos: lo que cambia es el `puede`, porque el cliente refleja el candado y no vuelve a escribir las reglas de rol. **No lleva la cuenta de errores**: está en `/validaciones`, que la pantalla de aprobación pide igualmente | E7 |
 | `GET /api/documentos/[id]/comprobaciones` | **qué se le comprueba a este documento y con qué convenio.** Una fila por comprobación con su código, su título, su `clase` (`normativa` o `centro`), si es `fija` y **`porque` lo es**, lo que tiene puesto (`activa`, `severidad`), lo de serie (`severidadPorOmision`) y si el panel la busca de verdad hoy (`enElPanel`, con `motivo` cuando no). Lleva además el `convenioCe` del documento y los dos `convenios` con qué es cada uno, el registro de `cambios` —quién y cuándo— y el `updatedAt` con el que se escribe. La ve quien ve el documento; `puedeConfigurar` dice si los controles van habilitados | E7 |
 | `PATCH /api/documentos/[id]/comprobaciones` | la cambia. Cuerpo **parcial**: `{ convenioCe?, reglas?, esperaUpdatedAt? }`, con `reglas` como `{ <codigo>: { activa?, severidad? } }`. **La configura la jefatura de estudios y el soporte** (ver abajo): 403 para quien ve el documento y no es quien aprueba. 400 si se pide desactivar o cambiar una de las dos **normativas** —con el motivo dentro—, si el código o la severidad no existen o si no se manda nada que cambiar; 409 `conflicto` si el documento ha cambiado desde que se leyó. 200 con la tabla entera y `aplicados`, lo que ha cambiado en esta petición; pedir lo que ya estaba es un 200 con `aplicados: []` que **no escribe ni deja fila en el historial** | E7 |
+| `GET /api/documentos/[id]/impresion` | **cómo se imprime este documento:** hasta qué nivel llega el índice (`indice`) y hasta qué nivel empieza cada apartado en página nueva (`saltos`), los dos un entero de 0 a 6 contado por la **numeración impresa** (`5.1.3` es nivel 3). Lleva lo de serie (`indicePorOmision`, `saltosPorOmision`), las opciones con sus textos ya redactados (`nivelesDelIndice`, `nivelesDeSalto`, cada una con `titulo`, `que`, `ejemplo` y `efecto`), `loQueNoSeConfigura` —cada módulo empieza en página nueva siempre— y el `updatedAt` con el que se escribe. La ve quien ve el documento; `puedeConfigurar` dice si los controles van habilitados | E7 |
+| `PATCH /api/documentos/[id]/impresion` | la cambia. Cuerpo **parcial**: `{ indice?, saltos?, esperaUpdatedAt? }`. **La configuran la jefatura del departamento, la jefatura de estudios y el soporte** (ver abajo): 403 para un docente, que la ve y no la cambia. 400 si el nivel no es un entero de 0 a 6 o si no se manda nada que cambiar; 409 `conflicto` si el documento ha cambiado desde que se leyó. Se guarda **solo lo que se aparta de lo de serie**, así que volver a lo de siempre deja el documento sin el campo | E7 |
 | `POST /api/documentos/[id]/estado` | cambia el estado. Cuerpo: `{ estado, esperaUpdatedAt? }`. 200 con el estado nuevo, el `anterior`, la `accion` y `marcaDeAgua`. **Solo las flechas del circuito**, y las mueve quien responde de cada tramo (ver abajo): 403 si no es quien la mueve, 400 si esa flecha no existe —con los `destinos` que sí— o si el documento ya está en ese estado, 409 `con_errores` al aprobar con errores abiertos y 409 `conflicto` si el documento ha cambiado desde que se leyó | E7 |
+
+Quién lleva un módulo se decide en un solo sitio, `personasQueDanClase` (`app/_lib/rutas/unidades.js`): del departamento, activa y con rol que da clase. `/unidades`, `/validaciones` y `/coordinacion` lo usan las tres, de modo que una persona de baja no cuenta como docente en ninguna y el módulo que llevaba sale con `sin_docente`. Al reactivarla vuelve a llevarlo.
 
 ### Los estados del documento: `borrador → revisión → aprobado`
 
@@ -527,9 +542,25 @@ materias de una se buscarían también entre las de la otra.
 ciclos de FP en el mismo documento—, así que exigirle uno sería obligar a quien la sube a elegir uno
 de mentira, y de paso etiquetar la memoria del departamento como si fuera de DAW. El modelo ya admite
 `ciclo` nulo desde el E0 (`docs/plan.md` §3) y no hay nada que conciliar, porque una memoria no tiene
-módulos. Si llega con ciclo, se guarda: quien lo mande no se lleva un error por mandarlo. El `curso`
+módulos. Si llega con ciclo, **se ignora** (se guarda `null`): quien lo mande no se lleva un error por
+mandarlo, pero un mismo documento no puede ser tres según el ciclo que se escogiera al subirlo. El `curso`
 sigue siendo obligatorio para todos, que es lo que distingue la memoria de un curso de la del
 siguiente.
+
+## Validación al importar y al crear el curso siguiente
+
+Todo esto responde 400 antes de escribir nada.
+
+- **Curso.** `AAAA-AA` con el segundo año igual al primero más uno (`2026-27`, `2099-00`). `2026-29` o
+  `2026-26` tienen la forma pero no son un curso: se aceptaban y quedaban guardados con un curso que
+  no existe. En `siguiente-curso` el curso pedido, además, tiene que ser el **inmediato** siguiente al del
+  documento de partida: un curso salteado dejaría un hueco en la cadena de `anteriorId`.
+- **Ciclo.** Tiene que ser un ciclo o ámbito del catálogo (`CICLOS` de `core/unidades.js`: `daw`, `smr`,
+  `eso`, `bach`). Antes un ciclo inventado llegaba hasta la conciliación y respondía «No reconozco 11 de 11
+  módulos», que no dice qué está mal.
+- **Programación didáctica sin módulos.** Un Word sin ningún bloque de módulo no entra como `programacion_didactica`.
+  El PCCF o la memoria subidos con ese tipo entraban como una PD vacía (el sentido inverso, una PD subida
+  como PCCF o memoria, ya se rechazaba por sus bloques).
 
 ## Por qué `esperaUpdatedAt`
 
@@ -538,3 +569,76 @@ servidor **no escribe nada** y devuelve 409. Sin eso, dos docentes —o dos pest
 persona— editando el mismo apartado pierden uno de los dos trabajos sin que nadie se entere, que es
 el peor fallo posible en una herramienta donde la gente escribe su programación. Lo resuelve
 `repositorio/`, que ya lo trae hecho y probado.
+
+## Versiones del documento
+
+El porqué, en `docs/plan.md` §8. Lo que cambia en la API:
+
+**`POST /api/documentos/importar`** responde además `alternativa` (booleano) y `version` (número). Si
+ya existe un documento con el mismo tipo, curso, ciclo y departamento, lo subido se guarda como
+versión alternativa (`activa: false` en el documento) y el existente no se toca; si no, nace activo.
+La clave de la **memoria** ignora el ciclo (es del departamento): subirla con ciclos distintos, o sin
+ciclo, son versiones del mismo documento. Las memorias guardadas antes con ciclo entran en ese mismo
+grupo sin migrar nada; si había varias activas por haberla subido con ciclos distintos, el grupo las
+muestra todas y se arregla borrando o activando desde `/versiones`.
+
+**`GET /api/documentos`** lista solo la versión activa de cada documento. El documento lleva `activa`,
+`version` y `subidoPor` cuando los tiene (ausentes, es la versión activa y la 1).
+
+**409 `version_alternativa`**: se intenta escribir en una versión alternativa (cualquier petición que
+no sea `GET` sobre ella, incluido `siguiente-curso`; la única excepción es comentar, `POST .../comentarios`) o exportarla (`/pdf`, `/docx`). Lleva
+`documentoId`. Se arregla activándola primero. Las pantallas no ofrecen esas acciones en una alternativa (exportar, curso
+siguiente, mandar a revisión, repartir): `GET .../estado`, `.../unidades` y `.../asignaciones` traen
+`alternativa` para decirlo con su motivo, y `puedeRepartir` y `puedeAsignar` salen a falso. Es distinto del `conflicto` de concurrencia, y la
+interfaz los separa por el código.
+
+**`POST /api/documentos/importar`** guarda además el `.docx` subido como copia de seguridad de esa
+versión y lo dice en `resumen.copia`. **`GET /api/documentos/[id]/copia`** lo devuelve tal como se
+subió (`attachment`, con el número de versión en el nombre). Lo descarga quien ve el documento, sea la
+versión activa o una alternativa; 404 si esa versión no tiene copia (los documentos anteriores a las
+versiones no la tienen) o es de otro departamento.
+
+**Rutas de versiones** (`app/_lib/rutas/versiones.js`). Subir una versión alternativa no tiene ruta
+propia: es `POST /api/documentos/importar`, con los mismos roles.
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /api/documentos/[id]/versiones` | todas las versiones del documento `[id]` (la activa y las alternativas, desde cualquiera de ellas), de la más antigua a la más reciente. Cada una lleva `version`, `activa`, `origen` (nombre del Word), `creado`, `estado`, `subidoPor` (`{ _id, nombre }`, nunca el correo), `copia` (`{ nombre, tamano }` o `null`) y `puedeActivar` y `puedeBorrar` ya resueltos para quien pregunta. La respuesta trae además `puedeSubir`. La ve quien ve el documento |
+| `POST /api/documentos/[id]/activar` | `[id]` pasa a ser la versión activa. La que lo era queda como alternativa **con sus ediciones intactas**; no se borra nada. 200 con el `documento` y los `anteriores` desactivados. 403 si no es jefatura de ese departamento ni soporte, 404 si es de otro departamento, 409 `version_activa` si ya lo era y 409 `conflicto` si cambió desde que se leyó |
+| `DELETE /api/documentos/[id]` | borra una versión **alternativa** con todo lo suyo (apartados, textos compartidos, comentarios y la copia del Word). Cuerpo `{ "confirmar": true }`: sin él, 400 y no se borra nada. Es irreversible. La activa no se borra: 409 `version_activa`. Mismos permisos que activar |
+
+`core/permisos.js` → `puedeActivarVersion` y `puedeBorrarVersion`: la jefatura del departamento (en el
+suyo) y el soporte. La jefatura de estudios y el docente ven las versiones pero no las cambian.
+El número de versión no se reutiliza al borrar: la siguiente subida es siempre la mayor más uno.
+
+La pantalla es `/versiones/[id]` (`app/_componentes/Versiones.js`), enlazada desde la portada del
+documento; una versión alternativa se abre en lectura con un aviso arriba.
+
+## Asignar apartados comunes a personas (`/asignaciones`)
+
+Los módulos se reparten por unidad (`PUT .../unidades/[unidad]/docentes`). Los apartados **comunes** del
+documento —fuera de los módulos— los edita la jefatura del departamento, pero algunos requieren
+colaboración: `PUT .../asignaciones?seccion=` deja que la jefatura (o el soporte) se los dé a personas
+concretas. La regla de edición no cambia: `reglaEdicion` ya contaba con `tieneApartadoAsignado` sobre
+`documento.asignaciones`, que es `{ idApartado: [idUsuario] }`; esto es lo que lo rellena.
+
+- **Qué se puede asignar.** Solo los apartados vigentes de la plantilla que edita la jefatura
+  (`edita: 'jefe_departamento'`, también por herencia del bloque) y que no son un módulo ni el bloque que
+  los agrupa. Los de `docentes_del_modulo` se reparten por unidad y no hay otro valor delegable. Un
+  apartado retirado no existe para la ruta. Asignar un apartado de primer nivel asigna también sus
+  subapartados, igual que en el resto de la aplicación.
+- **`seccion` va en la consulta**, no en el camino, porque los ids de apartado llevan barras.
+- **La lista completa**, por lo mismo que en las unidades: la última escritura impone un reparto que
+  alguien eligió entero. Una lista vacía quita la asignación y no deja la clave. Si otra escritura mueve el
+  documento mientras tanto, se relee y se reaplica este apartado sobre lo nuevo, para no deshacer lo de
+  otro apartado.
+- **Quién puede llevarlos.** Las mismas personas que pueden llevar un módulo: activas, del departamento del
+  documento y que dan clase (`docente` o `jefe_departamento`). Si una sola no vale, 400 con `invalidos` y
+  no se guarda ninguna.
+- **El id de usuario** se lee con `idDeUsuario` (`core/permisos.js`), la única forma: es lo que se guarda y
+  lo que compara la regla de edición.
+- **Errores.** 401 sin sesión; 404 si el documento es de otro departamento, o el apartado no existe o no es
+  asignable; 403 si lo ve pero no asigna (docente, jefatura de estudios); 400 si el cuerpo o las personas
+  están mal.
+- **Lo que ve cada docente** viaja en `mios` del GET: sus módulos, sus apartados asignados, y los avisos
+  `editaTodo` (jefatura y soporte) y `soloLectura` (jefatura de estudios). Todo lo demás es solo lectura.

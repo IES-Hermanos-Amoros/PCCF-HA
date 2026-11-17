@@ -115,7 +115,8 @@ import Comentarios from './Comentarios';
 import Coordinacion from './Coordinacion';
 import CursoSiguiente from './CursoSiguiente';
 import EstadoDocumento from './EstadoDocumento';
-import Estructura, { ApartadosRetirados } from './Estructura';
+import Estructura, { AnadirApartadoAlModulo, ApartadosRetirados, ApartadosRetiradosDelModulo } from './Estructura';
+import Impresion from './Impresion';
 import { CamposRetirados } from './QuitarCampo';
 import Ponderaciones from './Ponderaciones';
 import Situaciones from './Situaciones';
@@ -125,7 +126,9 @@ import { pedir } from './api';
 import {
   abiertosHasta, correccionDeRevision, estados as calcularEstados, indexar,
 } from './arbol-cliente';
-import { bloqueDeUnidades, leerEstructura, puedeCambiarEstructura } from './estructura-cliente';
+import {
+  bloqueDeUnidades, leerEstructura, leerPermisoDeApartado, puedeCambiarApartado, puedeCambiarEstructura,
+} from './estructura-cliente';
 import { TIPO_FICHA, TIPO_PONDERACION, TIPO_RESUMEN } from './sa-cliente';
 import { useSesion } from './sesion-cliente';
 import {
@@ -172,18 +175,27 @@ const VISTAS = [
   { id: 'coordinacion', etiqueta: 'Coordinación' },
 ];
 
-const esVista = (v) => VISTAS.some((x) => x.id === v);
+// Cómo se imprime el documento es una vista más —tiene su dirección y se cambia sin recargar— pero NO
+// va en la barra de pestañas. La barra es por donde se trabaja cada día y son las cuatro del
+// prototipo; esto se toca una vez por documento y por curso. Se llega desde el menú «Ir a»
+// (MenuIr.js), que es donde están las pantallas del documento que no son de escribir.
+const VISTAS_FUERA_DE_LA_BARRA = [
+  { id: 'impresion', etiqueta: 'Cómo se imprime' },
+];
+
+const esVista = (v) => VISTAS.concat(VISTAS_FUERA_DE_LA_BARRA).some((x) => x.id === v);
 
 // Las vistas que miran el DOCUMENTO entero y no un apartado: sustituyen al
 // contenido, y ni la cabecera del apartado ni el panel derecho tienen sentido en
 // ellas.
-const DEL_DOCUMENTO = ['validaciones', 'coordinacion'];
+const DEL_DOCUMENTO = ['validaciones', 'coordinacion', 'impresion'];
 const esDelDocumento = (v) => DEL_DOCUMENTO.includes(v);
 
 // El título que lleva la cabecera en esas dos vistas.
 const TITULO_VISTA = {
   validaciones: 'Comprobaciones del documento',
   coordinacion: 'Coordinación',
+  impresion: 'Cómo se imprime este documento',
 };
 
 export default function Visor({
@@ -207,6 +219,12 @@ export default function Visor({
   // mientras no llega o si la lectura falla: entonces la tarjeta se resuelve con
   // la regla de core/permisos.js y con lo que se ve en el árbol.
   const [estructura, setEstructura] = useState(null);
+
+  // Lo que el servidor dice de ESTE apartado: si puedo cambiarlo (en la plantilla, en mi módulo o en
+  // ninguno de los dos) y a cuántos afectaría. Es lo que decide la tarjeta de estructura; el permiso
+  // del documento entero (`puedeCambiar`) solo decide lo que de verdad es del documento entero.
+  const [permisoApartado, setPermisoApartado] = useState(null);
+  const [recargasPermiso, setRecargasPermiso] = useState(0);
 
   const [apartado, setApartado] = useState(null);
   const [cargandoApartado, setCargandoApartado] = useState(false);
@@ -403,6 +421,19 @@ export default function Visor({
     return () => { vivo = false; };
   }, [documentoId, nodo, recargas]);
 
+  // El permiso del apartado abierto, por apartado y no por documento (estructura-cliente.js). Se pide
+  // al abrir un apartado y se vuelve a pedir tras cada cambio de estructura, porque trae la
+  // estructura del módulo y el token con que se escribe la siguiente.
+  const seccionDelNodo = nodo && nodo.tipo !== 'unidad' ? nodo.seccion || null : null;
+  const unidadAbierta = nodo ? nodo.unidadId || null : null;
+  useEffect(() => {
+    if (!seccionDelNodo) { setPermisoApartado(null); return undefined; }
+    let vivo = true;
+    leerPermisoDeApartado(documentoId, seccionDelNodo, unidadAbierta)
+      .then((p) => { if (vivo) setPermisoApartado(p); });
+    return () => { vivo = false; };
+  }, [documentoId, seccionDelNodo, unidadAbierta, recargasPermiso]);
+
   // ---------------------------------------------------------------- lo que se escribe
 
   // Anota lo que ha cambiado de un apartado en esta sesión. Tiene que ser
@@ -424,7 +455,15 @@ export default function Visor({
   // Lo llama el editor después de cada autoguardado correcto. El `origen` lo pone
   // el servidor en la respuesta del PATCH (`modificado`), y es lo que hace que el
   // progreso por revisión se mueva al reescribir un apartado heredado.
-  const alGuardar = useCallback(({ relleno, origen }) => {
+  const alGuardar = useCallback(({ relleno, origen, valores, updatedAt }) => {
+    // El apartado cargado se pone al día con lo guardado: la vista Cambios y el editor, al volver a
+    // montarse, parten de él y no pueden enseñar el texto de cuando se abrió.
+    if (nodo && valores) {
+      setApartado((previo) => (previo && previo.seccion === nodo.seccion
+        && (previo.unidadId || null) === (nodo.unidadId || null)
+        ? { ...previo, valores, updatedAt: updatedAt || previo.updatedAt, origen: origen || previo.origen }
+        : previo));
+    }
     anotar(nodo ? nodo.clave : null, origen === undefined ? { relleno } : { relleno, origen });
   }, [anotar, nodo]);
 
@@ -505,9 +544,14 @@ export default function Visor({
       const todas = r && r.afectaUnidades && r.unidades > 1
         ? ` Ha salido de ${r.unidades} módulos a la vez, porque era de su plantilla.`
         : '';
-      setAvisoEstructura('El apartado se ha retirado del documento.' + cuantos + todas
-        + ' No se ha borrado: su contenido sigue guardado y vuelve con su texto al restaurarlo'
-        + ' desde la portada del documento.');
+      // Retirado SOLO en un módulo: se dice que los demás siguen como estaban, y dónde se devuelve.
+      setAvisoEstructura(r && r.soloEnElModulo
+        ? 'El apartado se ha retirado de este módulo y de ningún otro.' + cuantos
+          + ' No se ha borrado: su contenido sigue guardado y vuelve con su texto al restaurarlo'
+          + ' desde la lista «Apartados retirados de este módulo».'
+        : 'El apartado se ha retirado del documento.' + cuantos + todas
+          + ' No se ha borrado: su contenido sigue guardado y vuelve con su texto al restaurarlo'
+          + ' desde la portada del documento.');
     }
 
     // Un campo nuevo cambia lo que trae el apartado abierto (`campos`): se vuelve a pedir.
@@ -520,6 +564,9 @@ export default function Visor({
     } else if (accion === 'restaurar_campo' && r && r.campo) {
       setCampoARevelar(r.campo);
     }
+
+    // El permiso y la estructura del módulo traen el token de la siguiente escritura.
+    setRecargasPermiso((n) => n + 1);
 
     try {
       await recargarArbol();
@@ -620,7 +667,7 @@ export default function Visor({
     return (
       <>
         <BarraSuperior persona={yo} />
-        <main className="main">
+        <main id="contenido" tabIndex={-1} className="main">
           <div className="cabecera"><div><h1>No se puede abrir este documento</h1></div></div>
           <div className="nota nota-lock">
             <Candado />
@@ -651,7 +698,7 @@ export default function Visor({
     return (
       <>
         <BarraSuperior persona={yo} />
-        <main className="main"><p className="suave">Abriendo el documento…</p></main>
+        <main id="contenido" tabIndex={-1} className="main"><p className="suave">Abriendo el documento…</p></main>
       </>
     );
   }
@@ -663,6 +710,12 @@ export default function Visor({
   // estructura-cliente.js). Quien no puede no ve la tarjeta, igual que en el
   // prototipo: no es un botón que se le niegue, es una decisión que no es suya.
   const puedeEstructura = puedeCambiarEstructura(estructura, yo, documento);
+  // La tarjeta de UN apartado: la ve quien puede cambiar el documento entero o, por lo que dice el
+  // servidor de ESTE apartado, quien lo lleva o lo tiene asignado. El permiso que llegó es el del
+  // apartado abierto, no el de uno anterior.
+  const permisoDelNodo = permisoApartado && nodo && permisoApartado.clave === `${nodo.seccion}|${nodo.unidadId || ''}`
+    ? permisoApartado : null;
+  const puedeTarjeta = puedeEstructura || puedeCambiarApartado(permisoDelNodo);
   const unidadDelNodo = nodo && nodo.unidadId ? codigoDeUnidad(nodo.unidadId) : null;
   const base = `/api/documentos/${encodeURIComponent(documentoId)}`;
 
@@ -748,7 +801,7 @@ export default function Visor({
   // contenido y con su dirección—, así que lo que se escribe acaba guardado en
   // el apartado de antes. Se encontró recorriéndolo a mano: añadir un apartado,
   // abrirlo y escribir dentro escribía en su padre.
-  const tarjetaEstructura = () => (puedeEstructura && nodo && nodo.seccion && nodo.tipo !== 'unidad' ? (
+  const tarjetaEstructura = () => (puedeTarjeta && nodo && nodo.seccion && nodo.tipo !== 'unidad' ? (
     <Estructura
       key={`estructura-${nodo.clave}`}
       documentoId={documentoId}
@@ -760,6 +813,10 @@ export default function Visor({
       tiposDeCampo={estructura ? estructura.tiposDeCampo : null}
       limites={estructura ? estructura.limites : null}
       apartado={apartado}
+      permiso={permisoDelNodo}
+      puedeDocumento={puedeEstructura}
+      filas={estructura ? estructura.apartados : null}
+      comoSeLlamanElDocumento={bloqueDeUnidades(arbol).etiqueta}
       onCambiado={alCambiarEstructura}
       onIr={irAApartado}
     />
@@ -844,7 +901,8 @@ export default function Visor({
             otra cosa, y lo dice esa pantalla. */}
         <div className="compartido-acciones">
           <a className="mini" href={`/reparto/${encodeURIComponent(documentoId)}`}>
-            Quién lleva cada unidad
+            {documento.tipo === 'pccf' || documento.tipo === 'memoria'
+              ? 'Quién lleva cada apartado' : 'Quién lleva cada unidad'}
           </a>
           {documento.anteriorId ? (
             <a className="mini" href={`/doc/${encodeURIComponent(documento.anteriorId)}`}>
@@ -866,12 +924,29 @@ export default function Visor({
         />
       ) : null}
 
+      {/* Las versiones del documento: reimportar un Word para este curso entra
+          como alternativa, y aquí se elige cuál es la activa. */}
+      {n.tipo === 'raiz' ? (
+        <section className="tarjeta estructura">
+          <header className="tarjeta-cab">
+            <h2>Versiones del documento</h2>
+            <span className="suave">subir otra, elegir la activa o consultar las demás</span>
+          </header>
+          <div className="compartido-acciones">
+            <a className="mini" href={`/versiones/${encodeURIComponent(documentoId)}`}>Ver las versiones</a>
+          </div>
+        </section>
+      ) : null}
+
       {/* Los apartados retirados se recuperan desde aquí, y es lo que promete la
           tarjeta *Estructura* al retirar uno: es la única pantalla desde la que
           se puede, porque un apartado retirado ya no sale en el árbol y no se
           puede abrir. Si no hay ninguno, no se pinta nada. */}
-      {n.tipo === 'raiz' && puedeEstructura && estructura ? (
+      {/* LA VE QUIEN PUEDE DEVOLVER ALGO: la jefatura, todo; quien tiene asignado un apartado común, solo
+          lo que el servidor le deja (ApartadosRetirados filtra fila a fila). Sin filas, no se pinta. */}
+      {n.tipo === 'raiz' && estructura && (puedeEstructura || (estructura.retirados || []).length) ? (
         <ApartadosRetirados
+          puedeDocumento={puedeEstructura}
           documentoId={documentoId}
           retirados={estructura.retirados}
           plantillaVersion={estructura.plantillaVersion}
@@ -922,6 +997,35 @@ export default function Visor({
             <a className="mini" href={`/reparto/${encodeURIComponent(documentoId)}`}>Quién lleva este módulo</a>
           </div>
         </section>
+        {/* Añadir un apartado de primer nivel A ESTE MÓDULO. Va aquí porque la tarjeta *Estructura*
+            añade dentro del apartado que se mira y en una unidad no sale: sin esto, quien lleva el
+            módulo solo podía colgar el apartado nuevo dentro de otro. Solo sale si el servidor deja a
+            quien mira cambiar la estructura de este módulo. */}
+        {estructura ? (
+          <AnadirApartadoAlModulo
+            documentoId={documentoId}
+            unidadId={n.unidadId}
+            filas={estructura.apartados}
+            plantillaVersion={estructura.plantillaVersion}
+            tiposDeCampo={estructura.tiposDeCampo}
+            limites={estructura.limites}
+            onCambiado={alCambiarEstructura}
+            recarga={recargasPermiso}
+            onIr={irAApartado}
+          />
+        ) : null}
+        {/* Lo que este módulo ha retirado, para devolverlo: al retirar un apartado de primer nivel se
+            aterriza aquí, y es la página del módulo. Solo sale si hay algo que el servidor deje devolver. */}
+        {estructura ? (
+          <ApartadosRetiradosDelModulo
+            documentoId={documentoId}
+            unidadId={n.unidadId}
+            filas={estructura.apartados}
+            plantillaVersion={estructura.plantillaVersion}
+            onCambiado={alCambiarEstructura}
+            recarga={recargasPermiso}
+          />
+        ) : null}
         {listaHijos(n)}
       </>
     );
@@ -975,9 +1079,15 @@ export default function Visor({
         <div className="nota nota-lock">
           <Candado />
           <div>
-            {motivoBloqueo(nodo, rol)}
-            {' '}
-            <span className="suave">Se puede leer y exportar, pero no escribir.</span>
+            {documento && documento.activa === false
+              ? <>Este apartado es de una versión alternativa: se puede leer y comentar, pero no escribir ni exportar hasta que la actives.</>
+              : (
+                <>
+                  {motivoBloqueo(nodo, rol)}
+                  {' '}
+                  <span className="suave">Se puede leer y exportar, pero no escribir.</span>
+                </>
+              )}
             {/* Si el candado es porque no se lleva el módulo, el arreglo está
                 en el reparto: se dice dónde, en vez de dejar solo el «no». */}
             {nodo.edita === 'docentes_del_modulo' ? (
@@ -1054,6 +1164,9 @@ export default function Visor({
         />
       );
     }
+    // Cómo se imprime es del documento entero, como las dos de arriba: hasta qué nivel llega el
+    // índice y qué apartados empiezan en página nueva, en el PDF y en el Word a la vez.
+    if (vista === 'impresion') return <Impresion documentoId={documentoId} />;
     if (!nodo) return <p className="suave">Ese apartado no está en este documento.</p>;
     // La comparación con el curso anterior es de UN apartado, así que necesita el
     // nodo; en un nodo de paso lo dice y no pide nada al servidor.
@@ -1132,6 +1245,7 @@ export default function Visor({
         documentoId={documentoId}
         onCajon={() => setCajon((x) => !x)}
         exportar={{ pdf: `${base}/pdf`, docx: `${base}/docx` }}
+        alternativa={!!documento && documento.activa === false}
         vistas={VISTAS}
         vista={vista}
         onVista={cambiarVista}
@@ -1251,8 +1365,18 @@ export default function Visor({
           </div>
         </aside>
 
-        <main className="main">
+        <main id="contenido" tabIndex={-1} className="main">
           {migas()}
+
+          {documento && documento.activa === false ? (
+            <div className="nota nota-lock" role="status">
+              <div>
+                <strong>Esta es una versión alternativa y solo se puede leer.</strong>{' '}
+                No se edita, no se exporta ni se pasa al curso siguiente hasta que la actives.{' '}
+                <a className="enlace" href={`/versiones/${encodeURIComponent(documentoId)}`}>Ver las versiones</a>
+              </div>
+            </div>
+          ) : null}
 
           <div className="cabecera">
             <div>

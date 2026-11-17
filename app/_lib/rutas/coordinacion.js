@@ -65,6 +65,7 @@
 'use strict';
 
 const Arbol = require('../../../core/arbol');
+const { personasQueDanClase } = require('./unidades');
 const Val = require('../../../core/validaciones');
 const { conErrores, abrirDocumento, tituloDelTomo, esRevisado } = require('./comun');
 const { informeDe } = require('./validaciones');
@@ -196,7 +197,7 @@ const GET = conErrores(async (peticion, parametros) => {
   // Las personas del departamento, para poner nombre a los ids del reparto. Igual que en
   // `/validaciones`: los grupos solo guardan ids.
   const personas = new Map();
-  for (const p of await repo.usuarios.listar({ departamento: documento.departamento })) {
+  for (const p of await personasQueDanClase(repo, documento)) {
     personas.set(p._id, aPersona(p));
   }
   const jefatura = [...personas.values()].filter((p) => p.rol === 'jefe_departamento');

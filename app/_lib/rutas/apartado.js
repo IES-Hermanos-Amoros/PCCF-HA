@@ -121,6 +121,7 @@ const CamposCore = require('../../../core/campos');
 const ModelosTabla = require('../../../core/modelos-tabla');
 const RaCe = require('../../../core/ra-ce');
 const { listasDeTexto } = require('../../../motor/compartidos');
+const { plantillaDelModulo } = require('../../../motor/estructura-del-modulo');
 const {
   conErrores, abrirDocumento, puedeEditarApartado, buscarSeccion, leerJson, raDelModulo,
   fallo, malaPeticion, noEncontrado, plantillaVigente, SIN_PERMISO,
@@ -148,8 +149,8 @@ function refsDe(seccion, valores) {
 // el enlace está mal construido.
 //
 // Devuelve { fallo } o { usuario, documento, repo, seccion, unidadId, unidad, info }.
-async function abrirApartado(peticion, parametros) {
-  const abierto = await abrirDocumento(peticion, parametros);
+async function abrirApartado(peticion, parametros, { permiteAlternativa = false } = {}) {
+  const abierto = await abrirDocumento(peticion, parametros, { permiteAlternativa });
   if (abierto.fallo) return abierto;
   const { usuario, documento, repo } = abierto;
 
@@ -159,7 +160,14 @@ async function abrirApartado(peticion, parametros) {
 
   if (!seccion) return { fallo: malaPeticion('Falta el parámetro «seccion».') };
 
-  const info = buscarSeccion(documento.plantilla, seccion);
+  let info = buscarSeccion(documento.plantilla, seccion);
+  let unidad = null;
+  // Un apartado que ha añadido un módulo no está en la plantilla común: se busca en la plantilla que ve
+  // ese módulo.
+  if (!info && unidadId) {
+    unidad = await repo.unidades.obtener(documento._id, unidadId);
+    if (unidad) info = buscarSeccion(plantillaDelModulo(documento.plantilla, unidad), seccion);
+  }
   if (!info) return { fallo: noEncontrado(`Este documento no tiene ningún apartado «${seccion}».`) };
 
   // Pedir un apartado de módulo sin decir de qué módulo, o un apartado común diciendo de qué
@@ -173,10 +181,15 @@ async function abrirApartado(peticion, parametros) {
     return { fallo: malaPeticion(`El apartado «${seccion}» es común al documento y no admite «unidad».`) };
   }
 
-  let unidad = null;
   if (unidadId) {
-    unidad = await repo.unidades.obtener(documento._id, unidadId);
+    if (!unidad) unidad = await repo.unidades.obtener(documento._id, unidadId);
     if (!unidad) return { fallo: noEncontrado(`Este documento no tiene ninguna unidad «${unidadId}».`) };
+    // LOS CAMPOS (Y EL APARTADO MISMO) SON LOS QUE VE ESTE MÓDULO: los de su estructura propia mientras la
+    // tenga, y los comunes cuando no. Lo que el GET manda al cliente y lo que el PATCH acepta salen de aquí.
+    if (info.deUnidad) {
+      info = buscarSeccion(plantillaDelModulo(documento.plantilla, unidad), seccion);
+      if (!info) return { fallo: noEncontrado(`Este documento no tiene ningún apartado «${seccion}» en este módulo.`) };
+    }
   }
 
   return { usuario, documento, repo, seccion, unidadId, unidad, info };

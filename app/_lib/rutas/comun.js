@@ -15,10 +15,13 @@
 const C = require('../../../core/permisos');
 const Plantilla = require('../../../core/plantilla');
 const Val = require('../../../core/validaciones');
+const Imp = require('../../../core/impresion');
 const { aMotor } = require('../../../core/documento');
+const { plantillaDelModulo } = require('../../../motor/estructura-del-modulo');
 const { obtenerRepositorio } = require('../repositorio');
 const { usuarioDeLaPeticion, SIN_IDENTIFICAR, SIN_PERMISO } = require('../usuario');
 const { RANGO, PUEDEN_INVITAR } = require('../invitaciones');
+const { esActiva } = require('../../../core/versiones');
 
 // ---------------------------------------------------------------- errores
 
@@ -86,7 +89,12 @@ const texto = (cuerpo, campo) => {
 //
 // Devuelve { fallo } o { usuario, documento, repo }. Se devuelve el `Response` en lugar de lanzar
 // para que cada ruta siga siendo una función que devuelve respuestas y se pueda leer de arriba abajo.
-async function abrirDocumento(peticion, parametros) {
+//
+// UNA VERSIÓN ALTERNATIVA SOLO SE LEE. Toda petición que no sea GET sobre un documento que no es la
+// versión activa se corta aquí con un 409, de modo que ninguna ruta de escritura tiene que
+// acordarse de comprobarlo. Las rutas de versiones piden `{ permiteAlternativa: true }`: son las
+// únicas que escriben sobre ellas (activarlas, borrarlas).
+async function abrirDocumento(peticion, parametros, { permiteAlternativa = false } = {}) {
   const usuario = await usuarioDeLaPeticion(peticion);
   if (!usuario) return { fallo: SIN_IDENTIFICAR() };
 
@@ -104,6 +112,16 @@ async function abrirDocumento(peticion, parametros) {
 
   if (!documento || !C.puedeVer(usuario, documento)) {
     return { fallo: noEncontrado('No existe ese documento, o no es de tu departamento.') };
+  }
+
+  if (!permiteAlternativa && peticion.method !== 'GET' && !esActiva(documento)) {
+    return {
+      fallo: fallo(
+        409, 'version_alternativa',
+        'Esta es una versión alternativa y no se edita: actívala primero desde la lista de versiones.',
+        { documentoId: String(documento._id) },
+      ),
+    };
   }
 
   // LA ESTRUCTURA RETIRADA SE PODA AQUÍ, UNA VEZ.
@@ -211,22 +229,31 @@ const comprobacionesDe = (documento) => Val.normalizarConfig(documento && docume
 function puedeEditarApartado({ usuario, documento, unidad, seccion, edita, contenido = true }) {
   if (!usuario || !documento) return false;
   if (!C.puedeVer(usuario, documento)) return false;
+  if (!esActiva(documento)) return false;
   // Un nodo que solo agrupa (la raíz, un bloque de unidades, la unidad misma) no se edita: se
   // resume. Es el `esContenido` del mockup, y sin esta línea el árbol enseñaría un lápiz sobre una
   // carpeta.
   if (!contenido) return false;
 
+  return C.reglaEdicion(usuario, booleanosDeApartado({ usuario, documento, unidad, seccion, edita }));
+}
+
+// Los booleanos que esperan `reglaEdicion` y `reglaEstructuraPropia` (core/permisos.js), resueltos
+// contra los datos del servidor. Están aparte de `puedeEditarApartado` para que quien pregunte «¿puede
+// configurarlo?» y quien pregunte «¿puede escribirlo?» partan de la MISMA búsqueda: lo que decide cada
+// regla vive en core/, y esto es solo la consulta.
+function booleanosDeApartado({ usuario, documento, unidad, seccion, edita }) {
   const asignaciones = (documento && documento.asignaciones) || {};
   // Asignar «Evaluación» asigna también sus subapartados, igual que en motor/permisos.js: es como
   // se reparte el trabajo de verdad.
   const asignado = [seccion, C.raizSeccion(seccion)]
     .some((k) => k && (asignaciones[k] || []).includes(usuario._id));
 
-  return C.reglaEdicion(usuario, {
+  return {
     edita,
     esDocenteDeLaUnidad: !!unidad && ((unidad.docentes || []).includes(usuario._id)),
     tieneApartadoAsignado: asignado,
-  });
+  };
 }
 
 // ---------------------------------------------------------------- la plantilla
@@ -297,7 +324,9 @@ const TIPO_RA_CE = 'auto.tabla_ra_ce';
 // Devuelve [] si el módulo no lo tiene escrito, y quien pregunta decide qué hacer con eso.
 async function raDelModulo(repo, documento, unidadId) {
   const nums = new Set();
-  for (const { seccion, campo } of seccionesConCampo(documento.plantilla, TIPO_RA_CE)) {
+  // La plantilla que ve ESTE módulo: si ha retirado o movido su tabla de RA, la que cuenta es la suya.
+  const unidad = await repo.unidades.obtener(documento._id, unidadId);
+  for (const { seccion, campo } of seccionesConCampo(plantillaDelModulo(documento.plantilla, unidad), TIPO_RA_CE)) {
     const fila = await repo.apartados.leer(documento._id, seccion, unidadId);
     const valor = fila && fila.valores ? fila.valores[campo] : undefined;
     for (const num of raDeTablas(valor)) nums.add(num);
@@ -334,6 +363,12 @@ async function leerParaElMotor(repo, documento) {
     repo.compartidos.listar(id),
   ]);
   const { plantilla, datos } = aMotor({ documento, unidades, apartados, compartidos });
+  // La estructura propia de cada módulo viaja en su instancia (en el mismo orden que `unidades`), para
+  // que el motor pinte los apartados y campos que el módulo ve en pantalla y no los de la común. Un
+  // módulo sin estructura propia no lleva la clave: su instancia queda como siempre.
+  unidades.forEach((u, i) => {
+    if (u.estructura) datos.instancias[i].estructura = u.estructura;
+  });
   return { plantilla, datos, unidades };
 }
 
@@ -420,6 +455,34 @@ function estadoPedido(url, documento) {
   return { estado: pedido };
 }
 
+// ---------------------------------------------------------------- cómo se imprime
+
+// HASTA QUÉ NIVEL LLEGA EL ÍNDICE Y QUÉ APARTADOS EMPIEZAN EN PÁGINA NUEVA. La regla está en
+// core/impresion.js; esto es la lectura, y está aquí por lo mismo que `comprobacionesDe`: la piden
+// TRES rutas y tienen que leer lo mismo.
+//
+//   /pdf         el generador del PDF
+//   /docx        el generador del Word
+//   /impresion   la pantalla que lo configura
+//
+// Si cada una lo leyera a su manera, el índice del PDF y el del Word podrían decir cosas distintas
+// del mismo documento, que es justo el problema que esta configuración viene a arreglar.
+//
+// `url` es opcional y sirve para una exportación suelta: `?indice=4&saltos=1` fuerza esos valores
+// SIN guardar nada en el documento. Es para la vez que alguien necesita el tomo con el índice entero
+// para una reunión y no quiere cambiar cómo se imprime siempre. Un valor inventado en la dirección no
+// es un 400 como el de `estado`: ahí un `estado=aprovado` entregaría un PDF con marca de agua que
+// quien lo pidió creía aprobado, y aquí lo único que pasa es que el índice sale como está
+// configurado. La diferencia es que uno miente sobre el documento y el otro no.
+const impresionDe = (documento, url) => {
+  const guardada = documento && documento.impresion;
+  if (!url) return Imp.normalizarConfig(guardada);
+  return Imp.fusionarConfig(guardada, {
+    indice: url.searchParams.get('indice') === null ? undefined : url.searchParams.get('indice'),
+    saltos: url.searchParams.get('saltos') === null ? undefined : url.searchParams.get('saltos'),
+  });
+};
+
 // La unidad pedida, resuelta a su posición en el documento.
 //
 // Se le pasa al motor el ÍNDICE y no el título: `buildDocDefinition` y `exportarDocx` aceptan los
@@ -443,6 +506,12 @@ const CURSO_RE = /^\d{4}-\d{2}$/;
 
 // El curso que viene después de uno dado: 2026-27 → 2027-28. Es lo que se propone por omisión al
 // crear el documento del curso siguiente; quien lo pide puede dar otro.
+// Un curso es AAAA-AA con el segundo año igual al primero más uno: 2026-27, 2099-00.
+function cursoValido(curso) {
+  if (!CURSO_RE.test(String(curso))) return false;
+  return Number(String(curso).slice(5)) === (Number(String(curso).slice(0, 4)) + 1) % 100;
+}
+
 function cursoSiguiente(curso) {
   const anio = Number(String(curso).slice(0, 4)) + 1;
   return `${anio}-${String((anio + 1) % 100).padStart(2, '0')}`;
@@ -459,6 +528,7 @@ const { ORIGENES, esRevisado } = require('../../../core/documento');
 module.exports = {
   CURSO_RE,
   cursoSiguiente,
+  cursoValido,
   ORIGENES,
   esRevisado,
   fallo,
@@ -471,9 +541,11 @@ module.exports = {
   abrirDocumento,
   abrirPersona,
   comprobacionesDe,
+  impresionDe,
   sinPlantilla,
   plantillaVigente,
   puedeEditarApartado,
+  booleanosDeApartado,
   buscarSeccion,
   seccionesConCampo,
   raDelModulo,

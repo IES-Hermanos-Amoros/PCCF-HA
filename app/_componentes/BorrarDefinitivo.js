@@ -33,15 +33,29 @@
 
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Plantilla from '../../core/plantilla';
 import {
-  cambiarEstructura, cuantoHayEscritoEnApartado, cuantoHayEscritoEnCampo, textoDeFalloAlBorrar,
-  todasLasUnidades,
+  cambiarEstructura, cuantoHayEscritoEnApartado, cuantoHayEscritoEnCampo, fraseDeAlcance, leerAlcance,
+  textoDeFalloAlBorrar, todasLasUnidades,
 } from './estructura-cliente';
 import useConfirmacion from './confirmar-cliente';
 
 const cuantos = (n) => (n === 1 ? '1 apartado' : `${n} apartados`);
+
+// El alcance de lo que se va a borrar, leído cuando se abre la confirmación y no antes: es una
+// petición por apartado retirado, y casi nadie abre la confirmación. Si no llega, el aviso sale sin
+// la lista de personas (con lo de «en los N módulos» que ya traía) y el borrado no se impide.
+function useAlcanceAlBorrar(documentoId, seccion, abierta) {
+  const [alcance, setAlcance] = useState(null);
+  useEffect(() => {
+    if (!abierta) return undefined;
+    let vivo = true;
+    leerAlcance(documentoId, seccion).then((a) => { if (vivo) setAlcance(a); });
+    return () => { vivo = false; };
+  }, [documentoId, seccion, abierta]);
+  return alcance;
+}
 
 // El fallo de un borrado. Se distingue el rechazo del servidor (no ha tocado nada) del fallo sin
 // respuesta (no se sabe), por el estado de la respuesta y no por lo que diga el mensaje.
@@ -83,6 +97,8 @@ export function BorrarApartado({
   // Lo que cuesta es el acto de escribirlo, no acertar con las tildes: `confirmaTitulo` perdona
   // acentos, mayúsculas, puntuación y espacios de sobra, y acepta también el título completo.
   const coincide = Plantilla.confirmaTitulo(escrito, titulo);
+  const alcance = useAlcanceAlBorrar(documentoId, retirado.seccion, confirma.estaAbierta());
+  const frase = fraseDeAlcance(alcance, comoSeLlaman);
 
   const cerrar = () => { setEscrito(''); setError(null); confirma.cancelar(); };
 
@@ -94,7 +110,7 @@ export function BorrarApartado({
     try {
       const r = await cambiarEstructura(documentoId, 'borrar', {
         seccion: retirado.seccion,
-        cuerpo: { esperaPlantillaVersion: plantillaVersion },
+        cuerpo: { confirmar: true, esperaPlantillaVersion: plantillaVersion },
       });
       // El foco de después lo lleva el aviso de la lista: esta fila se va con el borrado.
       if (onBorrado) await onBorrado(retirado, r || {});
@@ -112,7 +128,7 @@ export function BorrarApartado({
         ref={confirma.refAbrir()}
         onClick={() => confirma.abrir()}
         disabled={ocupado}
-        aria-label={`Borrar «${titulo}» para siempre`}
+        aria-label={`Borrar para siempre «${titulo}»`}
         title={`Borrar «${titulo}» para siempre. No se puede deshacer`}
       >
         Borrar para siempre…
@@ -124,6 +140,8 @@ export function BorrarApartado({
     <form className="borrado" onSubmit={borrar} aria-label={`Borrar «${titulo}» para siempre`}>
       {/* El aviso de consecuencia: visible, a peso completo y delante del cuadro donde se escribe. */}
       <p>
+        {/* EL ALCANCE, con el número delante y antes del cuadro donde se escribe. */}
+        {frase ? <><strong>{frase}</strong>{' '}</> : null}
         <strong>Esto no se puede deshacer.</strong> Se borra «{titulo}»
         {dentro ? ` y los ${cuantos(dentro)} que tiene dentro` : ''}
         {enTodas ? `, en ${enTodas} a la vez` : ''}
@@ -184,6 +202,9 @@ export function BorrarCampo({
     ? todasLasUnidades(cuantasUnidades, comoSeLlaman)
     : null;
 
+  const alcance = useAlcanceAlBorrar(documentoId, retirado.seccion, confirma.estaAbierta());
+  const frase = fraseDeAlcance(alcance, comoSeLlaman);
+
   const cerrar = () => { setError(null); confirma.cancelar(); };
 
   const borrar = async () => {
@@ -193,7 +214,7 @@ export function BorrarCampo({
       const r = await cambiarEstructura(documentoId, 'borrar_campo', {
         seccion: retirado.seccion,
         campo: retirado.campo,
-        cuerpo: { esperaPlantillaVersion: plantillaVersion },
+        cuerpo: { confirmar: true, esperaPlantillaVersion: plantillaVersion },
       });
       if (onBorrado) await onBorrado(retirado, r || {});
     } catch (err) {
@@ -210,7 +231,7 @@ export function BorrarCampo({
         ref={confirma.refAbrir()}
         onClick={() => confirma.abrir()}
         disabled={ocupado}
-        aria-label={`Borrar el campo «${nombre}» para siempre`}
+        aria-label={`Borrar para siempre el campo «${nombre}»`}
         title={`Borrar el campo «${nombre}» para siempre. No se puede deshacer`}
       >
         Borrar para siempre…
@@ -221,6 +242,7 @@ export function BorrarCampo({
   return (
     <div className="borrado" role="group" aria-label={`Borrar el campo «${nombre}» para siempre`}>
       <p>
+        {frase ? <><strong>{frase}</strong>{' '}</> : null}
         <strong>Esto no se puede deshacer.</strong> Se borra el campo «{nombre}» del apartado «{retirado.titulo}»
         {enTodas ? `, en ${enTodas} a la vez` : ''}
         , y todo lo que hay escrito en él. {cuantoHayEscritoEnCampo(retirado.contenido)}
