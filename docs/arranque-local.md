@@ -162,14 +162,40 @@ Los dos escriben en `.next`. El build deja ahí los trozos de producción, el se
 sigue sirviéndolos, y el resultado es una aplicación que **parece rota sin estar rota**: la página
 carga el armazón, el JavaScript del cliente falla, no hay sesión en pantalla y el navegador recarga en
 bucle. Las pruebas de extremo a extremo fallan todas a la vez, incluso el humo, y el síntoma no apunta
-a nada: no hay error en el servidor, porque el servidor contesta 200.
+a nada: no hay error en el servidor, porque el servidor contesta 200 a todo, también a los trozos.
 
-Si pasa:
+#### Cómo se reconoce sin dudar
+
+Lo que recarga la página no es el código de la aplicación: es Turbopack. En el *websocket* de HMR
+(`ws://localhost:PUERTO/_next/hmr`) llega, en cada carga:
+
+```json
+{"type":"reloadPage","data":"HMR hash mismatch"}
+{"type":"turbopack-message","data":[{"resource":{"path":"static/chunks/_XXXX._.js"},"type":"restart"}],"hmrVersion":"241"}
+```
+
+`hmrVersion` sube un número en cada vuelta, y el navegador recarga entero a cada mensaje. La causa
+está en la lista de trozos de entrada: nombra **dos** clientes de HMR distintos, uno el que la página
+ha cargado y otro el que la lista espera. Ese desajuste es el `hash mismatch`.
+
+Buscar el fallo en el código de la aplicación es perder la tarde: no hay error en consola, el servidor
+contesta 200, y las peticiones a la API aparecen como `ERR_ABORTED` solo porque la página se descarga
+antes de que contesten. La señal está en el *websocket*, no en el código.
+
+#### Cómo se arregla
 
 ```bash
-# para el servidor de desarrollo, borra .next y vuelve a arrancarlo
-rm -rf .next && npm run dev -- -p 3000
+# 1. PARA el servidor de desarrollo. Esto va primero.
+# 2. borra .next y comprueba que no queda nada
+rm -rf .next && ls .next
+# 3. vuelve a arrancarlo
+npm run dev -- -p 3000
 ```
+
+**El orden importa.** Con el servidor levantado, el borrado de `.next` se deja atrás los ficheros que
+el servidor tiene abiertos —en Windows, sin avisar— y sobreviven justo los de producción: `BUILD_ID`,
+`static/`, `server/` y los manifests. El bucle sigue igual, y encima parece que la limpieza ya se ha
+hecho. Si `ls .next` contesta algo después del borrado, no se ha borrado.
 
 Y para construir, para antes el de desarrollo. Es la trampa hermana de la del repositorio en caché
 (`app/_lib/repositorio.js`): las dos se reconocen por que el síntoma no tiene nada que ver con la
