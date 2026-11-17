@@ -137,6 +137,29 @@ nivel medio con un hijo dentro—, nadie pierde nada, y el aviso del servidor ex
 alternativa, que la lectura devolviera también un `puedeCambiarRama`, está escrita aquí por si el
 número crece cuando el departamento empiece a anidar apartados, que ahora ya puede.
 
+### 4.3 Un apartado de primer nivel en un módulo: por dónde se pide
+
+La tarjeta *Estructura* añade un apartado **dentro del que se está mirando** (`padre: nodo.seccion`),
+y no sale en la página de un módulo: un módulo no es un apartado de la plantilla. El resultado era que
+quien lleva un módulo podía añadir un subapartado dentro de «Metodología», pero **no un apartado de
+primer nivel al módulo**: para eso tenía que meterlo dentro de otro, que no es lo mismo ni se imprime
+igual.
+
+El servidor lo permitía desde el principio —`componerApartado` pone el bloque del módulo como padre
+cuando no se dice otro—, así que lo que faltaba era **por dónde pedirlo**:
+`AnadirApartadoAlModulo` (`app/_componentes/Estructura.js`), en la página del módulo, junto a lo
+retirado y a «volver a la común». Las tres cosas que se hacen con lo propio de un módulo, en el mismo
+sitio.
+
+La tarjeta dice dos cosas antes de pulsar, porque desde dentro de un módulo no se ven:
+
+- **sale solo en este módulo**, es decir que el módulo se desvía de la común, y
+- **para que salga en todos**, el sitio es la tarjeta *Estructura* de «Módulos», que escribe en la
+  plantilla.
+
+Y dice la tercera en su ayuda: **desviarse no aísla** (§3.1). Sin esa frase, «se desvía de la común»
+suena a quedarse fuera y nadie lo usaría.
+
 ## 5. La red antes del cambio
 
 Antes de tocar nada se congela lo que la aplicación hace hoy: por cada documento y cada módulo, el
