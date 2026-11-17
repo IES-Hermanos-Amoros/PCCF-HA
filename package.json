@@ -16,7 +16,8 @@
     "sanear": "node scripts/sanear-docx.js",
     "serve": "node scripts/serve.js",
     "pdf": "node scripts/generate.js borrador",
-    "pdf:aprobado": "node scripts/generate.js aprobado"
+    "pdf:aprobado": "node scripts/generate.js aprobado",
+    "docx:borradores": "node scripts/md-a-docx.js docs/entrada_ej/2026-27/borradores/PCCF_DAW.md && node scripts/md-a-docx.js docs/entrada_ej/2026-27/borradores/PD_DAW.md"
   },
   "dependencies": {
     "jszip": "^3.10.2",
