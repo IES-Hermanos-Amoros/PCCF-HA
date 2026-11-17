@@ -1116,6 +1116,164 @@ function VolverALaComun({ documentoId, unidadId, filas, onCambiado, recarga }) {
   );
 }
 
+// ---------------------------------------------------------------- añadir un apartado de primer nivel A UN MÓDULO
+//
+// EL HUECO QUE ESTO TAPA. La tarjeta *Estructura* añade un apartado DENTRO del apartado que se está
+// mirando (`padre: nodo.seccion`), y no sale en la página de un módulo: un módulo no es un apartado de
+// la plantilla (ver `tarjetaEstructura` en Visor.js). El resultado era que quien lleva un módulo podía
+// añadir un subapartado dentro de «Metodología», pero no un apartado de primer nivel al módulo: para
+// eso tenía que meterlo dentro de otro, que no es lo mismo ni se imprime igual. El servidor sí lo
+// permitía desde el principio —`componerApartado` pone el bloque del módulo como padre por omisión—,
+// así que lo que faltaba era por dónde pedirlo.
+//
+// LO QUE SE AÑADE ES SOLO DE ESTE MÓDULO, y hay que decirlo antes de pulsar. Un apartado que se añade
+// aquí entra en la estructura propia del módulo, es decir **desvía el módulo** de la común: los otros
+// diez no cambian. Para que un apartado nuevo salga en todos los módulos, el sitio es la tarjeta
+// *Estructura* de «Módulos», que escribe en la plantilla. Se dice las dos cosas, porque desde dentro
+// de un módulo no se ve la diferencia.
+//
+// DESVIARSE NO AÍSLA, y eso también se dice: un módulo con estructura propia sigue recibiendo lo que
+// la jefatura añada después a la común (docs/estructura-por-modulo.md §3.1). Sin esa frase, «se desvía
+// de la común» suena a quedarse fuera, y nadie lo usaría.
+//
+// QUIÉN LA VE. Quien puede cambiar la estructura de este módulo, que lo dice el servidor: la docente
+// que lo lleva, la jefatura del departamento y el soporte (`reglaEstructuraPropia` en core/permisos.js).
+// Se pregunta con la misma lectura por apartado que usa `VolverALaComun`, porque la ruta de la unidad
+// no tiene una lectura sin apartado que diga el permiso. El servidor lo vuelve a comprobar al escribir.
+
+export function AnadirApartadoAlModulo({
+  documentoId, unidadId, filas, plantillaVersion, tiposDeCampo, limites, onCambiado, recarga, onIr,
+}) {
+  const [puede, setPuede] = useState(false);
+  const [titulo, setTitulo] = useState('');
+  const [camposNuevos, setCamposNuevos] = useState([]);
+  const [enviando, setEnviando] = useState(false);
+  const [anadido, setAnadido] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const comun = Array.isArray(filas) ? filas.find((f) => f.deUnidades && !f.instancias && !f.retirado) : null;
+    if (!unidadId || !comun) { setPuede(false); return undefined; }
+    let vivo = true;
+    leerPermisoDeApartado(documentoId, comun.seccion, unidadId)
+      .then((p) => { if (vivo) setPuede(!!(p.modulo && p.modulo.puede)); })
+      .catch(() => { if (vivo) setPuede(false); });
+    return () => { vivo = false; };
+  }, [documentoId, unidadId, filas, recarga]);
+
+  if (!puede) return null;
+
+  const ocupado = enviando;
+
+  const anadir = async (ev) => {
+    ev.preventDefault();
+    const limpio = titulo.trim();
+    if (!limpio || ocupado) return;
+    setEnviando(true);
+    setError(null);
+    setAviso(null);
+    try {
+      // Sin `padre`: `componerApartado` pone el bloque del módulo, que es el primer nivel. Decirlo a
+      // mano aquí obligaría a esta pantalla a saber cómo se llama ese bloque, que es cosa del árbol.
+      const r = await escribirEnElModulo(documentoId, unidadId, null, {
+        accion: 'anadir_apartado',
+        filas,
+        cuerpo: {
+          titulo: limpio,
+          ...(camposNuevos.length ? { campos: camposNuevos.map((c) => c.peticion) } : {}),
+          esperaPlantillaVersion: plantillaVersion,
+        },
+      });
+      setTitulo('');
+      setCamposNuevos([]);
+      setAnadido(r.seccion ? { seccion: r.seccion, titulo: r.titulo || limpio } : null);
+      setAviso(`Apartado «${r.titulo || limpio}» añadido a este módulo${r.seccion ? ` con el identificador ${r.seccion}` : ''}.`
+        + ' Los otros módulos no han cambiado.');
+      if (onCambiado) await onCambiado('anadir', r || {});
+    } catch (e) {
+      setError(e);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <section className="tarjeta estructura">
+      <header className="tarjeta-cab"><h2>Añadir un apartado a este módulo</h2></header>
+      <p className="suave">
+        Nace en el <strong>primer nivel de este módulo</strong>, al final y vacío. Sale{' '}
+        <strong>solo en este módulo</strong>: los demás no cambian. Para que un apartado nuevo salga en
+        todos, se añade desde la tarjeta <em>Estructura</em> de «Módulos».
+      </p>
+      <form className="linea-estructura" onSubmit={anadir}>
+        <label htmlFor="anadir-al-modulo">Título del apartado nuevo</label>
+        <input
+          id="anadir-al-modulo"
+          value={titulo}
+          onChange={(ev) => setTitulo(ev.target.value)}
+          placeholder="Título del apartado nuevo"
+          autoComplete="off"
+          disabled={ocupado}
+        />
+        <button className="btn-ghost" type="submit" disabled={ocupado || !titulo.trim()}>
+          {enviando ? 'Añadiendo…' : 'Añadir'}
+        </button>
+      </form>
+
+      {/* Los campos con los que nace, igual que en la tarjeta de un apartado. Van fuera del
+          formulario de arriba: llevan sus propios formularios. */}
+      <CamposDelApartadoNuevo
+        tipos={tiposDeCampo}
+        limites={limites}
+        campos={camposNuevos}
+        onCambio={setCamposNuevos}
+        // `enTodas` es falso siempre: lo que se añade aquí es de este módulo y de ninguno más, y es
+        // justo lo que la tarjeta promete arriba.
+        enTodas={false}
+        ocupado={ocupado}
+      />
+
+      <Ayuda sobre="añadir un apartado a un solo módulo">
+        <p>
+          Este módulo pasa a tener <strong>estructura propia</strong>, que es como se llama a seguir una
+          estructura distinta de la común. No se queda fuera de nada: lo que la jefatura del departamento
+          añada después a la estructura común <strong>sigue llegando</strong> a este módulo, y lo que
+          retire se va también. Lo propio es solo lo que se añade o se cambia aquí.
+        </p>
+        <p>
+          El identificador lo pone el servidor y empieza por <code>m_</code>, que es lo que distingue lo
+          propio de un módulo de lo que es común. Renombrar el apartado no cambia el identificador, así
+          que no rompe los enlaces que alguien tenga guardados.
+        </p>
+      </Ayuda>
+
+      {/* El resultado, en una región que los lectores de pantalla anuncian, y montada siempre: si
+          apareciera y desapareciera no se anunciaría (igual que en la tarjeta de un apartado). */}
+      <p className={aviso ? 'bien aviso-hecho' : 'sr aviso-hecho'} role="status">
+        {aviso || ''}
+        {anadido ? (
+          <>
+            {' '}
+            <button className="enlace" type="button" onClick={() => onIr && onIr(anadido.seccion, unidadId)}>
+              Abrir «{anadido.titulo}» para escribir en él
+            </button>
+          </>
+        ) : null}
+      </p>
+
+      {error ? (
+        <div className="nota nota-error" role="alert">
+          <div>
+            {yaDiceQueNoHaCambiado(error) ? null : <strong>No se ha cambiado nada. </strong>}
+            {mensajeDeError(error)}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------- los retirados de UN módulo
 //
 // Un apartado retirado en un módulo desaparece de ese módulo y de ninguno más, y no tiene portada
