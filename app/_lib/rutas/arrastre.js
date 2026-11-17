@@ -108,6 +108,10 @@ function filasDelSiguiente(origen, { curso, unidades, apartados, compartidos, pl
     // `null` y no `{}` cuando no hay nada configurado: así el documento nuevo queda igual que uno
     // recién importado y `normalizarConfig` le da lo de serie (core/validaciones.js).
     comprobaciones: origen.comprobaciones ? copia(origen.comprobaciones) : null,
+    // Cómo se imprime viaja por el mismo motivo que las comprobaciones: quien decidió en septiembre
+    // que el índice de la programación llega hasta el tercer nivel no tiene que volver a decidirlo
+    // cada curso. `null` cuando no hay nada configurado (core/impresion.js).
+    impresion: origen.impresion ? copia(origen.impresion) : null,
     origen: null,
   };
 

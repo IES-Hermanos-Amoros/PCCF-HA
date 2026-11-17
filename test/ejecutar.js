@@ -76,6 +76,10 @@ const SUITES = [
   { archivo: 'test/estados.js', nombre: 'estados del documento, PCCF y memoria' },
   { archivo: 'test/coordinacion.js', nombre: 'coordinación y comentarios' },
   { archivo: 'test/reglas.js', nombre: 'comprobaciones configurables del documento' },
+  { archivo: 'test/impresion.js', nombre: 'como se imprime: hasta donde llega el indice y que apartado empieza en pagina nueva' },
+  { archivo: 'test/pdf-impresion.js', nombre: 'el PDF obedece la configuracion de impresion' },
+  { archivo: 'test/docx-impresion.js', nombre: 'el Word obedece la configuracion de impresion' },
+  { archivo: 'test/impresion-ruta.js', nombre: 'la ruta que configura como se imprime, y que exportar la obedece' },
 
   // --- versiones del documento ---------------------------------------------
   { archivo: 'test/versiones.js', nombre: 'versiones del documento: alternativas, activa y copia del Word' },

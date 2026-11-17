@@ -31,7 +31,10 @@
 //
 //   admin              coordinación técnica: ve y edita todo (soporte)
 //   jefe_estudios      ve los documentos de todos los departamentos, en
-//                      cualquier estado; NO edita nada, que es quien aprueba
+//                      cualquier estado; NO edita nada, que es quien aprueba.
+//                      Configura dos cosas que no son contenido: las
+//                      comprobaciones (`puedeConfigurarComprobaciones`) y cómo
+//                      se imprime (`puedeConfigurarImpresion`)
 //   jefe_departamento  su departamento: apartados comunes, textos compartidos y
 //                      todos los módulos, los tenga asignados o no
 //   docente            ve los de su departamento; edita los módulos que tiene
@@ -208,6 +211,23 @@
     return usuario.rol === 'admin' || usuario.rol === 'jefe_estudios';
   }
 
+  // Cómo se imprime un documento: hasta qué nivel llega el índice y qué apartados empiezan en página
+  // nueva (core/impresion.js). La jefatura de departamento, la de estudios y el soporte.
+  //
+  // ES LA ÚNICA COSA QUE LA JEFATURA DE ESTUDIOS CAMBIA, y hay que decirlo porque arriba está escrito
+  // que no edita nada, que es quien aprueba. La excepción está decidida por el departamento y tiene
+  // una razón: esto no es contenido del documento, es cómo sale en el papel. No mueve el listón de lo
+  // que se puede aprobar, no cambia ni un apartado y no escribe nada de nadie. Quien firma el
+  // documento impreso tiene que poder decidir cómo se imprime.
+  //
+  // Es una función aparte de `puedeConfigurarComprobaciones` aunque las dos sean «configurar»: esas
+  // SÍ mueven el listón y por eso las decide solo quien aprueba. El día que una de las dos cambie, la
+  // otra no tiene por qué enterarse.
+  function puedeConfigurarImpresion(usuario, donde) {
+    if (!puedeVer(usuario, donde)) return false;
+    return usuario.rol === 'admin' || usuario.rol === 'jefe_estudios' || usuario.rol === 'jefe_departamento';
+  }
+
   // Quién cambia cuál es la versión activa de un documento, y quién borra una versión alternativa
   // (docs/plan.md §8). La jefatura del departamento, en su departamento, y el soporte. Subir una versión
   // alternativa no es esto: es importar, y lo pueden los mismos roles que ya importan.
@@ -295,6 +315,7 @@
     puedeCambiarEstructura,
     reglaEstructuraPropia,
     puedeConfigurarComprobaciones,
+    puedeConfigurarImpresion,
     puedeActivarVersion,
     puedeBorrarVersion,
   };

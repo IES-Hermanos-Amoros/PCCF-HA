@@ -15,6 +15,7 @@
 const C = require('../../../core/permisos');
 const Plantilla = require('../../../core/plantilla');
 const Val = require('../../../core/validaciones');
+const Imp = require('../../../core/impresion');
 const { aMotor } = require('../../../core/documento');
 const { plantillaDelModulo } = require('../../../motor/estructura-del-modulo');
 const { obtenerRepositorio } = require('../repositorio');
@@ -454,6 +455,34 @@ function estadoPedido(url, documento) {
   return { estado: pedido };
 }
 
+// ---------------------------------------------------------------- cómo se imprime
+
+// HASTA QUÉ NIVEL LLEGA EL ÍNDICE Y QUÉ APARTADOS EMPIEZAN EN PÁGINA NUEVA. La regla está en
+// core/impresion.js; esto es la lectura, y está aquí por lo mismo que `comprobacionesDe`: la piden
+// TRES rutas y tienen que leer lo mismo.
+//
+//   /pdf         el generador del PDF
+//   /docx        el generador del Word
+//   /impresion   la pantalla que lo configura
+//
+// Si cada una lo leyera a su manera, el índice del PDF y el del Word podrían decir cosas distintas
+// del mismo documento, que es justo el problema que esta configuración viene a arreglar.
+//
+// `url` es opcional y sirve para una exportación suelta: `?indice=4&saltos=1` fuerza esos valores
+// SIN guardar nada en el documento. Es para la vez que alguien necesita el tomo con el índice entero
+// para una reunión y no quiere cambiar cómo se imprime siempre. Un valor inventado en la dirección no
+// es un 400 como el de `estado`: ahí un `estado=aprovado` entregaría un PDF con marca de agua que
+// quien lo pidió creía aprobado, y aquí lo único que pasa es que el índice sale como está
+// configurado. La diferencia es que uno miente sobre el documento y el otro no.
+const impresionDe = (documento, url) => {
+  const guardada = documento && documento.impresion;
+  if (!url) return Imp.normalizarConfig(guardada);
+  return Imp.fusionarConfig(guardada, {
+    indice: url.searchParams.get('indice') === null ? undefined : url.searchParams.get('indice'),
+    saltos: url.searchParams.get('saltos') === null ? undefined : url.searchParams.get('saltos'),
+  });
+};
+
 // La unidad pedida, resuelta a su posición en el documento.
 //
 // Se le pasa al motor el ÍNDICE y no el título: `buildDocDefinition` y `exportarDocx` aceptan los
@@ -512,6 +541,7 @@ module.exports = {
   abrirDocumento,
   abrirPersona,
   comprobacionesDe,
+  impresionDe,
   sinPlantilla,
   plantillaVigente,
   puedeEditarApartado,

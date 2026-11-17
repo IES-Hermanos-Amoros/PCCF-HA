@@ -27,7 +27,7 @@ const { esActiva } = require('../../../core/versiones');
 const { buildDocDefinition } = require('../../../motor/render-generico');
 const {
   conErrores, fallo, abrirDocumento, leerParaElMotor, tituloDelTomo, nombreDeArchivo,
-  estadoPedido, unidadPedida, comprobacionesDe, SUBTITULO,
+  estadoPedido, unidadPedida, comprobacionesDe, impresionDe, SUBTITULO,
 } = require('./comun');
 
 // Toda la ruta menos la impresión. Devuelve { fallo } o { definicion, documento, unidad }.
@@ -63,6 +63,11 @@ async function definicionDe(peticion, parametros) {
     // DECIDE nada: lee una decisión del documento y la pasa. Un documento sin configurar manda el
     // estricto, que es el de siempre, así que su PDF sigue siendo idéntico al del importador.
     convenioCe: comprobacionesDe(documento).convenioCe,
+    // HASTA DÓNDE LLEGA EL ÍNDICE Y QUÉ APARTADOS EMPIEZAN EN PÁGINA NUEVA, que es otra decisión del
+    // documento y se lee igual: `impresionDe` la saca del documento y deja forzarla desde la
+    // dirección (`?indice=&saltos=`) para una exportación suelta. Un documento sin configurar manda
+    // lo de siempre —índice hasta el segundo nivel y ningún salto—, así que su PDF no cambia.
+    impresion: impresionDe(documento, url),
   });
   return { definicion, documento, unidad };
 }

@@ -28,7 +28,12 @@ const CAMPOS = {
   // juntos siempre, y porque así el arrastre se los lleva sin tener que acordarse de los tres: es
   // la misma decisión que puso el registro de cambios de la estructura DENTRO de `plantilla`
   // (core/plantilla.js, «el registro viaja dentro de plantilla a propósito»).
-  documento: ['tipo', 'ciclo', 'curso', 'departamento', 'estado', 'plantilla', 'plantillaVersion', 'anteriorId', 'asignaciones', 'origen', 'comprobaciones', 'activa', 'version', 'subidoPor'],
+  // `impresion` es cómo sale este documento en el papel: hasta qué nivel llega el índice y qué
+  // apartados empiezan en página nueva (core/impresion.js). Va en el documento por las mismas tres
+  // razones de arriba —una memoria de ocho páginas no quiere el índice de una programación de
+  // ciento— y se arrastra igual al curso siguiente, porque cómo se imprime la programación del
+  // departamento tampoco se vuelve a decidir cada septiembre.
+  documento: ['tipo', 'ciclo', 'curso', 'departamento', 'estado', 'plantilla', 'plantillaVersion', 'anteriorId', 'asignaciones', 'origen', 'comprobaciones', 'impresion', 'activa', 'version', 'subidoPor'],
   // `estructura` es la estructura propia del módulo (core/estructura-modulo.js); `null` es no tener ninguna.
   unidad: ['titulo', 'num', 'grupo', 'docentes', 'estructura'],
   apartado: ['valores', 'origen', 'revisadoPor', 'revisadoEn'],
