@@ -1239,7 +1239,16 @@ prueba('sin modelo y sin estructura, el PDF sale byte a byte como antes de que e
 });
 
 prueba('sin modelo y sin estructura, el .docx sale con los MISMOS BYTES que antes', async () => {
-  const buffer = await exportarDocx({ plantilla: ORO.plantilla, datos: ORO.datos, titulo: 'Congelado' });
+  // `impresion: { indice: 0 }` NO es para que la prueba pase: es para que siga midiendo lo suyo. Lo
+  // que esta puerta vigila es que los modelos de tabla no cambien el Word, y el congelado se hizo
+  // cuando el Word no tenía índice. Desde que lo tiene (core/impresion.js), el documento de serie
+  // lleva el campo TOC, su `word/settings.xml` y el salto que deja al índice con su página, así que
+  // los bytes son otros a propósito. Apagando el índice se vuelve a la forma congelada y la puerta
+  // sigue hablando de tablas. Que el índice y los saltos salgan bien lo vigila test/docx-impresion.js,
+  // que es su sitio.
+  const buffer = await exportarDocx({
+    plantilla: ORO.plantilla, datos: ORO.datos, titulo: 'Congelado', impresion: { indice: 0 },
+  });
   const zip = await JSZip.loadAsync(buffer);
   // Primero el document.xml, que es lo que esta pieza podria haber cambiado y lo que se puede leer
   // cuando falle; despues el fichero entero, que se puede comparar por su huella porque el zip lleva
